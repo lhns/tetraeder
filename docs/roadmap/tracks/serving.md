@@ -27,6 +27,7 @@ flowchart TB
     serving_parity_endpoints["✔ Endpoint parity"]
     serving_parity_libllama["✔ Expose libllama<br/>capabilities"]
     serving_recurrent_reuse>"✔ Recurrent models<br/>break slot reuse"]
+    serving_cuda_parity>"✔ libllama path<br/>differs on CUDA"]
     serving_parity_remaining["○ Close the known<br/>parity gaps"]
     serving_multi_model["⏸ Several models at<br/>once"]
     serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
@@ -35,7 +36,6 @@ flowchart TB
     serving_self_spec["⏸ Low-bit copy drafts<br/>for itself"]
     serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
     serving_mtp_libllama["○ MTP drafts through<br/>libllama"]
-    serving_cuda_parity>"⚠ libllama path<br/>differs on CUDA"]
     serving_prefix_first["⏸ Admit longest prefix<br/>hit first"]
     serving_gateway ~~~ serving_real_engines
     serving_real_engines ~~~ serving_prefix_cache
@@ -58,18 +58,16 @@ flowchart TB
     serving_parity_fields ~~~ serving_parity_endpoints
     serving_parity_endpoints ~~~ serving_parity_libllama
     serving_parity_endpoints ~~~ serving_recurrent_reuse
+    serving_parity_endpoints ~~~ serving_cuda_parity
     serving_parity_libllama ~~~ serving_parity_remaining
     serving_recurrent_reuse ~~~ serving_multi_model
-    serving_recurrent_reuse ~~~ serving_multi_lora
+    serving_cuda_parity ~~~ serving_multi_lora
     serving_parity_remaining ~~~ serving_auth_quotas
     serving_multi_model ~~~ serving_multimodal
     serving_multi_lora ~~~ serving_self_spec
     serving_auth_quotas ~~~ serving_mtp_drafts
     serving_multimodal ~~~ serving_mtp_libllama
-    serving_self_spec ~~~ serving_cuda_parity
-    serving_mtp_drafts ~~~ serving_prefix_first
-    serving_mtp_libllama ~~~ serving_prefix_first
-    serving_cuda_parity ~~~ serving_prefix_first
+    serving_self_spec ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -106,10 +104,9 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
-    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama,serving_recurrent_reuse succ
+    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama,serving_recurrent_reuse,serving_cuda_parity succ
     class serving_parity_remaining,serving_mtp_libllama next
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
-    class serving_cuda_parity finding
 ```
 <!-- END GENERATED: track-serving -->
 
@@ -147,7 +144,7 @@ flowchart TB
 | `serving-strata-owner-scope` | Which Strata model families to add | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 |  |  |  | parked until M3 | docs/notes/strata-parity.md |
 | `serving-recurrent-reuse` | Recurrent models break slot reuse | defect | local | done | unrated | 2026-11-23 | 2026-11-23 | bench-strata-q36 |  |  |  | bench/results/strata-q36-20261123/README.md; crates/scheduler/tests/no_suffix_cut.rs; crates/gateway/tests/openai.rs; crates/gateway/tests/anthropic.rs |
 | `serving-mtp-libllama` | MTP drafts through libllama | feature | local | next | unrated |  |  | bench-strata-q36 |  |  |  |  |
-| `serving-cuda-parity` | libllama path differs on CUDA | defect | box-later | next | unrated |  |  | bench-regression-gate |  |  |  | bench/results/regression-gate-20261123/README.md |
+| `serving-cuda-parity` | libllama path differs on CUDA | defect | box-later | done | unrated | 2026-11-24 | 2026-11-24 | bench-regression-gate |  |  |  | bench/results/regression-gate-20261123/README.md; tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md |
 | `serving-prefix-first` | Admit longest prefix hit first | feature | local | parked | unrated |  |  | bench-ttft |  |  |  |  |
 
 ### Details per node
@@ -183,7 +180,7 @@ flowchart TB
 | `serving-strata-owner-scope` | Which Strata model families to add | Park until M3 (owner 2026-11-23) | parked until M3 | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). | Matrix docs/notes/strata-parity.md, class 3. |  |  |  |  |
 | `serving-recurrent-reuse` | Recurrent models break slot reuse | no_suffix_cut: 3 passed, 0 failed (cargo test, test ubuntu-24.04 and windows-latest, CI run 45101237756); engine_error_before_a_token_is_not_an_empty_success ok in openai and anthropic |  | A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture. |  |  |  |  |  |
 | `serving-mtp-libllama` | MTP drafts through libllama |  |  | Qwen3.6 ships an MTP block and libllama at the pin can run it (LLAMA_CONTEXT_TYPE_MTP, draft-mtp in common/speculative.cpp); drafting with it on the libllama engine tests Strata's 1.5x single-request lead without a new builder (owner 2026-11-23). | Design question: speculative rollback on recurrent state (serving-recurrent-reuse showed seq_rm cannot cut). Judged by a paired run against llama-server with and without its own MTP drafts. |  |  |  |  |
-| `serving-cuda-parity` | libllama path differs on CUDA |  |  | On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics. | Found by bench-regression-gate on an A100. First check whether prefix reuse or batch composition differs from llama-server for these cases, then whether llama-server itself is run-to-run stable on CUDA; the conformance tolerance for CUDA may need a stated band (ADR 0083 decision 2 says CUDA and CPU). Diagnosed 2026-11-24 (stream-predict-20261124, A40, correctness only) - the 4 cases fail in the suite twice and pass with prefix reuse and the prompt caches off (tetraeder --no-prefix-reuse --cache-ram 0, llama-server --no-cache-prompt --cache-ram 0) and each alone on fresh servers; llama-server alone is stable across fresh servers but its second identical request on one server differs (logprob -1.8332 then -1.8114 on logprobs and logprobs-shape, the two values tetraeder shows). So the logits of a prompt evaluated from scratch and after reuse differ on CUDA in both engines, and which one a case sees depends on the cases before it. The own dense and moe engines run on the GPU (CUDA0 in the log, GPU memory 0 to 277 MiB). Left to do - decide the CUDA band or run those cases with reuse off in the CUDA run. |  |  |  |  |
+| `serving-cuda-parity` | libllama path differs on CUDA | CI run 45415720514 ubuntu the parity suite is green on CPU with reuse pinned off and the logprobs-after-reuse case; the CUDA band 0.03 is not yet run on a box |  | On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics. | Found by bench-regression-gate on an A100. First check whether prefix reuse or batch composition differs from llama-server for these cases, then whether llama-server itself is run-to-run stable on CUDA; the conformance tolerance for CUDA may need a stated band (ADR 0083 decision 2 says CUDA and CPU). Diagnosed 2026-11-24 (stream-predict-20261124, A40, correctness only) - the 4 cases fail in the suite twice and pass with prefix reuse and the prompt caches off (tetraeder --no-prefix-reuse --cache-ram 0, llama-server --no-cache-prompt --cache-ram 0) and each alone on fresh servers; llama-server alone is stable across fresh servers but its second identical request on one server differs (logprob -1.8332 then -1.8114 on logprobs and logprobs-shape, the two values tetraeder shows). So the logits of a prompt evaluated from scratch and after reuse differ on CUDA in both engines, and which one a case sees depends on the cases before it. The own dense and moe engines run on the GPU (CUDA0 in the log, GPU memory 0 to 277 MiB). Left to do - decide the CUDA band or run those cases with reuse off in the CUDA run. |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first |  |  | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). | Parked: worth a run only if time to first token under contention misses the bar again (m2-plan, TTFT idea 2026-11-20). |  |  |  |  |
 
 ### Folded items per node

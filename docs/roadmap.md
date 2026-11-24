@@ -283,7 +283,6 @@ flowchart TB
 | Load safetensors models directly | ⏸ parked | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). |
 | KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). |
 | KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
-| Read-free covering expert tiers | ⚠ open | When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again). |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
@@ -296,7 +295,6 @@ flowchart TB
 | One and two bit formats | ⏸ parked | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). |
 | Expert-parallel split on two GPUs | ○ next | A new plan shape where each of two GPUs holds a share of every MoE layer's experts, as Strata's --ep-split does, priced by the cost model and tested on every hardware fixture (ADR 0085). |
 | Plan experts with no RAM tier | ⏸ parked | Enumerate, lower and score a builder plan with ram_slots 0 (experts read from NVMe into VRAM), which the engine already runs and the planner never offers. |
-| Node prediction equals the cluster reference | ○ next | A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix). |
 | Cost model 6 for streamed MoE | ⛔ blocked | ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves. |
 | Check planner's expert slot picks | ⏸ parked | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. |
 | Replanning in serve, part B | ⏸ parked | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. |
@@ -318,7 +316,6 @@ flowchart TB
 | Drafts from built-in MTP heads | ⏸ parked | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). |
 | Low-bit copy drafts for itself | ⏸ parked | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). |
 | MTP drafts through libllama | ○ next | Qwen3.6 ships an MTP block and libllama at the pin can run it (LLAMA_CONTEXT_TYPE_MTP, draft-mtp in common/speculative.cpp); drafting with it on the libllama engine tests Strata's 1.5x single-request lead without a new builder (owner 2026-11-23). |
-| libllama path differs on CUDA | ⚠ open | On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics. |
 | Admit longest prefix hit first | ⏸ parked | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). |
 | Phase 2 exit: model beyond RAM | ✔ done · successful ⚠ | Qwen3-235B, larger than the box's RAM, against the best tuned baselines: the builder passed the Phase 2 exit at decode parity with KTransformers. |
 | Tuned llama.cpp cache beat builder | ✔ fixed | The Phase 2 verdict never measured llama.cpp's own expert cache (--moe-cache-mib) as a baseline; once added, and after M1 was first declared on 2026-11-10, the cache tuned to share 0.95 led the builder, so the Phase 2 verdict's point 1 reopened and M1 waited for new sessions. |
@@ -377,8 +374,6 @@ flowchart TB
 
 - `cluster-planner-hardening`: Harden the cluster planner inputs
 - `cluster-pipeline-prefill`: Prefill pipelined across stages
-- `planner-node-predict-check`: Node prediction equals the cluster reference
-- `memory-ram-tier-complement`: Read-free covering expert tiers
 - `engine-exit-segment-harness`: Exit segment harness
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
@@ -386,7 +381,6 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
-- `serving-cuda-parity`: libllama path differs on CUDA
 
 **cluster**
 
@@ -430,7 +424,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 118 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 121 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -836,6 +830,9 @@ Generated on 2026-11-24.
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
 - `cluster-owner-routing-input`: Routing trace as prediction input (✔ done · n/a). The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
+- `memory-ram-tier-complement`: Read-free covering expert tiers (✔ fixed). When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
+- `planner-node-predict-check`: Node prediction equals the cluster reference (✔ done · unrated). A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix).
+- `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 
 </details>
 
@@ -864,10 +861,10 @@ Generated on 2026-11-24.
 Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (12 done, 2 next, 6 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (11 done, 2 next, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 27 nodes (16 done, 3 next, 4 blocked, 4 parked)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (12 done, 1 next, 4 parked, 1 abandoned)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 27 nodes (17 done, 2 next, 4 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 31 nodes (20 done, 3 next, 1 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 1 next, 6 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 17 nodes (9 done, 3 next, 4 blocked, 1 parked)
