@@ -9,6 +9,7 @@ mod doctor;
 mod engine_args;
 mod info;
 mod llama_args;
+mod node;
 mod plan;
 mod quant;
 mod replan;
@@ -56,6 +57,8 @@ enum Command {
     Info(info::InfoArgs),
     /// Time the executor's all-reduces and copies between GPUs (collective curves).
     CommProbe(comm_probe::CommProbeArgs),
+    /// The daemon of one box of a cluster, or `--drain` to stop a node taking assignments (ADR 0091).
+    Node(node::NodeArgs),
     /// Multi-node cluster tooling: node certificates (ADR 0091).
     #[command(subcommand)]
     Cluster(cluster::ClusterCommand),
@@ -78,6 +81,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::Worker(args)) => worker::run(&args),
         Some(Command::Info(args)) => info::run(&args),
         Some(Command::CommProbe(args)) => comm_probe::run(&args),
+        Some(Command::Node(args)) => node::run(&args),
         Some(Command::Cluster(cmd)) => cluster::run(&cmd),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));

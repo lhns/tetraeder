@@ -13,10 +13,12 @@
 //!   are gone when the fault is lifted.
 //! - [`LinkFault::Slow`] delays each write by `alpha + len / bytes_per_s` after the previous one
 //!   (a link that serializes its bytes).
-//! - Like the TLS transport, a second connection of the same `(from, to, purpose)` while the
-//!   first is open is refused (`AlreadyExists`, counted as `duplicate`).
+//! - Like the TLS transport, a second connection of the same `(from, to, purpose)` replaces the
+//!   first, which is reset.
+//! - A node whose transport was shut down (a killed process) gets a fresh inbox the next time
+//!   it is created, so a restarted node accepts again.
 
-use crate::metrics::{self, CountingWriter, LinkMetrics};
+use crate::metrics::{CountingWriter, LinkMetrics};
 use crate::{Conn, NodeId, Peer, Purpose, Transport};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Write};
@@ -207,8 +209,8 @@ struct Board {
     inboxes: HashMap<NodeId, Arc<Inbox>>,
     faults: HashMap<(NodeId, NodeId), LinkFault>,
     open: Vec<OpenConn>,
-    /// The pipe of each `(from, to, purpose)` connection, to refuse a second one while it lives.
-    live: HashMap<(NodeId, NodeId, Purpose), Arc<Pipe>>,
+    /// The pipe of each `(from, to, purpose)` connection, to replace it when a second one comes.
+    live: HashMap<(NodeId, NodeId, Purpose), [Arc<Pipe>; 2]>,
 }
 
 /// The shared network of simulated nodes: who exists and how each link behaves.
@@ -225,12 +227,20 @@ impl Switchboard {
 
     /// The transport of node `id`; calling it again for the same id shares the node's inbox.
     pub fn node(self: &Arc<Self>, id: &NodeId) -> MemTransport {
-        let inbox = Arc::clone(lock(&self.st).inboxes.entry(id.clone()).or_insert_with(|| {
+        let fresh = || {
             Arc::new(Inbox {
                 q: Mutex::new((VecDeque::new(), false)),
                 cv: Condvar::new(),
             })
-        }));
+        };
+        let inbox = {
+            let mut b = lock(&self.st);
+            let slot = b.inboxes.entry(id.clone()).or_insert_with(fresh);
+            if lock(&slot.q).1 {
+                *slot = fresh();
+            }
+            Arc::clone(slot)
+        };
         MemTransport {
             id: id.clone(),
             board: Arc::clone(self),
@@ -329,19 +339,14 @@ impl Transport for MemTransport {
         {
             let mut b = lock(&self.board.st);
             let key = (self.id.clone(), peer.id.clone(), purpose.clone());
-            if b.live.get(&key).is_some_and(|p| !p.is_dead()) {
-                metrics::rejected("duplicate");
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    format!(
-                        "{} already has a {} connection to {}",
-                        self.id,
-                        purpose.label(),
-                        peer.id
-                    ),
-                ));
+            // The peer is known, so a second connection for the purpose means the first is
+            // stale: it is reset, as the TLS acceptor does.
+            if let Some(old) = b.live.get(&key) {
+                for p in old {
+                    p.set(|s| s.reset = true);
+                }
             }
-            b.live.insert(key, Arc::clone(&ab));
+            b.live.insert(key, [Arc::clone(&ab), Arc::clone(&ba)]);
             b.open.retain(|c| !c.pipes.iter().all(|p| p.is_dead()));
             b.open.push(OpenConn {
                 a: self.id.clone(),

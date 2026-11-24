@@ -155,35 +155,6 @@ fn one_connection_per_purpose_and_the_acceptor_learns_it() {
 
 // hardware: none
 #[test]
-fn a_second_connection_for_the_same_purpose_is_refused_until_the_first_ends() {
-    let (a, b, _c) = trio();
-    let a = Arc::new(a);
-    let before = rejected_total("duplicate");
-    let acc = accept_in_background(&a);
-    let first = b.connect(&peer(&a, "a"), Purpose::Prefix).unwrap();
-    let inb = acc.recv_timeout(Duration::from_secs(10)).unwrap().unwrap();
-    let err = b
-        .connect(&peer(&a, "a"), Purpose::Prefix)
-        .err()
-        .expect("duplicate refused");
-    assert!(err.to_string().contains("duplicate"), "{err}");
-    refused_since("duplicate", before);
-    // Another purpose is fine.
-    let acc2 = accept_in_background(&a);
-    let _other = b.connect(&peer(&a, "a"), Purpose::Control).unwrap();
-    acc2.recv_timeout(Duration::from_secs(10)).unwrap().unwrap();
-    // The first ends (both halves dropped on the acceptor, closed on the dialer): reconnect works.
-    (first.close)();
-    drop(inb);
-    drop(first);
-    std::thread::sleep(Duration::from_millis(100));
-    let acc3 = accept_in_background(&a);
-    let _again = b.connect(&peer(&a, "a"), Purpose::Prefix).unwrap();
-    acc3.recv_timeout(Duration::from_secs(10)).unwrap().unwrap();
-}
-
-// hardware: none
-#[test]
 fn a_client_certificate_no_anchor_vouches_for_is_refused() {
     let (ga, gb) = (
         generate_self_signed("a").unwrap(),

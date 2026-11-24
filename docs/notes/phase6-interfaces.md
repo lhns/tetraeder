@@ -359,3 +359,7 @@ pub fn enumerate_cluster(hw: &HardwareGraph, layout: &ModelLayout, hints: &Hints
 ## As built in step 2 (`cluster-planner`)
 
 `crates/profiler`, `crates/plan`, `crates/costmodel` and `crates/planner` follow the signatures above except for the differences listed in the History of ADR 0091 (2026-11-23, step 2): `Device.os`, network links and probe curves between the nodes' `cpu0` devices (ranks are `[<a>/cpu0, <b>/cpu0]`, not `<node>/host`), `hop_time` on node names, `ClusterCandidate.prediction`, one stage per node, the head unit as a Head rule of its own on the leader. Step 3's `cluster probe` writes curves with those ranks.
+
+## As built in step 3 (`cluster-discovery`)
+
+`ClusterConfig`, `Membership`, the monitor, the daemon and the probe client are in `crates/control` (`cluster`, `membership`, `monitor`, `node`, `client`, `proto`); the differences from the sketches above are listed in the History of ADR 0091 (2026-11-24, step 3): `node_down_after_ms`, `Membership` takes a `Duration` clock and a `Hello` event, `NodeRequest::ProbePeer` and `NodeReply::Curve`, `Alive.draining`, `Purpose::Probe { session }` and `Purpose::max_frame`, `frame::read_frame_max`, a new connection for a `(peer, purpose)` replaces the old one, CLI `cluster profile|probe|watch`, `node --drain --id <node>` run with the head's key, and `node` takes `--cluster --key --cert` (the id is the certificate's).
