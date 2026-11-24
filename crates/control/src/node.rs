@@ -71,7 +71,8 @@ impl Default for RestartPolicy {
 /// The node's hardware graph as JSON.
 pub type ProfileFn = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 /// A transport to dial from, with explicit socket buffers (send, receive) when given.
-pub type DialFn = Arc<dyn Fn(Option<(usize, usize)>) -> io::Result<Arc<dyn Transport>> + Send + Sync>;
+pub type DialFn =
+    Arc<dyn Fn(Option<(usize, usize)>) -> io::Result<Arc<dyn Transport>> + Send + Sync>;
 
 pub struct NodeOptions {
     pub cfg: ClusterConfig,

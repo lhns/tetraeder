@@ -58,8 +58,8 @@ pub fn profile_cluster(
         if !matches!(r, NodeReply::Profile) {
             return Err(format!("node `{}`: unexpected reply {r:?}", n.id));
         }
-        let text =
-            String::from_utf8(payload).map_err(|e| format!("node `{}`: graph is not UTF-8: {e}", n.id))?;
+        let text = String::from_utf8(payload)
+            .map_err(|e| format!("node `{}`: graph is not UTF-8: {e}", n.id))?;
         let g = HardwareGraph::from_json(&text)
             .map_err(|e| format!("node `{}`: bad hardware graph: {e}", n.id))?;
         g.validate().map_err(|e| format!("node `{}`: {e}", n.id))?;
@@ -117,7 +117,11 @@ pub fn probe_cluster(
                 },
                 &[],
             )?;
-            let NodeReply::Curve { points, empty_rtt_s } = r else {
+            let NodeReply::Curve {
+                points,
+                empty_rtt_s,
+            } = r
+            else {
                 return Err(format!("node `{}`: unexpected reply {r:?}", a.id));
             };
             out.curves.push(CollectiveCurve {

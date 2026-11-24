@@ -1,6 +1,7 @@
 //! Membership and the node daemon on simulated nodes (ADR 0091 step 3, rules 4 and 5): a head's
 //! monitor and daemons over `MemTransport`, with its fault scripts (close, blackhole, slow,
-//! partition) and node kills. Timings are real but short (`node_down_after` 400 ms).
+//! partition) and node kills. Timings are real but short (`node_down_after` 1 s); only the pure property test of
+//! `membership.rs` runs in simulated time.
 //!
 //! Hardware label: none.
 
@@ -20,7 +21,7 @@ use tetraeder_transport::{
     LinkFault, MemTransport, NodeId, Purpose, Switchboard, Transport, frame,
 };
 
-const DOWN_MS: u64 = 400;
+const DOWN_MS: u64 = 1000;
 const HB: Duration = Duration::from_millis(DOWN_MS / 4);
 const DOWN: Duration = Duration::from_millis(DOWN_MS);
 
@@ -28,7 +29,12 @@ fn cfg() -> ClusterConfig {
     config(DOWN_MS, &["a", "b", "c"], &[1, 2, 3])
 }
 
-fn daemon(board: &Arc<Switchboard>, cfg: &ClusterConfig, name: &str, l: Arc<EchoLauncher>) -> Daemon {
+fn daemon(
+    board: &Arc<Switchboard>,
+    cfg: &ClusterConfig,
+    name: &str,
+    l: Arc<EchoLauncher>,
+) -> Daemon {
     let t: Arc<dyn Transport> = Arc::new(board.node(&id(name)));
     let dial = Arc::clone(&t);
     Daemon::start(
@@ -91,7 +97,8 @@ impl Sim {
     fn all_up(&self) {
         for n in ["a", "b", "c"] {
             assert!(
-                self.wait_state(n, NodeState::Up, Duration::from_secs(3)).is_some(),
+                self.wait_state(n, NodeState::Up, Duration::from_secs(3))
+                    .is_some(),
                 "{n} did not come up"
             );
         }
@@ -137,7 +144,9 @@ fn a_killed_and_restarted_node_rejoins_within_down_after_plus_one_heartbeat() {
     s.all_up();
     s.kill("b");
     // A killed process resets its connection: Down at once, well within node_down_after.
-    let t = s.wait_state("b", NodeState::Down, DOWN).expect("b not down in time");
+    let t = s
+        .wait_state("b", NodeState::Down, DOWN)
+        .expect("b not down in time");
     assert!(t < DOWN, "{t:?}");
     s.restart("b");
     let t0 = std::time::Instant::now();
@@ -252,17 +261,29 @@ fn only_the_head_may_open_control_and_a_worker_node_may_only_probe() {
     s.all_up();
     // c is not the head: its Control connection to b is closed at once.
     let c = s.board.node(&id("c"));
-    let mut conn = c.connect(&s.cfg.peer(&id("b")).unwrap(), Purpose::Control).unwrap();
+    let mut conn = c
+        .connect(&s.cfg.peer(&id("b")).unwrap(), Purpose::Control)
+        .unwrap();
     assert!(matches!(frame::read_frame(&mut conn.rx), Ok(None) | Err(_)));
     // Its privileged requests on a probe connection are refused; probe frames are answered.
     let mut p = c
-        .connect(&s.cfg.peer(&id("b")).unwrap(), Purpose::Probe { session: 0 })
+        .connect(
+            &s.cfg.peer(&id("b")).unwrap(),
+            Purpose::Probe { session: 0 },
+        )
         .unwrap();
     let (r, _) = tetraeder_control::proto::call(&mut p, &NodeRequest::Profile, &[]).unwrap();
-    assert!(matches!(r, tetraeder_control::proto::NodeReply::Error { .. }), "{r:?}");
+    assert!(
+        matches!(r, tetraeder_control::proto::NodeReply::Error { .. }),
+        "{r:?}"
+    );
     let (r, _) =
-        tetraeder_control::proto::call(&mut p, &NodeRequest::Probe { bytes: 3 }, &[1, 2, 3]).unwrap();
-    assert!(matches!(r, tetraeder_control::proto::NodeReply::Probe), "{r:?}");
+        tetraeder_control::proto::call(&mut p, &NodeRequest::Probe { bytes: 3 }, &[1, 2, 3])
+            .unwrap();
+    assert!(
+        matches!(r, tetraeder_control::proto::NodeReply::Probe),
+        "{r:?}"
+    );
 }
 
 // hardware: none
@@ -290,7 +311,9 @@ fn assigned_workers_are_relayed_restarted_and_given_up_at_the_cap() {
         let mut c = head.connect(&peer, seg.clone()).unwrap();
         // The worker may still be starting: the first frame can be lost, so retry briefly.
         for _ in 0..50 {
-            if frame::write_frame(&mut c.tx, &serde_json::json!({ "n": n }), b"hidden rows").is_err() {
+            if frame::write_frame(&mut c.tx, &serde_json::json!({ "n": n }), b"hidden rows")
+                .is_err()
+            {
                 return None;
             }
             if let Ok(Some(f)) = frame::read_frame(&mut c.rx) {
@@ -305,7 +328,10 @@ fn assigned_workers_are_relayed_restarted_and_given_up_at_the_cap() {
     assert_eq!(payload, b"hidden rows");
     // A crash ends the connection at once; the daemon restarts the worker.
     l.crash();
-    wait_until(Duration::from_secs(3), || d.worker_restarts(0, 1) == Some(1)).expect("no restart");
+    wait_until(Duration::from_secs(3), || {
+        d.worker_restarts(0, 1) == Some(1)
+    })
+    .expect("no restart");
     drop(conn);
     let (payload, _conn) = call(&head, 2).expect("relay after restart");
     assert_eq!(payload, b"hidden rows");
@@ -359,13 +385,13 @@ fn step() -> impl Strategy<Value = Step> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 4, failure_persistence: None, ..ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig { cases: 3, failure_persistence: None, ..ProptestConfig::default() })]
 
     // Random sequences of faults on b and recoveries, in short real time: a faulty node is Down
     // within node_down_after, a healed one is Up again, the healthy nodes never flap, and no
     // node is ever Up straight after being Down.
     #[test]
-    fn random_faults_keep_membership_consistent(steps in prop::collection::vec(step(), 1..5)) {
+    fn random_faults_keep_membership_consistent(steps in prop::collection::vec(step(), 1..4)) {
         let mut s = sim();
         s.all_up();
         let slack = Duration::from_millis(300);

@@ -20,9 +20,9 @@ pub mod tls;
 pub mod tls_transport;
 
 pub use identity::{Anchors, Identity, node_id_of};
-pub use rustls::pki_types::CertificateDer;
 pub use mem::{LinkFault, MemTransport, Switchboard};
 pub use metrics::LinkMetrics;
+pub use rustls::pki_types::CertificateDer;
 pub use tls_transport::{SocketBuffers, TlsTransport, effective_buffers};
 
 /// Node id, the `tetraeder-node:<id>` SAN of its certificate.
@@ -59,7 +59,9 @@ pub enum Purpose {
     Prefix,
     /// Link probe: bulk frames answered by empty ones, on a connection of their own so a
     /// 64 MiB frame never delays a heartbeat (ADR 0091 step 3).
-    Probe { session: u32 },
+    Probe {
+        session: u32,
+    },
 }
 
 impl Purpose {

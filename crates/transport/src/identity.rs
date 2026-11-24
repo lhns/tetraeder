@@ -3,8 +3,8 @@
 //! A node's identity is the id in the URI subject alternative name `tetraeder-node:<id>` of its
 //! certificate, never an IP or DNS name (Vast addresses are NAT mappings). A peer is accepted when
 //! its certificate chains to one of the trust anchors and names a configured node. An anchor is
-//! either a node's own self-signed certificate (pinning) or a CA certificate; the verifier treats
-//! both alike.
+//! either a node's own self-signed certificate (pinning: only that exact certificate is
+//! accepted) or a CA certificate (every certificate it signs is accepted).
 
 use crate::NodeId;
 use anyhow::{Context, Result, anyhow, bail};
@@ -158,11 +158,14 @@ pub struct Anchors {
     algs: WebPkiSupportedAlgorithms,
 }
 
+/// A CA certificate: `cA` is set and it names no node. A node certificate stays pinned even if a
+/// tool marked it `cA` (openssl self-signed certificates default to it).
 fn is_ca(cert: &CertificateDer<'_>) -> bool {
-    x509_parser::parse_x509_certificate(cert.as_ref())
-        .ok()
-        .and_then(|(_, x)| x.basic_constraints().ok().flatten().map(|b| b.value.ca))
-        .unwrap_or(false)
+    node_id_of(cert).is_err()
+        && x509_parser::parse_x509_certificate(cert.as_ref())
+            .ok()
+            .and_then(|(_, x)| x.basic_constraints().ok().flatten().map(|b| b.value.ca))
+            .unwrap_or(false)
 }
 
 impl Anchors {
@@ -209,16 +212,13 @@ impl Anchors {
             Usage::Client => KeyUsage::client_auth(),
         };
         let one;
-        let anchors: &[TrustAnchor<'static>] = if let Some((_, a)) = self
-            .pinned
-            .iter()
-            .find(|(c, _)| c.as_ref() == ee.as_ref())
-        {
-            one = [a.clone()];
-            &one
-        } else {
-            &self.cas
-        };
+        let anchors: &[TrustAnchor<'static>] =
+            if let Some((_, a)) = self.pinned.iter().find(|(c, _)| c.as_ref() == ee.as_ref()) {
+                one = [a.clone()];
+                &one
+            } else {
+                &self.cas
+            };
         cert.verify_for_usage(
             self.algs.all,
             anchors,

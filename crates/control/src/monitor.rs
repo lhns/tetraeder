@@ -91,7 +91,9 @@ impl Shared {
             self.metrics
                 .transitions
                 .add(1, &[node.clone(), KeyValue::new("to", st.label())]);
-            self.metrics.up.record(u64::from(st == NodeState::Up), &[node]);
+            self.metrics
+                .up
+                .record(u64::from(st == NodeState::Up), &[node]);
             lock(&self.subs).retain(|s| s.send((id.clone(), st)).is_ok());
             if st == NodeState::Down {
                 self.close_all(&id);
@@ -243,9 +245,10 @@ fn ticker(s: &Arc<Shared>) {
             c();
         }
         for (id, st) in lock(&s.mem).states() {
-            s.metrics
-                .up
-                .record(u64::from(st == NodeState::Up), &[KeyValue::new("node", id.0)]);
+            s.metrics.up.record(
+                u64::from(st == NodeState::Up),
+                &[KeyValue::new("node", id.0)],
+            );
         }
     }
 }

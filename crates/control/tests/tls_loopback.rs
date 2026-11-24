@@ -15,7 +15,9 @@ use tetraeder_control::monitor::Monitor;
 use tetraeder_control::node::{Daemon, NodeOptions, RestartPolicy};
 use tetraeder_control::{ClusterConfig, client};
 use tetraeder_transport::identity::{Generated, certs_from_pem, generate_self_signed};
-use tetraeder_transport::{CertificateDer, Identity, NodeId, SocketBuffers, TlsTransport, Transport};
+use tetraeder_transport::{
+    CertificateDer, Identity, NodeId, SocketBuffers, TlsTransport, Transport,
+};
 
 const DOWN_MS: u64 = 1000;
 const DOWN: Duration = Duration::from_millis(DOWN_MS);
@@ -65,7 +67,9 @@ impl Keys {
             self.names[0]
         );
         for (n, p) in self.names.iter().zip(ports) {
-            t += &format!("[[nodes]]\nid = \"{n}\"\naddr = \"127.0.0.1:{p}\"\nanchor = \"{n}.pem\"\n");
+            t += &format!(
+                "[[nodes]]\nid = \"{n}\"\naddr = \"127.0.0.1:{p}\"\nanchor = \"{n}.pem\"\n"
+            );
         }
         let path = self.dir.join("cluster.toml");
         std::fs::write(&path, t).unwrap();
@@ -122,7 +126,10 @@ fn two_daemons_profile_and_probe_each_other_with_both_buffer_settings() {
         keys.transport("a", Some("127.0.0.1:0"), SocketBuffers::Auto),
         keys.transport("b", Some("127.0.0.1:0"), SocketBuffers::Auto),
     );
-    let ports = [ta.local_addr().unwrap().port(), tb.local_addr().unwrap().port()];
+    let ports = [
+        ta.local_addr().unwrap().port(),
+        tb.local_addr().unwrap().port(),
+    ];
     let cfg = keys.config(&ports);
     // The anchors are the pinned certificates, each naming its node, and hold no key.
     assert_eq!(cfg.anchors().unwrap().len(), 2);
@@ -135,7 +142,8 @@ fn two_daemons_profile_and_probe_each_other_with_both_buffer_settings() {
     assert_eq!(auto.buffers, "auto");
     assert_eq!(auto.curves.len(), 2, "both directions");
     assert_eq!(auto.links.len(), 1);
-    let explicit = client::probe_cluster(&head, &cfg, &sizes, 3, Some((256 << 10, 256 << 10))).unwrap();
+    let explicit =
+        client::probe_cluster(&head, &cfg, &sizes, 3, Some((256 << 10, 256 << 10))).unwrap();
     assert_eq!(explicit.buffers, "262144,262144");
     for p in [&auto, &explicit] {
         for c in &p.curves {
@@ -176,11 +184,17 @@ fn a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat() 
         keys.transport("a", Some("127.0.0.1:0"), SocketBuffers::Auto),
         keys.transport("b", Some("127.0.0.1:0"), SocketBuffers::Auto),
     );
-    let ports = [ta.local_addr().unwrap().port(), tb.local_addr().unwrap().port()];
+    let ports = [
+        ta.local_addr().unwrap().port(),
+        tb.local_addr().unwrap().port(),
+    ];
     let cfg = keys.config(&ports);
     let _da = daemon(&keys, &cfg, "a", ta);
     let mut db = daemon(&keys, &cfg, "b", tb);
-    let monitor = Monitor::start(Arc::new(keys.transport("a", None, SocketBuffers::Auto)), cfg.clone());
+    let monitor = Monitor::start(
+        Arc::new(keys.transport("a", None, SocketBuffers::Auto)),
+        cfg.clone(),
+    );
     let up = |n: &str| monitor.state(&id(n)) == Some(NodeState::Up);
     wait_until(Duration::from_secs(10), || up("a") && up("b")).expect("not up");
 
@@ -200,7 +214,10 @@ fn a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat() 
         ) {
             Ok(t) => break t,
             Err(e) => {
-                assert!(t0.elapsed() < Duration::from_secs(5), "cannot rebind: {e:#}");
+                assert!(
+                    t0.elapsed() < Duration::from_secs(5),
+                    "cannot rebind: {e:#}"
+                );
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
@@ -209,6 +226,47 @@ fn a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat() 
     let restarted = Instant::now();
     let slack = Duration::from_millis(500);
     wait_until(DOWN + HB + slack, || up("b")).expect("b did not rejoin");
-    assert!(restarted.elapsed() <= DOWN + HB + slack, "{:?}", restarted.elapsed());
+    assert!(
+        restarted.elapsed() <= DOWN + HB + slack,
+        "{:?}",
+        restarted.elapsed()
+    );
     assert!(up("a"));
+}
+
+// hardware: none
+#[test]
+fn a_new_head_connection_replaces_a_stale_one_the_daemon_still_holds() {
+    let keys = Keys::new(&["a", "b"], "stale");
+    let (ta, tb) = (
+        keys.transport("a", Some("127.0.0.1:0"), SocketBuffers::Auto),
+        keys.transport("b", Some("127.0.0.1:0"), SocketBuffers::Auto),
+    );
+    let ports = [
+        ta.local_addr().unwrap().port(),
+        tb.local_addr().unwrap().port(),
+    ];
+    let cfg = keys.config(&ports);
+    let _da = daemon(&keys, &cfg, "a", ta);
+    let _db = daemon(&keys, &cfg, "b", tb);
+    let head = Arc::new(keys.transport("a", None, SocketBuffers::Auto));
+    // A control connection of the head that is never used or closed: the daemons still hold it
+    // when the head's monitor (a restarted head) dials.
+    let stale: Vec<_> = ["a", "b"]
+        .iter()
+        .map(|n| {
+            head.connect(
+                &cfg.peer(&id(n)).unwrap(),
+                tetraeder_transport::Purpose::Control,
+            )
+            .unwrap()
+        })
+        .collect();
+    let monitor = Monitor::start(head, cfg);
+    let up = |n: &str| monitor.state(&id(n)) == Some(NodeState::Up);
+    wait_until(DOWN + HB + Duration::from_millis(500), || {
+        up("a") && up("b")
+    })
+    .expect("the stale connection kept the head out");
+    drop(stale);
 }

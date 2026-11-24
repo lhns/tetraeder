@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use tetraeder_control::ClusterConfig;
 use tetraeder_control::node::{Assignment, Launcher, WorkerIo};
 use tetraeder_profiler::HardwareGraph;
-use tetraeder_transport::frame::{self, Frame};
 use tetraeder_transport::NodeId;
+use tetraeder_transport::frame::{self, Frame};
 
 pub fn id(s: &str) -> NodeId {
     NodeId::new(s)
@@ -33,9 +33,7 @@ pub fn config(down_ms: u64, names: &[&str], ports: &[u16]) -> ClusterConfig {
         names[0]
     );
     for (n, p) in names.iter().zip(ports) {
-        t += &format!(
-            "[[nodes]]\nid = \"{n}\"\naddr = \"127.0.0.1:{p}\"\nanchor = \"{n}.pem\"\n"
-        );
+        t += &format!("[[nodes]]\nid = \"{n}\"\naddr = \"127.0.0.1:{p}\"\nanchor = \"{n}.pem\"\n");
     }
     ClusterConfig::parse(&t).unwrap()
 }

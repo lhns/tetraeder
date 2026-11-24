@@ -93,7 +93,10 @@ pub fn call(
 ) -> std::io::Result<(NodeReply, Vec<u8>)> {
     send(&mut c.tx, req, payload)?;
     let f = recv(&mut c.rx, &c.purpose)?.ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "the node closed the link")
+        std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "the node closed the link",
+        )
     })?;
     let reply: NodeReply = frame::parse_header(&f)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;

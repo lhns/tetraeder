@@ -861,3 +861,15 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin + 'static> Drop for Tx<S> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refusal_reason_is_cut() {
+        let long = "x".repeat(10_000);
+        assert_eq!(short(&long).len(), MAX_REASON);
+        assert_eq!(short("duplicate"), "duplicate");
+    }
+}

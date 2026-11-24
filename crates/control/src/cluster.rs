@@ -85,7 +85,10 @@ impl ClusterConfig {
                 return Err(format!("node `{}` is listed twice", n.id));
             }
             if !n.addr.contains(':') {
-                return Err(format!("node `{}`: addr `{}` is not host:port", n.id, n.addr));
+                return Err(format!(
+                    "node `{}`: addr `{}` is not host:port",
+                    n.id, n.addr
+                ));
             }
             if n.listen.as_deref().is_some_and(|l| !l.contains(':')) {
                 return Err(format!("node `{}`: listen is not host:port", n.id));
@@ -209,9 +212,11 @@ anchor = "b.pem"
                 .contains("host:port")
         );
         assert!(
-            ClusterConfig::parse(&OK.replace("head = \"a\"", "head = \"a\"\nnode_down_after_ms = 5"))
-                .unwrap_err()
-                .contains("node_down_after_ms")
+            ClusterConfig::parse(
+                &OK.replace("head = \"a\"", "head = \"a\"\nnode_down_after_ms = 5")
+            )
+            .unwrap_err()
+            .contains("node_down_after_ms")
         );
     }
 }
