@@ -6,11 +6,11 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::Path;
-use tetraeder_plan::{Format, Hints, ModelDesc, Phase, UnitSize};
+use tetraeder_plan::{Format, Hints, ModelDesc, Phase, Plan, UnitSize};
 use tetraeder_planner::layout::fixtures;
 use tetraeder_planner::{
-    Applies, Budget, NullQuality, SearchInput, ServeEngine, ServeInput, Workload, budget_of,
-    candidates, predict_plan, search,
+    Applies, Budget, ModelLayout, NullQuality, Placement, SearchInput, ServeEngine, ServeInput,
+    Workload, budget_of, candidates, predict_plan, recognize, search,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -102,8 +102,19 @@ fn fnv(s: &str) -> u64 {
     })
 }
 
-/// One line per plan and prediction of every fixture.
-fn snapshot() -> String {
+/// ADR 0092 section 7: a builder plan is streamed when its RAM tier does not cover the experts
+/// outside VRAM. (The golden prices with `tier: None`, so no plan here moves disk bytes.)
+fn streamed(plan: &Plan, layout: &ModelLayout) -> bool {
+    matches!(
+        recognize(plan, layout),
+        Ok((Placement::Builder { vram_slots, ram_slots }, _))
+            if ram_slots < layout.n_expert.saturating_sub(vram_slots)
+    )
+}
+
+/// One line per plan and prediction of every fixture, and whether each line is streamed.
+fn snapshot() -> (String, Vec<bool>) {
+    let mut flags: Vec<bool> = Vec::new();
     let mut out = String::new();
     let models = [model("dense", 12, 0), model("moe", 12, 8)];
     for (name, toml) in GRAPHS {
@@ -133,6 +144,7 @@ fn snapshot() -> String {
                         s.ttft_s.to_bits()
                     )
                     .unwrap();
+                    flags.push(false);
                 }
             }
         }
@@ -173,16 +185,22 @@ fn snapshot() -> String {
                         req.to_bits()
                     )
                     .unwrap();
+                    flags.push(streamed(plan, &layout));
                 }
             }
         }
     }
-    out
+    (out, flags)
 }
 
 #[test]
 fn single_node_plans_and_predictions_are_unchanged() {
-    let now = snapshot();
+    let (now, flags) = snapshot();
+    let idx: Vec<String> = (0..flags.len())
+        .filter(|&i| flags[i])
+        .map(|i| i.to_string())
+        .collect();
+    eprintln!("SPLIT_STREAMED {}", idx.join(","));
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
     if std::env::var_os("TETRAEDER_UPDATE_GOLDEN").is_some() {
         std::fs::write(&path, &now).unwrap();
