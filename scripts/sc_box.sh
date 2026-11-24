@@ -228,7 +228,7 @@ if pr["footprint_gpu"] > pr["gpu_budget"] or pr["footprint_host"] > pr["ram_budg
     sys.exit(1)
 EOF
   (cd "$out" && sha256sum layout.json disk/disk-curve.json predictions/hw.toml predictions/fitted.toml predictions/replay.json \
-    predictions/pred.json trace/routing.sha256 trace/hidden.sha256 anchors/*.json env.json > predictions/SHA256SUMS \
+    predictions/pred.json trace/routing.sha256 trace/hidden.sha256 anchors/*.json $(ls env.json 2> /dev/null) > predictions/SHA256SUMS \
     && (cd predictions && sha256sum SHA256SUMS > FROZEN.sha256))
   cat "$p/FROZEN.sha256"
   echo "box commit $(cat runs/vast/.pushed_commit 2> /dev/null || echo unknown)"
