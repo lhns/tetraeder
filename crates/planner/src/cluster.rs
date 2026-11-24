@@ -790,6 +790,8 @@ pub struct NodeRun {
     pub pp_tps: f64,
     pub tg_tps: f64,
     pub request_s: f64,
+    /// Where the routing came from: `trace` with a replay, else `uniform` (ADR 0092).
+    pub routing: crate::score::RoutingSource,
     pub binding: String,
     pub tg_breakdown: Vec<(String, f64)>,
     pub pp_breakdown: Vec<(String, f64)>,
@@ -874,6 +876,11 @@ pub fn single_node_runs(
                 pp_tps: pr.pp_tok_s,
                 tg_tps: pr.tg_tok_s,
                 request_s: pr.request_s,
+                routing: if replay.is_some() {
+                    crate::score::RoutingSource::Trace
+                } else {
+                    crate::score::RoutingSource::Uniform
+                },
                 binding: pr.binding,
                 tg_breakdown: pr.tg_breakdown,
                 pp_breakdown: pr.pp_breakdown,

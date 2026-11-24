@@ -166,6 +166,41 @@ pub fn builder_features_tier(
     ))
 }
 
+/// Where a builder prediction's routing came from (ADR 0092 section 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingSource {
+    /// A replay of a recorded routing trace.
+    Trace,
+    /// The uniform prior (`serve::uniform_tier`): enumeration, dry runs, `serve --plan auto`
+    /// without a replay.
+    Uniform,
+    /// The routing an anchor measured itself.
+    Measured,
+}
+
+impl RoutingSource {
+    pub fn name(self) -> &'static str {
+        match self {
+            RoutingSource::Trace => "trace",
+            RoutingSource::Uniform => "uniform",
+            RoutingSource::Measured => "measured",
+        }
+    }
+
+    /// A judged prediction (Case S) is priced from a routing trace and nothing else.
+    pub fn check_judged(self) -> Result<(), String> {
+        if self == RoutingSource::Trace {
+            Ok(())
+        } else {
+            Err(format!(
+                "a judged prediction needs a routing trace replay, this one has routing {}",
+                self.name()
+            ))
+        }
+    }
+}
+
 /// The decode rows of a replay outcome for the layers of `layout`: `None` without them (the
 /// aggregates apply), an error unless they are one row per layer of the layout, in order.
 fn layer_rows<'a>(
