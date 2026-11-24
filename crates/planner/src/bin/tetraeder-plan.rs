@@ -120,6 +120,29 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
     },
+    /// The planner's pick and predicted `pp_tps` and `tg_tps` for the whole model on the one node
+    /// of `--hw` (builder placement, uniform routing prior or decode from a routing replay), with
+    /// the `exit_regime` environment that runs it. Written before the measured run (tree node
+    /// `bench-235b-stream-predict`).
+    NodePredict {
+        #[arg(long)]
+        hw: PathBuf,
+        /// Model layout JSON (`tetraeder plan layout`).
+        #[arg(long)]
+        layout: PathBuf,
+        #[arg(long, default_value_t = 2048)]
+        prompt: u32,
+        #[arg(long, default_value_t = 128)]
+        r#gen: u32,
+        /// Price only this `VRAM_SLOTS,RAM_SLOTS` pair instead of picking.
+        #[arg(long)]
+        pin: Option<String>,
+        /// `tetraeder-bench replay` output: decode is priced from its `lru` outcome with prefetch.
+        #[arg(long)]
+        tier_replay: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// The `candidates.json` of a ledger directory (ADR 0056): the builder anchors plus the
     /// session's builder stages as candidates with their own request.
     LedgerDir {
@@ -296,6 +319,83 @@ fn main() -> Result<()> {
             )?;
             std::fs::write(&out, json).with_context(|| format!("write {}", out.display()))?;
             print!("{summary}");
+            Ok(())
+        }
+        Command::NodePredict {
+            hw,
+            layout,
+            prompt,
+            r#gen,
+            pin,
+            tier_replay,
+            out,
+        } => {
+            let hw_text = read(&hw)?;
+            let graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
+            let layout_text = read(&layout)?;
+            let layout = multi_cli::parse_layout(&layout_text).map_err(anyhow::Error::msg)?;
+            let pin = pin
+                .map(|p| {
+                    let (v, r) = p.split_once(',').context("--pin is VRAM_SLOTS,RAM_SLOTS")?;
+                    anyhow::Ok((v.trim().parse::<u32>()?, r.trim().parse::<u32>()?))
+                })
+                .transpose()?;
+            let replay = match &tier_replay {
+                Some(p) => Some(tetraeder_planner::read_tier_replay(p).map_err(anyhow::Error::msg)?),
+                None => None,
+            };
+            let w = Workload { prompt, r#gen };
+            let (runs, dropped) = tetraeder_planner::single_node_runs(
+                &graph,
+                &layout,
+                &w,
+                pin,
+                replay.as_deref(),
+            )
+            .map_err(anyhow::Error::msg)?;
+            let pick = runs.first().context("no placement fits the node")?;
+            let row = tetraeder_planner::builder::slot_row_bytes(&layout);
+            let env: BTreeMap<String, String> = BTreeMap::from([
+                ("TETRAEDER_EXIT_GPU".into(), "1".into()),
+                (
+                    "TETRAEDER_EXIT_VRAM_SLOT_BYTES".into(),
+                    (u64::from(pick.vram_slots) * row).to_string(),
+                ),
+                (
+                    "TETRAEDER_EXIT_RAM_SLOT_BYTES".into(),
+                    (u64::from(pick.ram_slots) * row).to_string(),
+                ),
+                ("TETRAEDER_EXIT_UBATCH".into(), pick.ubatch.to_string()),
+                ("TETRAEDER_EXIT_OP_OFFLOAD".into(), "1".into()),
+                ("TETRAEDER_EXIT_PREFILL".into(), prompt.to_string()),
+                ("TETRAEDER_EXIT_DECODE".into(), r#gen.to_string()),
+            ]);
+            let doc = serde_json::json!({
+                "hw_sha256": multi_cli::sha256_hex(hw_text.as_bytes()),
+                "layout_sha256": multi_cli::sha256_hex(layout_text.as_bytes()),
+                "routing": match &tier_replay {
+                    Some(p) => format!("trace replay (decode), uniform prefill: {}", p.display()),
+                    None => "uniform".to_string(),
+                },
+                "workload": {"prompt": prompt, "gen": r#gen},
+                "pinned": pin.is_some(),
+                "pick": pick,
+                "exit_regime_env": env,
+                "runners_up": runs.iter().skip(1).take(5).collect::<Vec<_>>(),
+                "dropped": dropped,
+            });
+            std::fs::write(&out, serde_json::to_string_pretty(&doc)?)
+                .with_context(|| format!("write {}", out.display()))?;
+            println!(
+                "v{} r{} ub{}: pp {:.2} tok/s, tg {:.3} tok/s, binding {} -> {}",
+                pick.vram_slots,
+                pick.ram_slots,
+                pick.ubatch,
+                pick.pp_tps,
+                pick.tg_tps,
+                pick.binding,
+                out.display()
+            );
             Ok(())
         }
         Command::LedgerDir {
