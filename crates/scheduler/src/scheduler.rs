@@ -5,6 +5,7 @@
 
 use crate::backend::{BackendError, BatchBackend, SeqId, SeqInput};
 use crate::batch::{Live, plan_step, victim};
+use crate::front;
 use crate::load::{Loaded, model_id};
 use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, Restore, SAVE_MIN_TOKENS, common_prefix};
 use crate::sample::{SampleParams, Sampler, SamplerEnv, token_probs};
@@ -127,6 +128,9 @@ pub struct Scheduler {
     info: ModelInfo,
     vocab: Arc<Vocab>,
     tokenizer: Arc<Model>,
+    /// The format of the backend's snapshots, the key of the prefix cache.
+    kv_format: String,
+    kv_row_bytes: usize,
     queue: Mutex<std_mpsc::Sender<Job>>,
     worker: std::thread::JoinHandle<()>,
     /// `--slot-save-path` is set.
@@ -146,7 +150,8 @@ impl Scheduler {
         load: impl FnOnce() -> Result<Loaded, String> + Send + 'static,
     ) -> Result<Self, String> {
         let (job_tx, job_rx) = std_mpsc::channel::<Job>();
-        let (ready_tx, ready_rx) = std_mpsc::channel::<Result<(Arc<Model>, usize), String>>();
+        let (ready_tx, ready_rx) =
+            std_mpsc::channel::<Result<(Arc<Model>, usize, String, usize), String>>();
         let defaults = cfg.sampling.clone();
         let default_seed = cfg.seed;
         let metrics = cfg.metrics.clone();
@@ -213,7 +218,12 @@ impl Scheduler {
                         }
                     }
                 }
-                let _ = ready_tx.send(Ok((Arc::clone(&loaded.tokenizer), n_ctx)));
+                let _ = ready_tx.send(Ok((
+                    Arc::clone(&loaded.tokenizer),
+                    n_ctx,
+                    loaded.backend.kv_format(),
+                    loaded.backend.kv_row_bytes(),
+                )));
                 let pool = tetraeder_model::snapshot_pool::global();
                 pool.set_max_bytes(cache_ram);
                 pool.set_default_spares(parallel.max(2));
@@ -246,7 +256,7 @@ impl Scheduler {
                 w.run(&job_rx);
             })
             .map_err(|e| format!("cannot start the scheduler thread: {e}"))?;
-        let (tokenizer, n_ctx) = ready_rx
+        let (tokenizer, n_ctx, kv_format, kv_row_bytes) = ready_rx
             .recv()
             .map_err(|_| "the scheduler thread died while loading".to_owned())??;
         let vocab = vocab_cell
@@ -278,12 +288,55 @@ impl Scheduler {
             info,
             vocab,
             tokenizer,
+            kv_format,
+            kv_row_bytes,
             queue: Mutex::new(job_tx),
             worker,
             slot_actions,
             slot_jobs: Arc::new(AtomicUsize::new(0)),
             embedder: embed_cell.get().cloned(),
         })
+    }
+
+    /// The format of this engine's KV snapshots (`BatchBackend::kv_format`).
+    pub fn kv_format(&self) -> &str {
+        &self.kv_format
+    }
+
+    /// Bytes of one cached token in a snapshot of this engine.
+    pub fn kv_row_bytes(&self) -> usize {
+        self.kv_row_bytes
+    }
+
+    fn prefix_call(&self, op: PrefixOp) -> Option<PrefixAnswer> {
+        let (reply, answer) = std_mpsc::sync_channel(1);
+        self.queue
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .send(Job::Prefix(PrefixJob { op, reply }))
+            .ok()?;
+        answer.recv_timeout(PREFIX_WAIT).ok()
+    }
+
+    /// A copy of the snapshot this engine holds that shares the longest prefix with `tokens`, at
+    /// least the restore gain long: from the prefix cache, or taken from an idle sequence. The
+    /// tokens come back with it; they can run past the ones asked for. Nothing is removed. It
+    /// runs on the scheduler's thread between steps, so it can wait for the step in progress.
+    pub fn prefix_get(&self, tokens: &[u32]) -> Option<(Vec<u32>, Vec<u8>)> {
+        match self.prefix_call(PrefixOp::Get(tokens.to_vec()))? {
+            PrefixAnswer::Got(g) => g,
+            PrefixAnswer::Put(_) => None,
+        }
+    }
+
+    /// Puts a snapshot of `tokens` fetched from another replica into the prefix cache, as if
+    /// this engine had computed and saved it. `false`: not stored (the cache is off, or it holds
+    /// the tokens already).
+    pub fn prefix_put(&self, tokens: Vec<u32>, bytes: Vec<u8>) -> bool {
+        matches!(
+            self.prefix_call(PrefixOp::Put(tokens, bytes)),
+            Some(PrefixAnswer::Put(true))
+        )
     }
 
     /// Stops accepting jobs, lets the running ones finish and joins the worker, so the
@@ -324,11 +377,7 @@ impl Engine for Scheduler {
 
     fn tokenize(&self, model: &str, text: &str) -> Result<Vec<TokenId>, EngineError> {
         self.check(model)?;
-        let toks = self
-            .tokenizer
-            .tokenize(text, false, true)
-            .map_err(|e| EngineError::Other(e.to_string()))?;
-        Ok(toks.into_iter().map(|t| t as TokenId).collect())
+        front::tokenize(&self.tokenizer, text, false, true)
     }
 
     fn tokenize_with(
@@ -339,24 +388,11 @@ impl Engine for Scheduler {
         parse_special: bool,
     ) -> Result<Vec<TokenId>, EngineError> {
         self.check(model)?;
-        let toks = self
-            .tokenizer
-            .tokenize(text, add_special, parse_special)
-            .map_err(|e| EngineError::Other(e.to_string()))?;
-        Ok(toks.into_iter().map(|t| t as TokenId).collect())
+        front::tokenize(&self.tokenizer, text, add_special, parse_special)
     }
 
     fn fim_tokens(&self, _model: &str) -> FimTokens {
-        let id = |t: Option<i32>| t.map(|t| t as TokenId);
-        let m = &self.tokenizer;
-        FimTokens {
-            pre: id(m.fim_pre()),
-            suf: id(m.fim_suf()),
-            mid: id(m.fim_mid()),
-            rep: id(m.fim_rep()),
-            sep: id(m.fim_sep()),
-            bos: (m.add_bos() && m.bos() >= 0).then(|| m.bos() as TokenId),
-        }
+        front::fim_tokens(&self.tokenizer)
     }
 
     fn json_schema_to_grammar(&self, model: &str, schema: &str) -> Result<String, EngineError> {
@@ -366,8 +402,7 @@ impl Engine for Scheduler {
 
     fn check_grammar(&self, model: &str, grammar: &str) -> Result<(), EngineError> {
         self.check(model)?;
-        tetraeder_ggml_sys::llama::Sampler::check_grammar(&self.tokenizer, grammar)
-            .map_err(|e| EngineError::Invalid(format!("invalid grammar: {e}")))
+        front::check_grammar(&self.tokenizer, grammar)
     }
 
     fn slot_actions(&self) -> bool {
@@ -587,7 +622,28 @@ enum Restoring {
 enum Job {
     Gen(Box<Req>),
     Slot(SlotJob),
+    Prefix(PrefixJob),
 }
+
+/// A call on the prefix cache from the cluster: serving a snapshot to another replica, or
+/// installing one fetched from it (ADR 0091, step 6). Answered between steps.
+struct PrefixJob {
+    op: PrefixOp,
+    reply: std_mpsc::SyncSender<PrefixAnswer>,
+}
+
+enum PrefixOp {
+    Get(Vec<u32>),
+    Put(Vec<u32>, Vec<u8>),
+}
+
+enum PrefixAnswer {
+    Got(Option<(Vec<u32>, Vec<u8>)>),
+    Put(bool),
+}
+
+/// How long a prefix call waits for the scheduler thread (a long prefill step, a snapshot).
+const PREFIX_WAIT: Duration = Duration::from_secs(60);
 
 /// A slot action waiting for its slot to be idle (ADR 0090).
 struct SlotJob {
@@ -1009,7 +1065,79 @@ impl Worker {
         match job {
             Job::Gen(r) => self.waiting.push_back(*r),
             Job::Slot(j) => self.pending_slots.push(j),
+            Job::Prefix(j) => self.prefix_job(j),
         }
+    }
+
+    /// Answers a prefix call from the cluster (see `Scheduler::prefix_get`).
+    fn prefix_job(&mut self, j: PrefixJob) {
+        let fmt = self.backend.kv_format();
+        let answer = match j.op {
+            PrefixOp::Get(tokens) => PrefixAnswer::Got(self.prefix_get(&fmt, &tokens)),
+            PrefixOp::Put(tokens, bytes) => {
+                PrefixAnswer::Put(self.prefix_put(&fmt, &tokens, bytes))
+            }
+        };
+        let _ = j.reply.send(answer);
+    }
+
+    fn prefix_get(&mut self, fmt: &str, tokens: &[u32]) -> Option<(Vec<u32>, Vec<u8>)> {
+        if !self.prefix_reuse || tokens.is_empty() {
+            return None;
+        }
+        let want: Vec<i32> = tokens.iter().map(|&t| t as i32).collect();
+        let can_cut = self.backend.can_cut_suffix();
+        let cached = if self.cache.enabled() {
+            let best = if can_cut {
+                self.cache.best(fmt, &want)
+            } else {
+                self.cache.best_whole(fmt, &want)
+            };
+            best.filter(|&(i, n)| n >= self.restore_gain && self.cache.peek(i).is_some())
+        } else {
+            None
+        };
+        // A sequence that just finished is idle, and in the cache only once it is evicted.
+        let idle = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                Slot::Idle(x) => Some((i, common_prefix(&x.toks, &want), x.toks.len())),
+                _ => None,
+            })
+            .filter(|&(_, n, len)| n >= self.restore_gain && (can_cut || n == len))
+            .max_by_key(|&(_, n, _)| n);
+        let cached_n = cached.map_or(0, |(_, n)| n);
+        if let Some((i, n, _)) = idle
+            && n > cached_n
+        {
+            let toks = match &self.slots[i] {
+                Slot::Idle(x) => x.toks.clone(),
+                _ => return None,
+            };
+            let bytes = self.backend.seq_snapshot(i as SeqId).ok()?;
+            return Some((toks.iter().map(|&t| t as u32).collect(), bytes));
+        }
+        let (i, _) = cached?;
+        let (toks, bytes) = self.cache.peek(i)?;
+        Some((toks.iter().map(|&t| t as u32).collect(), bytes.to_vec()))
+    }
+
+    fn prefix_put(&mut self, fmt: &str, tokens: &[u32], bytes: Vec<u8>) -> bool {
+        if !self.prefix_reuse || !self.cache.enabled() || tokens.len() < self.restore_gain {
+            return false;
+        }
+        let toks: Vec<i32> = tokens.iter().map(|&t| t as i32).collect();
+        if self.cache.holds(fmt, &toks) {
+            return false;
+        }
+        let evicted = self.cache.insert(fmt, toks, bytes);
+        if let Some(m) = &self.metrics {
+            m.kv_prefix_evicted(evicted as u64);
+        }
+        self.report_cache_bytes();
+        true
     }
 
     /// The loop of ADR 0065: take new jobs, admit, plan one step, decode, sample, emit, retire.

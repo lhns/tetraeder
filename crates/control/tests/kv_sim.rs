@@ -10,7 +10,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tetraeder_control::head::{ClusterEngine, ClusterHead, FetchPolicy, ReplicaTarget, StartSpec};
+use tetraeder_control::head::{
+    ClusterEngine, ClusterHead, FetchPolicy, KvInfo, ReplicaTarget, StartSpec,
+};
 use tetraeder_control::kv::{PrefixKey, PrefixStore, fetch_beats_recompute, serve_prefix};
 use tetraeder_control::monitor::Monitor;
 use tetraeder_control::node::{Daemon, NodeOptions, RestartPolicy};
@@ -136,7 +138,7 @@ struct Fixed {
 }
 
 impl FetchPolicy for Fixed {
-    fn plan(&self, _holder: u32, _target: u32, tokens: &[u32]) -> Option<FetchFrom> {
+    fn plan(&self, _holder: u32, _target: u32, tokens: &[u32], _kv: &KvInfo) -> Option<FetchFrom> {
         match self.policy {
             Policy::Decline => None,
             Policy::Fetch => Some(FetchFrom {

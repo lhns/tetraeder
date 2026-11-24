@@ -38,9 +38,24 @@ const CLIENT_BUFFER: usize = 1024;
 /// Decides whether a prefix another replica holds is fetched or recomputed (`kv::fetch_beats_recompute`
 /// priced on the hardware graph; the head builds it from the probe curves).
 pub trait FetchPolicy: Send + Sync {
-    /// `tokens`: the prefix the holder has (`holder` is a replica index). `Some`: ask the target
-    /// to fetch it from the holder's node first.
-    fn plan(&self, holder: u32, target: u32, tokens: &[u32]) -> Option<FetchFrom>;
+    /// `tokens`: the prefix the holder has (`holder` is a replica index); `holder_kv`: what the
+    /// holder reported about its snapshots. `Some`: ask the target to fetch it from the holder's
+    /// node first.
+    fn plan(
+        &self,
+        holder: u32,
+        target: u32,
+        tokens: &[u32],
+        holder_kv: &KvInfo,
+    ) -> Option<FetchFrom>;
+}
+
+/// What a replica reported about its snapshots when it joined.
+#[derive(Debug, Clone, Default)]
+pub struct KvInfo {
+    pub format: String,
+    /// Bytes of one cached token; 0 when not known.
+    pub row_bytes: u64,
 }
 
 /// One replica as the router sees it.
@@ -113,6 +128,7 @@ struct State {
     reqs: HashMap<ReqId, Pending>,
     next: ReqId,
     kv_formats: Vec<String>,
+    kv_row_bytes: Vec<u64>,
 }
 
 struct Inner {
@@ -166,6 +182,7 @@ impl ClusterEngine {
                 reqs: HashMap::new(),
                 next: 1,
                 kv_formats: vec![String::new(); targets.len()],
+                kv_row_bytes: vec![0; targets.len()],
             }),
             front,
             targets,
@@ -206,9 +223,51 @@ impl ClusterEngine {
         self.inner.execute(actions);
     }
 
+    /// A planned drain starts (`true`) or ends: a draining replica takes no new request and keeps
+    /// what is in flight. Unlike `set_up(r, false)` nothing fails.
+    pub fn set_draining(&self, r: u32, draining: bool) {
+        let actions = lock(&self.inner.state)
+            .router
+            .set_draining(ReplicaId(r), draining);
+        self.inner.execute(actions);
+    }
+
+    pub fn is_draining(&self, r: u32) -> bool {
+        lock(&self.inner.state).router.is_draining(ReplicaId(r))
+    }
+
+    /// Drains replica `r`: no new requests, then waits until its in-flight ones have ended, at
+    /// most `timeout`. `true`: nothing is left in flight. The replica stays draining; leaving
+    /// the router (`set_up(r, false)`) or `set_draining(r, false)` ends it.
+    pub fn drain(&self, r: u32, timeout: Duration) -> bool {
+        let t0 = std::time::Instant::now();
+        self.set_draining(r, true);
+        let drained = loop {
+            if self.outstanding(r) == 0 {
+                break true;
+            }
+            if t0.elapsed() >= timeout {
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        metrics::drain(
+            r,
+            if drained { "drained" } else { "timed_out" },
+            t0.elapsed(),
+        );
+        drained
+    }
+
     pub fn set_kv_format(&self, r: u32, format: &str) {
         if let Some(f) = lock(&self.inner.state).kv_formats.get_mut(r as usize) {
             *f = format.to_owned();
+        }
+    }
+
+    pub fn set_kv_row_bytes(&self, r: u32, bytes: u64) {
+        if let Some(b) = lock(&self.inner.state).kv_row_bytes.get_mut(r as usize) {
+            *b = bytes;
         }
     }
 
@@ -376,7 +435,22 @@ impl Inner {
         }
         let fetch = match (elsewhere, &self.policy, &target.remote) {
             (Some(hit), Some(policy), Some(_)) => {
-                let f = policy.plan(hit.holder.0, to.0, &prompt[..hit.tokens as usize]);
+                let kv = {
+                    let st = lock(&self.state);
+                    KvInfo {
+                        format: st
+                            .kv_formats
+                            .get(hit.holder.0 as usize)
+                            .cloned()
+                            .unwrap_or_default(),
+                        row_bytes: st
+                            .kv_row_bytes
+                            .get(hit.holder.0 as usize)
+                            .copied()
+                            .unwrap_or(0),
+                    }
+                };
+                let f = policy.plan(hit.holder.0, to.0, &prompt[..hit.tokens as usize], &kv);
                 if f.is_none() {
                     metrics::prefix_fetch("recomputed");
                 }
@@ -509,7 +583,15 @@ impl Engine for ClusterEngine {
             );
             st.router.submit(id, prompt)
         };
-        self.inner.execute(actions);
+        // Sending to a replica writes to a transport connection, which blocks on the transport's
+        // own runtime: not from the gateway's async handler, so it runs on a thread of its own.
+        let inner = Arc::clone(&self.inner);
+        let spawned = std::thread::Builder::new()
+            .name("router-submit".into())
+            .spawn(move || inner.execute(actions));
+        if let Err(e) = spawned {
+            tracing::error!("cannot start the dispatch thread: {e}");
+        }
         Ok(rx)
     }
 
@@ -538,6 +620,33 @@ pub struct StartSpec {
     pub predicted_s: Vec<f64>,
 }
 
+impl PartialEq for StartSpec {
+    fn eq(&self, o: &Self) -> bool {
+        self.plan == o.plan
+            && self.model_sha256 == o.model_sha256
+            && self.predicted_s == o.predicted_s
+            && self.segments.len() == o.segments.len()
+            && self
+                .segments
+                .iter()
+                .zip(&o.segments)
+                .all(|(a, b)| a.peer.id == b.peer.id && a.plan == b.plan)
+    }
+}
+
+impl StartSpec {
+    /// The nodes this replica needs: its leader and the node of every segment.
+    pub fn nodes(&self, leader: &NodeId) -> Vec<NodeId> {
+        let mut v = vec![leader.clone()];
+        for s in &self.segments {
+            if !v.contains(&s.peer.id) {
+                v.push(s.peer.id.clone());
+            }
+        }
+        v
+    }
+}
+
 /// One segment of a replica: the daemon that runs its worker and its single-node plan.
 #[derive(Debug, Clone)]
 pub struct SegmentAssign {
@@ -545,10 +654,63 @@ pub struct SegmentAssign {
     pub plan: String,
 }
 
+/// A replica's current spec, replaceable while the head runs (a replan). The generation changes
+/// with every replacement, so the join loop notices.
+struct SpecCell {
+    spec: Mutex<StartSpec>,
+    generation: AtomicU64,
+}
+
+impl SpecCell {
+    fn snapshot(&self) -> (u64, StartSpec) {
+        let g = lock(&self.spec);
+        (self.generation.load(Ordering::SeqCst), g.clone())
+    }
+}
+
 /// Keeps one remote replica joined to the router while its node is `Up`.
 pub struct ClusterHead {
     stop: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
+    specs: Specs,
+}
+
+/// The specs of the remote replicas of a [`ClusterHead`]: readable and replaceable while it runs.
+#[derive(Clone)]
+pub struct Specs(Arc<HashMap<u32, (NodeId, Arc<SpecCell>)>>);
+
+impl Specs {
+    /// The replicas that have a spec (the remote ones), in order.
+    pub fn replicas(&self) -> Vec<u32> {
+        let mut v: Vec<u32> = self.0.keys().copied().collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// The spec replica `r` runs now (or will start with).
+    pub fn spec(&self, r: u32) -> Option<StartSpec> {
+        self.0.get(&r).map(|(_, c)| c.snapshot().1)
+    }
+
+    /// The leader of remote replica `r`; a replica keeps it (its connection is to that node).
+    pub fn leader(&self, r: u32) -> Option<NodeId> {
+        self.0.get(&r).map(|(n, _)| n.clone())
+    }
+
+    /// Replaces replica `r`'s spec. A joined replica leaves the router and starts again with it,
+    /// so drain it first (`ClusterEngine::drain`) or its in-flight requests fail. `false`: not a
+    /// remote replica.
+    pub fn set(&self, r: u32, spec: StartSpec) -> bool {
+        let Some((_, c)) = self.0.get(&r) else {
+            return false;
+        };
+        let mut g = lock(&c.spec);
+        if *g != spec {
+            *g = spec;
+            c.generation.fetch_add(1, Ordering::SeqCst);
+        }
+        true
+    }
 }
 
 impl ClusterHead {
@@ -565,10 +727,16 @@ impl ClusterHead {
     ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let mut threads = Vec::new();
+        let mut specs = HashMap::new();
         for (r, node, spec) in replicas {
             let Some(remote) = engine.inner.targets[r as usize].remote.clone() else {
                 continue;
             };
+            let cell = Arc::new(SpecCell {
+                spec: Mutex::new(spec),
+                generation: AtomicU64::new(0),
+            });
+            specs.insert(r, (node.clone(), Arc::clone(&cell)));
             let e = Arc::clone(engine);
             remote.on_lost({
                 let e = Arc::clone(engine);
@@ -581,12 +749,21 @@ impl ClusterHead {
             );
             if let Ok(h) = std::thread::Builder::new()
                 .name(format!("join-{r}"))
-                .spawn(move || join_loop(&e, &m, &t, r, &node, &spec, &remote, &stop))
+                .spawn(move || join_loop(&e, &m, &t, r, &node, &cell, &remote, &stop))
             {
                 threads.push(h);
             }
         }
-        Self { stop, threads }
+        Self {
+            stop,
+            threads,
+            specs: Specs(Arc::new(specs)),
+        }
+    }
+
+    /// The specs of the remote replicas, to read and replace while the head runs.
+    pub fn specs(&self) -> Specs {
+        self.specs.clone()
     }
 
     pub fn stop(&mut self) {
@@ -610,6 +787,21 @@ fn sleep_unless(stop: &AtomicBool, d: Duration) {
     }
 }
 
+/// Asks `peer` to stop the worker of `(replica, segment)`; best effort.
+fn release(
+    transport: &dyn Transport,
+    peer: &tetraeder_transport::Peer,
+    replica: u32,
+    segment: u32,
+) {
+    let _ = crate::client::request(
+        transport,
+        peer,
+        &NodeRequest::Release { replica, segment },
+        &[],
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 fn join_loop(
     e: &Arc<ClusterEngine>,
@@ -617,27 +809,54 @@ fn join_loop(
     transport: &Arc<dyn Transport>,
     r: u32,
     node: &NodeId,
-    spec: &StartSpec,
+    cell: &SpecCell,
     remote: &Arc<RemoteEngine>,
     stop: &AtomicBool,
 ) {
+    // The spec the last attempt started: what a new spec must clean up.
+    let mut previous: Option<StartSpec> = None;
     while !stop.load(Ordering::SeqCst) {
-        if monitor.state(node) != Some(NodeState::Up) {
+        let (generation, spec) = cell.snapshot();
+        let needed = spec.nodes(node);
+        // Starting needs every node `Up` (a draining one takes no assignments); a joined replica
+        // stays while its nodes are `Up` or `Draining` until a replan replaces it.
+        if needed
+            .iter()
+            .any(|n| monitor.state(n) != Some(NodeState::Up))
+        {
             sleep_unless(stop, Duration::from_millis(20));
             continue;
         }
-        let attempt = || -> Result<crate::replica::ReplicaInfo, String> {
+        let alive = || {
+            needed
+                .iter()
+                .all(|n| matches!(monitor.state(n), Some(NodeState::Up | NodeState::Draining)))
+        };
+        let mut attempt = || -> Result<crate::replica::ReplicaInfo, String> {
+            if let Some(old) = previous.replace(spec.clone())
+                && old != spec
+            {
+                // Workers of the old plan that the new one does not reuse at the same place.
+                for (i, s) in old.segments.iter().enumerate() {
+                    let same = spec.segments.get(i).is_some_and(|n| n.peer.id == s.peer.id);
+                    if !same {
+                        release(
+                            transport.as_ref(),
+                            &s.peer,
+                            r,
+                            u32::try_from(i).unwrap_or(0),
+                        );
+                    }
+                }
+            }
             if !spec.segments.is_empty() {
                 // A replica across nodes starts as a whole: the leader goes first, so that it
                 // meets segment workers with empty KV (an `Assign` restarts its worker).
-                let _ = crate::client::request(
+                release(
                     transport.as_ref(),
                     remote.peer(),
-                    &NodeRequest::Release {
-                        replica: r,
-                        segment: crate::node::REPLICA_SEGMENT,
-                    },
-                    &[],
+                    r,
+                    crate::node::REPLICA_SEGMENT,
                 );
             }
             for (i, s) in spec.segments.iter().enumerate() {
@@ -675,14 +894,14 @@ fn join_loop(
         match attempt() {
             Ok(info) => {
                 e.set_kv_format(r, &info.kv_format);
+                e.set_kv_row_bytes(r, info.kv_row_bytes);
                 e.set_reported_cap(r, info.cap);
-                // The node may have gone down while the probe ran.
-                if monitor.state(node) == Some(NodeState::Up) && remote.is_connected() {
+                let current = || cell.generation.load(Ordering::SeqCst) == generation;
+                // A node may have gone down, or the spec changed, while the probe ran.
+                if alive() && remote.is_connected() && current() {
                     e.set_up(r, true);
                 }
-                while !stop.load(Ordering::SeqCst)
-                    && remote.is_connected()
-                    && monitor.state(node) == Some(NodeState::Up)
+                while !stop.load(Ordering::SeqCst) && remote.is_connected() && alive() && current()
                 {
                     std::thread::sleep(Duration::from_millis(10));
                 }
@@ -705,4 +924,59 @@ pub fn prefix_key(format: &str, tokens: &[u32]) -> PrefixKey {
         format: format.to_owned(),
         tokens: tokens.to_vec(),
     }
+}
+
+/// The replicas of a cluster plan as the head starts them: for replica `i` of `plan`, its leader
+/// (the node of its first segment, ADR 0091) and its [`StartSpec`]. A replica of one segment runs
+/// whole on its leader (`segments` empty, `plan` the segment's single-node plan); one of several
+/// lists every segment with its single-node plan (`plan::segments`, `plan::segment_plan`).
+/// `predicted_s[i]` is the planner's decode step time of each segment of replica `i` (empty when
+/// not priced).
+pub fn specs_from_plan(
+    plan: &tetraeder_plan::Plan,
+    hw: &tetraeder_profiler::HardwareGraph,
+    cfg: &crate::ClusterConfig,
+    model_sha256: &str,
+    predicted_s: &[Vec<f64>],
+) -> Result<Vec<(u32, NodeId, StartSpec)>, String> {
+    let mut out = Vec::new();
+    for i in 0..plan.replicas.len() {
+        let segs = tetraeder_plan::segments(plan, i, hw).map_err(|e| e.join("; "))?;
+        let mut assigns = Vec::new();
+        for s in &segs {
+            let node = s.node.clone().ok_or_else(|| {
+                format!("replica {i}: a segment of a cluster plan sits on a node")
+            })?;
+            let peer = cfg
+                .peer(&NodeId::new(node.clone()))
+                .ok_or_else(|| format!("`{node}` is not a node of cluster.toml"))?;
+            let sub = tetraeder_plan::segment_plan(plan, i, s);
+            let plan_toml = sub.to_toml().map_err(|e| e.to_string())?;
+            assigns.push(SegmentAssign {
+                peer,
+                plan: plan_toml,
+            });
+        }
+        let leader = assigns
+            .first()
+            .map(|a| a.peer.id.clone())
+            .ok_or_else(|| format!("replica {i} has no segment"))?;
+        let predicted = predicted_s.get(i).cloned().unwrap_or_default();
+        let (plan_toml, segments, predicted_s) = if assigns.len() == 1 {
+            (assigns.remove(0).plan, Vec::new(), Vec::new())
+        } else {
+            (String::new(), assigns, predicted)
+        };
+        out.push((
+            u32::try_from(i).map_err(|e| e.to_string())?,
+            leader,
+            StartSpec {
+                plan: plan_toml,
+                model_sha256: model_sha256.to_owned(),
+                segments,
+                predicted_s,
+            },
+        ));
+    }
+    Ok(out)
 }

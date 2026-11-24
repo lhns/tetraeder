@@ -2215,6 +2215,7 @@ dependencies = [
  "tetraeder-costmodel",
  "tetraeder-gateway",
  "tetraeder-plan",
+ "tetraeder-planner",
  "tetraeder-profiler",
  "tetraeder-transport",
  "tokio",

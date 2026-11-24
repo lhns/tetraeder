@@ -2624,18 +2624,23 @@ nodes:
   title: Cluster serving end to end
   track: cluster
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/tetraeder/tests/cluster_integration.rs
+  - crates/control/tests/planned_drain.rs
+  - crates/control/tests/specs_from_plan.rs
+  - crates/control/tests/router_props.rs
+  verdict_quote: 'prefix fetch real scheduler fetched_cached_tokens 145 recomputed_cached_tokens 6 tokens_equal true; planned drain pipeline replica dense4 failed_requests 0 ok_requests 114 tokens_equal true; cluster plan pipeline replica dense4 greedy_equal_one_node true'
+  headline: 'serve --cluster runs as a process with a head that leads no replica, replicas derived from a cluster plan, a pipeline replica across two daemons equals the one-node run, the real prefix cache is fetched and restored, and a planned drain of a replica across nodes fails no request; the planner cannot plan CPU nodes and a lost leader is not retargeted'
   depends_on:
   - cluster-replicas
   - cluster-pipeline-nodes
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-24
+  end: 2026-11-24
   folded: []
   overview: false
   plain: The step 5 gaps - serve --cluster and its head run in a test, a head without a replica of its own, replicas.toml derived from the cluster plan, a pipeline replica across nodes run through the daemons end to end, the real scheduler prefix store served and installed over the transport, NodeChange replanning and a planned drain of a segmented replica.
@@ -2706,7 +2711,7 @@ nodes:
   folded: []
   overview: false
   plain: 'A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7).'
-  notes: 'Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. Done as built (ADR 0091 History, step 5) for replicas of one node; a change to a replica across nodes is a restart of the whole replica on the next join, not a planned drain.'
+  notes: 'Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. Done as built (ADR 0091 History, step 5) for replicas of one node; since step 6 (cluster-integration) a node change replans the replicas that span it and a planned change drains the replica first (its requests finish), while a node that goes down still fails the requests in flight on it.'
 - id: cluster-pipeline-nodes
   title: Pipeline stages across machines
   track: cluster
@@ -2792,7 +2797,7 @@ nodes:
   folded: []
   overview: false
   plain: 'A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).'
-  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Done as scoped for CI (ADR 0091 History, step 5), not ''a fetched prefix decodes equal'': that needs the scheduler''s prefix store, and C5 does not hold across cuts yet. Open before the rehearsal measures a fetch.'
+  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Step 5 did it with fake stores; the real scheduler prefix store (cache entry or idle sequence) is now served and installed over the Prefix purpose and a fetched prefix decodes equal to a recomputed one (ADR 0091 History, step 6, cluster-integration). Open before the rehearsal measures a fetch on GPU boxes.'
 - id: cluster-replicas
   title: Model replicas behind one router
   track: cluster

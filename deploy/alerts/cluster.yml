@@ -68,3 +68,14 @@ groups:
         annotations:
           summary: "{{ $value }} replicas up, fewer than the plan has"
           description: "A replica has been out of the router for 5 minutes: its node is down, its engine does not start or does not answer the probe step. Look at TetraederNodeDown, the node's daemon log (`tetraeder node`) and the replica child's stderr."
+
+      # Step 6 (integration): a planned drain of a replica (a node told to drain, a replan) waits
+      # for the replica's in-flight requests and, after the drain timeout, cuts what is left.
+      # tetraeder_cluster_drain_total counts each drain by result (drained, timed_out).
+      - alert: TetraederPlannedDrainTimedOut
+        expr: sum(increase(tetraeder_cluster_drain_total{result="timed_out"}[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A planned drain cut requests that were still running"
+          description: "A replica was drained for a replan or a node drain and some of its requests did not finish within the drain timeout, so they were cut. Look at the replica's request lengths and at tetraeder_replan_total (trigger node_change)."

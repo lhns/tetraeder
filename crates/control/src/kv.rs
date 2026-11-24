@@ -6,6 +6,7 @@
 //! the reply's payload. A snapshot is only offered to a replica of the same `kv_format` (the
 //! cut points of a pipeline are part of it, step 4), so a foreign one is never restored.
 
+use crate::metrics;
 use serde::{Deserialize, Serialize};
 use std::io;
 use tetraeder_profiler::HardwareGraph;
@@ -29,8 +30,11 @@ pub enum PrefixRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "reply", rename_all = "snake_case")]
 pub enum PrefixReply {
-    /// The snapshot is the payload.
-    Snapshot,
+    /// The snapshot is the payload; `tokens` are the tokens it holds. A cache entry is a whole
+    /// sequence, so they can run past the ones asked for.
+    Snapshot {
+        tokens: Vec<u32>,
+    },
     /// Evicted or never there: the caller recomputes.
     Gone,
     Error {
@@ -42,11 +46,15 @@ pub enum PrefixReply {
 pub trait PrefixStore: Send + Sync {
     /// The format of this replica's snapshots (`Backend::kv_format`).
     fn kv_format(&self) -> String;
-    /// The snapshot that holds exactly `key.tokens`, or the longest one that is a prefix of them
-    /// (its tokens come back with it).
+    /// The snapshot sharing the longest prefix with `key.tokens` (at least the cache's restore
+    /// gain); the tokens it holds come back with it and can be more than asked for.
     fn get(&self, key: &PrefixKey) -> Option<(Vec<u32>, Vec<u8>)>;
-    /// Installs a fetched snapshot, as if this replica had computed it.
+    /// Installs a fetched snapshot of `key.tokens`, as if this replica had computed it.
     fn put(&self, key: PrefixKey, bytes: Vec<u8>);
+    /// Bytes of snapshot per cached token, for the head's fetch rule; 0 when not known.
+    fn row_bytes(&self) -> u64 {
+        0
+    }
 }
 
 /// The fetch rule: fetch when the prefix is long enough to matter (`min_gain_tokens`, the
@@ -74,7 +82,14 @@ pub fn fetch_beats_recompute(
 
 /// Serves `Fetch` requests on one inbound `Prefix` connection until it ends.
 pub fn serve_prefix(mut conn: Conn, store: &dyn PrefixStore) {
-    while let Ok(Some(f)) = frame::read_frame_max(&mut conn.rx, conn.purpose.max_frame()) {
+    serve_prefix_io(&mut conn.rx, &mut conn.tx, store);
+    (conn.close)();
+}
+
+/// [`serve_prefix`] over any byte streams: the daemon relays a `Prefix` connection to the
+/// replica's own listener, which serves it from here.
+pub fn serve_prefix_io<R: io::Read, W: io::Write>(rx: &mut R, tx: &mut W, store: &dyn PrefixStore) {
+    while let Ok(Some(f)) = frame::read_frame_max(rx, Purpose::Prefix.max_frame()) {
         let (reply, payload) = match frame::parse_header::<PrefixRequest>(&f) {
             Ok(PrefixRequest::Fetch { key }) => {
                 if key.format != store.kv_format() {
@@ -86,26 +101,68 @@ pub fn serve_prefix(mut conn: Conn, store: &dyn PrefixStore) {
                     )
                 } else {
                     match store.get(&key) {
-                        Some((_, bytes)) => (PrefixReply::Snapshot, bytes),
-                        None => (PrefixReply::Gone, Vec::new()),
+                        Some((tokens, bytes)) => {
+                            metrics::prefix_served("snapshot");
+                            (PrefixReply::Snapshot { tokens }, bytes)
+                        }
+                        None => {
+                            metrics::prefix_served("gone");
+                            (PrefixReply::Gone, Vec::new())
+                        }
                     }
                 }
             }
             Err(e) => (PrefixReply::Error { msg: e }, Vec::new()),
         };
-        if frame::write_frame(&mut conn.tx, &reply, &payload).is_err() {
+        if frame::write_frame(&mut *tx, &reply, &payload).is_err() {
             break;
         }
     }
-    (conn.close)();
 }
 
-/// Asks the leader `peer` for a snapshot. `Ok(None)`: it is gone, recompute.
+/// Relays an inbound `Prefix` connection to the replica's own prefix listener on `addr` (a
+/// loopback port: the replica's cache lives in its child process, which the daemon reaches only
+/// through its stdio, so the child listens for this one purpose). Returns when either side ends;
+/// the connection is closed then. If the listener is not there, the connection is closed and the
+/// fetcher recomputes.
+pub fn relay_prefix(conn: Conn, addr: std::net::SocketAddr) {
+    let Conn {
+        mut rx,
+        mut tx,
+        close,
+        ..
+    } = conn;
+    let stream =
+        match std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(%addr, "prefix listener not reachable: {e}");
+                close();
+                return;
+            }
+        };
+    let Ok(mut from_replica) = stream.try_clone() else {
+        close();
+        return;
+    };
+    let mut to_replica = stream;
+    let up = std::thread::spawn(move || {
+        let _ = io::copy(&mut rx, &mut to_replica);
+        let _ = to_replica.shutdown(std::net::Shutdown::Write);
+    });
+    let _ = io::copy(&mut from_replica, &mut tx);
+    let _ = io::Write::flush(&mut tx);
+    close();
+    let _ = up.join();
+}
+
+/// Asks the leader `peer` for a snapshot: the tokens it holds and its bytes. `Ok(None)`: it is
+/// gone, recompute.
 pub fn fetch_prefix(
     t: &dyn Transport,
     peer: &Peer,
     key: &PrefixKey,
-) -> io::Result<Option<Vec<u8>>> {
+) -> io::Result<Option<(Vec<u32>, Vec<u8>)>> {
     let mut c = t.connect(peer, Purpose::Prefix)?;
     let r = (|| {
         frame::write_frame(&mut c.tx, &PrefixRequest::Fetch { key: key.clone() }, &[])
@@ -114,7 +171,7 @@ pub fn fetch_prefix(
             .map_err(io::Error::other)?
             .ok_or_else(|| io::Error::from(io::ErrorKind::UnexpectedEof))?;
         match frame::parse_header::<PrefixReply>(&f).map_err(io::Error::other)? {
-            PrefixReply::Snapshot => Ok(Some(f.payload)),
+            PrefixReply::Snapshot { tokens } => Ok(Some((tokens, f.payload))),
             PrefixReply::Gone => Ok(None),
             PrefixReply::Error { msg } => Err(io::Error::other(msg)),
         }

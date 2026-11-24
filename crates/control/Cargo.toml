@@ -27,3 +27,4 @@ tracing = "0.1"
 
 [dev-dependencies]
 proptest = "1"
+tetraeder-planner = { path = "../planner" }
