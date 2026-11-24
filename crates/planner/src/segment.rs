@@ -122,15 +122,8 @@ pub fn segment_predict(
         let o = run
             .measured_outcome(vram, ram)
             .ok_or_else(|| format!("anchor {}: no decode_layers.vram_pair_share", a.id))?;
-        let features = builder_features_tier(
-            &sub,
-            vram,
-            &o,
-            knobs,
-            ReadPath::Reader,
-            depth,
-            BUILDER_DISK,
-        )?;
+        let features =
+            builder_features_tier(&sub, vram, &o, knobs, ReadPath::Reader, depth, BUILDER_DISK)?;
         list.push(Anchor {
             id: a.id.clone(),
             features,
@@ -170,15 +163,7 @@ pub fn segment_predict(
             sub.layers.len()
         ));
     }
-    let feat = builder_features_tier(
-        &sub,
-        vram,
-        o,
-        knobs,
-        ReadPath::Reader,
-        depth,
-        BUILDER_DISK,
-    )?;
+    let feat = builder_features_tier(&sub, vram, o, knobs, ReadPath::Reader, depth, BUILDER_DISK)?;
     let p = predict(&f.hw, &feat, w.prompt, w.r#gen).map_err(|e| e.to_string())?;
     let u = predict(hw, &feat, w.prompt, w.r#gen).map_err(|e| e.to_string())?;
     let fp = footprint(

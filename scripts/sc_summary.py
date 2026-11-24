@@ -10,6 +10,8 @@ Order of judgement (ADR 0092 section 1 and 6, owner answers 1 and 3):
   2. the routing gate on the medians of the clean rounds against the replay used for the frozen prediction: decode
      vram share within 0.02 of vram_pair_share, full-hit share within 0.02 of full_hit_rate_mean, RAM hit within 0.005 of
      ram_hit_rate_mean. A miss is no verdict; the errors are still printed beside it.
+  2b. the session A/A (ADR 0068, ADR 0091 Case S): the judged plan repeated as the last run of the session (the last
+     report/extra round) agrees with the first judged round within 0.08 on T = 2048 / pp + 128 / tg, else no verdict.
   3. e = pred / meas - 1 on the medians of the clean rounds, for pp (prefill_tok_s) and tg (decode_tok_s); pass when both
      are within 0.15. The line is not changed after a miss.
 Everything else (anchors, fixed-seed segment, whole-model run, refit on real-hidden anchors) is report only.
@@ -27,6 +29,8 @@ import sys
 LINE = 0.15
 GATE_SHARE = 0.02
 GATE_RAM = 0.005
+AA_BAND = 0.08  # bench/spec/phase0.toml, ADR 0091 Case S "A/A of the judged plan within band b on T"
+PROMPT, GEN = 2048, 128
 ROUNDS_NEEDED = 3
 OK_BITS = 0x1 | 0x2 | 0x4 | 0x100 | 0x200 | 0x400  # idle, app clocks, power cap software, and the idle gate's others
 
@@ -121,7 +125,7 @@ def rounds(res: str, pattern: str) -> list[dict]:
         if f.endswith(".gpu.json"):
             continue
         r = run_of(load(f))
-        out.append({"file": os.path.relpath(f, res), "pp": r.get("prefill_tok_s"), "tg": r.get("decode_tok_s"),
+        out.append({"file": os.path.relpath(f, res).replace(os.sep, "/"), "pp": r.get("prefill_tok_s"), "tg": r.get("decode_tok_s"),
                     "bytes": (r.get("prefill_io") or {}).get("bytes"), **numa(load(f)), **layer_stats(r)})
     return out
 
@@ -143,7 +147,7 @@ def main() -> int:
     for f in files:
         why = unclean(f)
         r = run_of(load(f))
-        row = {"file": os.path.relpath(f, res), "pp": r.get("prefill_tok_s"), "tg": r.get("decode_tok_s"),
+        row = {"file": os.path.relpath(f, res).replace(os.sep, "/"), "pp": r.get("prefill_tok_s"), "tg": r.get("decode_tok_s"),
                "e_pp": e(pr["pp_tps"], r.get("prefill_tok_s")), "e_tg": e(pr["tg_tps"], r.get("decode_tok_s")),
                "clean": not why, "unclean_reasons": why, **numa(load(f)), **layer_stats(r)}
         per.append(row)
@@ -177,6 +181,28 @@ def main() -> int:
                 ok = abs(out["e_pp"]) <= LINE and abs(out["e_tg"]) <= LINE
                 out["verdict"] = "pass" if ok else "miss"
                 status = ("pass" if ok else "miss") + f": e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}"
+                # ADR 0068 / ADR 0091 Case S: the session is clean only when the judged plan, repeated as the last run of the
+                # session (A/A), agrees with its first run within the band on T = prompt / pp + gen / tg
+                last = sorted(glob.glob(os.path.join(res, "report", "extra-r[0-9]*.json")))
+                last = [f for f in last if not f.endswith(".gpu.json")]
+                if not last:
+                    out["aa"] = None
+                    out["verdict"] = "no verdict"
+                    status = "no verdict: no A/A run of the judged plan at the end of the session (would be " + status + ")"
+                elif per:
+                    def t_of(row: dict) -> float:
+                        return PROMPT / row["pp"] + GEN / row["tg"]
+                    r_end = run_of(load(last[-1]))
+                    t0 = t_of(per[0])
+                    t1 = PROMPT / r_end["prefill_tok_s"] + GEN / r_end["decode_tok_s"]
+                    d = t1 / t0 - 1.0
+                    out["aa"] = {"start": os.path.relpath(files[0], res).replace(os.sep, "/"), "end": os.path.relpath(last[-1], res).replace(os.sep, "/"),
+                                 "t_start": t0, "t_end": t1, "diff": d, "band": AA_BAND, "ok": abs(d) <= AA_BAND,
+                                 "t_rounds": [t_of(x) for x in per]}
+                    if abs(d) > AA_BAND:
+                        out["verdict"] = "no verdict"
+                        status = (f"no verdict: the session is not clean, A/A of the judged plan on T {t0:.2f} -> {t1:.2f} s "
+                                  f"({d:+.3f}) outside the band {AA_BAND} (on the medians it would be {status})")
     out["status"] = status
 
     # report only
@@ -230,6 +256,10 @@ def main() -> int:
     if out.get("median"):
         m = out["median"]
         print(f"  median of {len(clean)} clean: pp {m['pp']:.2f} tg {m['tg']:.3f}  e_pp {out['e_pp']:+.3f} e_tg {out['e_tg']:+.3f}")
+        if out.get("aa"):
+            a = out["aa"]
+            print(f"  A/A on T: {a['start']} {a['t_start']:.2f} s -> {a['end']} {a['t_end']:.2f} s, {a['diff']:+.3f} against {a['band']} "
+                  f"{'ok' if a['ok'] else 'MISS'}; T of the rounds {', '.join(f'{t:.1f}' for t in a['t_rounds'])} s")
         for k, g in out["gate"].items():
             print(f"  gate {k:15} replay {g['replay']:.4f} measured {g['measured']:.4f} diff {g['diff']:+.4f} line {g['line']} {'ok' if g['ok'] else 'MISS'}")
     return 0

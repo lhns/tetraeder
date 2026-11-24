@@ -23,7 +23,7 @@
   "frozen_sha256": "de9903b0ea1c3497fdca7fbddc31e52246e26d3c52d07da6d81251a08dc26920",
   "rounds": [
     {
-      "file": "judged\\r1.json",
+      "file": "judged/r1.json",
       "pp": 335.87710200945423,
       "tg": 17.536246752440373,
       "e_pp": -0.4064803614378779,
@@ -37,7 +37,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "judged\\r2.json",
+      "file": "judged/r2.json",
       "pp": 185.16008803381055,
       "tg": 14.203766348517172,
       "e_pp": 0.076634053822348,
@@ -51,7 +51,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "judged\\r3.json",
+      "file": "judged/r3.json",
       "pp": 44.56069412217255,
       "tg": 12.265134828954613,
       "e_pp": 3.4736658643463922,
@@ -98,8 +98,22 @@
     }
   },
   "gate_held": true,
-  "verdict": "pass",
-  "status": "pass: e_pp +0.077, e_tg -0.044 against 0.15",
+  "verdict": "no verdict",
+  "aa": {
+    "start": "judged/r1.json",
+    "end": "report/extra-r5.json",
+    "t_start": 13.396635717999999,
+    "t_end": 12.074394546,
+    "diff": -0.09869949439794112,
+    "band": 0.08,
+    "ok": false,
+    "t_rounds": [
+      13.396635717999999,
+      20.07239328,
+      56.395872613
+    ]
+  },
+  "status": "no verdict: the session is not clean, A/A of the judged plan on T 13.40 -> 12.07 s (-0.099) outside the band 0.08 (on the medians it would be pass: e_pp +0.077, e_tg -0.044 against 0.15)",
   "anchors": {
     "fit": [
       {
@@ -157,7 +171,7 @@
   },
   "fixed_seed_segment": [
     {
-      "file": "report\\seed-r1.json",
+      "file": "report/seed-r1.json",
       "pp": 389.71562167553,
       "tg": 18.038491731525323,
       "bytes": 0,
@@ -168,7 +182,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\seed-r2.json",
+      "file": "report/seed-r2.json",
       "pp": 476.90040900331996,
       "tg": 29.263826367263658,
       "bytes": 0,
@@ -188,7 +202,7 @@
   },
   "extra_rounds": [
     {
-      "file": "report\\extra-r1.json",
+      "file": "report/extra-r1.json",
       "pp": 288.4820195174085,
       "tg": 16.02140660590667,
       "bytes": 0,
@@ -199,7 +213,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\extra-r2.json",
+      "file": "report/extra-r2.json",
       "pp": 194.06620988570046,
       "tg": 15.902411583373052,
       "bytes": 0,
@@ -210,7 +224,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\extra-r3.json",
+      "file": "report/extra-r3.json",
       "pp": 366.6425136494858,
       "tg": 18.810818233712205,
       "bytes": 0,
@@ -221,7 +235,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\extra-r4.json",
+      "file": "report/extra-r4.json",
       "pp": 55.83333387358263,
       "tg": 12.631097676786144,
       "bytes": 0,
@@ -232,7 +246,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\extra-r5.json",
+      "file": "report/extra-r5.json",
       "pp": 383.5922628338508,
       "tg": 19.004090131097946,
       "bytes": 0,
@@ -274,7 +288,7 @@
   },
   "anchor_repeat": [
     {
-      "file": "report\\anchor-repeat-a1-r1.json",
+      "file": "report/anchor-repeat-a1-r1.json",
       "pp": 1043.9243474019847,
       "tg": 60.168260672588964,
       "bytes": 0,
@@ -285,7 +299,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\anchor-repeat-a1-r2.json",
+      "file": "report/anchor-repeat-a1-r2.json",
       "pp": 1951.196217187693,
       "tg": 80.66144766598818,
       "bytes": 0,
@@ -296,7 +310,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\anchor-repeat-a2-r1.json",
+      "file": "report/anchor-repeat-a2-r1.json",
       "pp": 899.1048380527536,
       "tg": 42.4393081173973,
       "bytes": 0,
@@ -307,7 +321,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "report\\anchor-repeat-a2-r2.json",
+      "file": "report/anchor-repeat-a2-r2.json",
       "pp": 572.0761009194221,
       "tg": 37.190924170930764,
       "bytes": 0,
@@ -327,7 +341,7 @@
   },
   "anchor_rounds": [
     {
-      "file": "anchors\\a1-r1.json",
+      "file": "anchors/a1-r1.json",
       "pp": 378.1732296421583,
       "tg": 73.83487433378512,
       "bytes": 0,
@@ -338,7 +352,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "anchors\\a1-r2.json",
+      "file": "anchors/a1-r2.json",
       "pp": 408.24874466521055,
       "tg": 71.44681983146766,
       "bytes": 0,
@@ -349,7 +363,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "anchors\\a2-r1.json",
+      "file": "anchors/a2-r1.json",
       "pp": 897.6522489691127,
       "tg": 42.06070871956393,
       "bytes": 0,
@@ -360,7 +374,7 @@
       "ram_hit_rate_mean": 1.0
     },
     {
-      "file": "anchors\\a2-r2.json",
+      "file": "anchors/a2-r2.json",
       "pp": 967.6988045409021,
       "tg": 49.00665842671265,
       "bytes": 0,

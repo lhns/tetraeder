@@ -2596,7 +2596,7 @@ nodes:
   folded: []
   overview: false
   plain: 'Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).'
-  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session. The segment confirmation gate held (bench-235b-segment-confirm, 2026-11-24: e_pp +0.077, e_tg -0.044, routing gate held), with one condition: prefill rounds of the same configuration span 8.6x on a two-socket host, so placement of threads and memory is settled first; the other prerequisites decide the state.'
+  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session. The segment confirmation (bench-235b-segment-confirm, 2026-11-24) gave no verdict: the routing gate held and the medians would be within 15%, but the session was not clean (A/A -0.099, prefill rounds spanning 8.6x on a two-socket host), so the confirmation reruns after thread and memory placement is settled; this node waits for that rerun.'
 - id: cluster-mtls
   title: Node certificates and trust rules
   track: cluster
@@ -3893,13 +3893,13 @@ nodes:
   track: bench
   kind: experiment
   state: done
-  outcome: successful
+  outcome: mixed
   evidence:
   - bench/results/segment-confirm-20261124/README.md
   - bench/results/segment-confirm-20261124/verdict.json
   - bench/results/segment-confirm-20261124/predictions/FROZEN.sha256
-  verdict_quote: 'the frozen prediction of exit segment 47..94 of Qwen3-235B-A22B (32 VRAM + 96 RAM slots, ubatch 2048, pp2048 then tg128, cost model 6) is within 15% on the medians of three clean rounds, e_pp +0.077 (199.35 against 185.16 tok/s) and e_tg -0.044 (13.58 against 14.20 tok/s)'
-  headline: 'e_pp +0.077 and e_tg -0.044 on three clean rounds, gate held; prefill rounds span 8.6x'
+  verdict_quote: 'no verdict: the session is not clean. The A/A of the judged plan (ADR 0091 Case S, ADR 0068: first judged round repeated as the last run of the session, band 0.08 on T = 2048 / pp + 128 / tg) reads 13.40 s then 12.07 s, -0.099, outside the band'
+  headline: 'no verdict, A/A -0.099 against 0.08; medians would give e_pp +0.077, e_tg -0.044, gate held'
   depends_on:
   - planner-costmodel-stream-terms
   - memory-ram-tier-complement
@@ -3910,8 +3910,8 @@ nodes:
   end: 2026-11-24
   folded: []
   overview: false
-  plain: One 3090 box under the 64 GB balloon ran the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated on truncated anchors and predicted before measuring, and landed within 15% on both rates with the routing gate held. The pass rests on the median of three rounds whose prefill ranges from 45 to 336 tok/s (8.6x over eight rounds, all clean by the gates, threads unpinned on a two-socket host; the eight-round median is e_pp -0.17), so thread and memory placement must be settled before the two-box sessions.
-  notes: 'Prediction frozen and committed (4e1ace80, FROZEN de9903b0) before the judged rounds; the replay of the same prompt and span matched the run to 0.003 in VRAM share. Stage 4 used a new tool, tetraeder-plan segment-predict (segment.rs, no test yet), which belongs to planner-costmodel-v6-rest. Anchors with fixed-seed input route very differently from real hidden rows and disagree 5x on prefill per layer (fit band 1.23); the fit on real-hidden anchors has band 0.07 (report only). Pinned to one socket, prefill spread falls to 1.2x but decode drops to 5 to 10 tok/s. Open before the rehearsal: thread and memory placement of the exit, and a prefill noise band in the clean rules (ADR 0092 History, step 5).'
+  plain: One 3090 box under the 64 GB balloon ran the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated on truncated anchors and predicted before measuring. The routing gate held and the medians of three rounds would be within 15% (e_pp +0.077, e_tg -0.044), but the session is not clean (A/A -0.099 against the band 0.08) and prefill of identical rounds spans 45 to 384 tok/s (8.6x, threads unpinned on a two-socket host; the eight-round median is e_pp -0.17), so there is no verdict and the confirmation reruns after thread and memory placement is settled.
+  notes: 'Prediction frozen and committed (4e1ace80, FROZEN de9903b0) before the judged rounds; the replay of the same prompt and span matched the run to 0.003 in VRAM share. Stage 4 used a new tool, tetraeder-plan segment-predict (segment.rs, no test yet, not run through CI), which belongs to planner-costmodel-v6-rest. Anchors with fixed-seed input route very differently from real hidden rows and disagree 5x on prefill per layer (fit band 1.23); the fit on real-hidden anchors has band 0.07 (report only). Pinned to one socket, prefill spread falls to 1.2x but decode drops to 5 to 10 tok/s. Next - place threads and memory (or pick a one-node host), schedule the A/A as the last run, rerun on a new session with a new frozen prediction (ADR 0092 History, step 5).'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench
