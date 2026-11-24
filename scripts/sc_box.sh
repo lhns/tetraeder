@@ -36,6 +36,8 @@ if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARG
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:/root/.local/bin:$PATH"
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
+# shellcheck source=scripts/box_libs.sh
+. scripts/box_libs.sh # native ggml as in the build stage: another setting rebuilds ggml
 archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
 [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
 quota=$(bash scripts/cpu_quota.sh 2> /dev/null || nproc)
@@ -123,8 +125,6 @@ st_env() {
 
 st_build() {
   bash scripts/ensure_patches.sh 8>&- || die "patch queue"
-  # shellcheck source=scripts/box_libs.sh
-  . scripts/box_libs.sh
   local jobs=$((quota / 2))
   [ "$jobs" -lt 4 ] && jobs=4
   [ "$jobs" -gt 24 ] && jobs=24
