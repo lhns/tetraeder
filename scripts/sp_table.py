@@ -35,7 +35,8 @@ def predictions(d: str) -> None:
 
 def measured(res: str, arm: str) -> dict | None:
     pp, tg, cold = [], [], []
-    files = sorted(glob.glob(os.path.join(res, "arms", f"exit-{arm}-r*.json")))
+    sub = "arms-d2" if arm == "D2" else "arms"
+    files = sorted(glob.glob(os.path.join(res, sub, f"exit-{arm}-r*.json")))
     for f in files:
         r = load(f)["runs"][0]
         pp.append(r["prefill_tok_s"])
@@ -57,14 +58,15 @@ def measured(res: str, arm: str) -> dict | None:
 
 def results(res: str) -> None:
     out = {}
-    for arm in ("D", "R"):
+    for arm in ("D", "D2", "R"):
         m = measured(res, arm)
         if m is None:
             continue
         print(f"arm {arm}: {m['rounds']} rounds, pp median {m['pp']:.2f} tok/s {['%.2f' % x for x in m['pp_all']]}, "
               f"tg median {m['tg']:.3f} tok/s {['%.3f' % x for x in m['tg_all']]}"
               + (f", cold first prefill median {m['pp_cold']:.2f}" if m["pp_cold"] else ""))
-        for f in sorted(glob.glob(os.path.join(res, "predictions", f"pred-{arm}-*.json"))):
+        pdir = os.path.join(res, "predictions", "d2") if arm == "D2" else os.path.join(res, "predictions")
+        for f in sorted(glob.glob(os.path.join(pdir, f"pred-{arm}-*.json"))):
             k = load(f)["pick"]
             e_pp = k["pp_tps"] / m["pp"] - 1
             e_tg = k["tg_tps"] / m["tg"] - 1
