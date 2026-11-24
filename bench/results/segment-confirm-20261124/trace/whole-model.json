@@ -1,0 +1,1332 @@
+{
+  "env": {
+    "available_parallelism": 61,
+    "ggml_system_info": "CUDA : ARCHS = 860 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16,q8_0-q4_0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | REPACK = 1 |",
+    "gpu_devices_visible": 1,
+    "os": "linux",
+    "cpu_model": "AMD EPYC 7763 64-Core Processor",
+    "cpu_avx512_flags": [],
+    "thp_mode": "madvise",
+    "smt_siblings": [
+      [
+        0,
+        128
+      ],
+      [
+        1,
+        129
+      ],
+      [
+        2,
+        130
+      ],
+      [
+        3,
+        131
+      ],
+      [
+        4,
+        132
+      ],
+      [
+        5,
+        133
+      ],
+      [
+        6,
+        134
+      ],
+      [
+        7,
+        135
+      ],
+      [
+        8,
+        136
+      ],
+      [
+        9,
+        137
+      ],
+      [
+        10,
+        138
+      ],
+      [
+        11,
+        139
+      ],
+      [
+        12,
+        140
+      ],
+      [
+        13,
+        141
+      ],
+      [
+        14,
+        142
+      ],
+      [
+        15,
+        143
+      ],
+      [
+        16,
+        144
+      ],
+      [
+        17,
+        145
+      ],
+      [
+        18,
+        146
+      ],
+      [
+        19,
+        147
+      ],
+      [
+        20,
+        148
+      ],
+      [
+        21,
+        149
+      ],
+      [
+        22,
+        150
+      ],
+      [
+        23,
+        151
+      ],
+      [
+        24,
+        152
+      ],
+      [
+        25,
+        153
+      ],
+      [
+        26,
+        154
+      ],
+      [
+        27,
+        155
+      ],
+      [
+        28,
+        156
+      ],
+      [
+        29,
+        157
+      ],
+      [
+        30,
+        158
+      ],
+      [
+        31,
+        159
+      ],
+      [
+        32,
+        160
+      ],
+      [
+        33,
+        161
+      ],
+      [
+        34,
+        162
+      ],
+      [
+        35,
+        163
+      ],
+      [
+        36,
+        164
+      ],
+      [
+        37,
+        165
+      ],
+      [
+        38,
+        166
+      ],
+      [
+        39,
+        167
+      ],
+      [
+        40,
+        168
+      ],
+      [
+        41,
+        169
+      ],
+      [
+        42,
+        170
+      ],
+      [
+        43,
+        171
+      ],
+      [
+        44,
+        172
+      ],
+      [
+        45,
+        173
+      ],
+      [
+        46,
+        174
+      ],
+      [
+        47,
+        175
+      ],
+      [
+        48,
+        176
+      ],
+      [
+        49,
+        177
+      ],
+      [
+        50,
+        178
+      ],
+      [
+        51,
+        179
+      ],
+      [
+        52,
+        180
+      ],
+      [
+        53,
+        181
+      ],
+      [
+        54,
+        182
+      ],
+      [
+        55,
+        183
+      ],
+      [
+        56,
+        184
+      ],
+      [
+        57,
+        185
+      ],
+      [
+        58,
+        186
+      ],
+      [
+        59,
+        187
+      ],
+      [
+        60,
+        188
+      ],
+      [
+        61,
+        189
+      ],
+      [
+        62,
+        190
+      ],
+      [
+        63,
+        191
+      ],
+      [
+        64,
+        192
+      ],
+      [
+        65,
+        193
+      ],
+      [
+        66,
+        194
+      ],
+      [
+        67,
+        195
+      ],
+      [
+        68,
+        196
+      ],
+      [
+        69,
+        197
+      ],
+      [
+        70,
+        198
+      ],
+      [
+        71,
+        199
+      ],
+      [
+        72,
+        200
+      ],
+      [
+        73,
+        201
+      ],
+      [
+        74,
+        202
+      ],
+      [
+        75,
+        203
+      ],
+      [
+        76,
+        204
+      ],
+      [
+        77,
+        205
+      ],
+      [
+        78,
+        206
+      ],
+      [
+        79,
+        207
+      ],
+      [
+        80,
+        208
+      ],
+      [
+        81,
+        209
+      ],
+      [
+        82,
+        210
+      ],
+      [
+        83,
+        211
+      ],
+      [
+        84,
+        212
+      ],
+      [
+        85,
+        213
+      ],
+      [
+        86,
+        214
+      ],
+      [
+        87,
+        215
+      ],
+      [
+        88,
+        216
+      ],
+      [
+        89,
+        217
+      ],
+      [
+        90,
+        218
+      ],
+      [
+        91,
+        219
+      ],
+      [
+        92,
+        220
+      ],
+      [
+        93,
+        221
+      ],
+      [
+        94,
+        222
+      ],
+      [
+        95,
+        223
+      ],
+      [
+        96,
+        224
+      ],
+      [
+        97,
+        225
+      ],
+      [
+        98,
+        226
+      ],
+      [
+        99,
+        227
+      ],
+      [
+        100,
+        228
+      ],
+      [
+        101,
+        229
+      ],
+      [
+        102,
+        230
+      ],
+      [
+        103,
+        231
+      ],
+      [
+        104,
+        232
+      ],
+      [
+        105,
+        233
+      ],
+      [
+        106,
+        234
+      ],
+      [
+        107,
+        235
+      ],
+      [
+        108,
+        236
+      ],
+      [
+        109,
+        237
+      ],
+      [
+        110,
+        238
+      ],
+      [
+        111,
+        239
+      ],
+      [
+        112,
+        240
+      ],
+      [
+        113,
+        241
+      ],
+      [
+        114,
+        242
+      ],
+      [
+        115,
+        243
+      ],
+      [
+        116,
+        244
+      ],
+      [
+        117,
+        245
+      ],
+      [
+        118,
+        246
+      ],
+      [
+        119,
+        247
+      ],
+      [
+        120,
+        248
+      ],
+      [
+        121,
+        249
+      ],
+      [
+        122,
+        250
+      ],
+      [
+        123,
+        251
+      ],
+      [
+        124,
+        252
+      ],
+      [
+        125,
+        253
+      ],
+      [
+        126,
+        254
+      ],
+      [
+        127,
+        255
+      ]
+    ],
+    "disk_curve": null
+  },
+  "expert_bytes_per_layer": [
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    10616832,
+    10616832,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848,
+    12238848
+  ],
+  "io_backend": null,
+  "machine": "vast 03c3ea11bf34 segment-confirm trace-whole",
+  "model": {
+    "path": "/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf"
+  },
+  "options": {
+    "admit_share": null,
+    "cpu_poll": null,
+    "cpu_poll_auto": null,
+    "cpu_quota_detected": null,
+    "expert_slot_bytes": null,
+    "expert_slots": 8,
+    "gpu": true,
+    "io_chunk_bytes": 0,
+    "io_service": false,
+    "io_workers": 0,
+    "kv": "f16/f16",
+    "kv_rotation": false,
+    "n_ctx": 2176,
+    "op_offload": true,
+    "overlap": false,
+    "pool_pause": false,
+    "prefetch": true,
+    "prefetch_depth": 1,
+    "prefetch_threads": null,
+    "ram_hugepages": false,
+    "ram_policy": "lru",
+    "ram_slot_bytes": null,
+    "ram_slots": 28,
+    "refresh_hot": false,
+    "threads": 61,
+    "urgent_first": false
+  },
+  "prompt": {
+    "fnv1a64": "909eb7a3c358d2a8",
+    "tokens": 2048
+  },
+  "provenance": {
+    "cpu_quota": 61.44,
+    "cpu_variant": "avx2",
+    "engine_commit": null,
+    "engine_dirty": null,
+    "host_id": "03c3ea11bf34",
+    "session": null,
+    "threads": 61
+  },
+  "runs": [
+    {
+      "decode_fed": [
+        129500,
+        39292,
+        21601,
+        123882,
+        8414,
+        141872,
+        29949,
+        90898,
+        99086,
+        11278,
+        46236,
+        59001,
+        93404,
+        99226,
+        6004,
+        10630,
+        39441,
+        78702,
+        58729,
+        97817,
+        123139,
+        114029,
+        76225,
+        87255,
+        50638,
+        133694,
+        79511,
+        102272,
+        15905,
+        114840,
+        150713,
+        1336,
+        9084,
+        144808,
+        116214,
+        78296,
+        137931,
+        96085,
+        139258,
+        147892,
+        114409,
+        50025,
+        69918,
+        87610,
+        134265,
+        124239,
+        84924,
+        94391,
+        7650,
+        24216,
+        131212,
+        111123,
+        123811,
+        62525,
+        21675,
+        90755,
+        21555,
+        35739,
+        35711,
+        75657,
+        1784,
+        85483,
+        5461,
+        63884,
+        53292,
+        35448,
+        17331,
+        103213,
+        24975,
+        67428,
+        10111,
+        3148,
+        99771,
+        21525,
+        116435,
+        34001,
+        46921,
+        125540,
+        135249,
+        35590,
+        106746,
+        105835,
+        132532,
+        103419,
+        116731,
+        144724,
+        51887,
+        142045,
+        83005,
+        73514,
+        47255,
+        48729,
+        94403,
+        80262,
+        92627,
+        134663,
+        16187,
+        107783,
+        35097,
+        48098,
+        132548,
+        17639,
+        22935,
+        63717,
+        79891,
+        68156,
+        33472,
+        109427,
+        93346,
+        41879,
+        86810,
+        18700,
+        141276,
+        32697,
+        26666,
+        47167,
+        24223,
+        9737,
+        52794,
+        85177,
+        115859,
+        130080,
+        1520,
+        30542,
+        84938,
+        29544,
+        149210,
+        87612
+      ],
+      "decode_io": null,
+      "decode_layers": null,
+      "decode_profile_per_token": null,
+      "decode_tok_s": 1.099619881003566,
+      "decode_tokens": 128,
+      "decode_windows": [
+        {
+          "end_unix_s": 1795544907.9927657,
+          "start_unix_s": 1795544791.5889044,
+          "tokens": 128
+        }
+      ],
+      "engine": "tetraeder",
+      "first_top": [
+        [
+          565,
+          27.708518981933594
+        ],
+        [
+          32,
+          17.169326782226562
+        ],
+        [
+          2,
+          16.741695404052734
+        ],
+        [
+          14374,
+          16.445384979248047
+        ],
+        [
+          785,
+          16.414575576782227
+        ],
+        [
+          14940,
+          15.994813919067383
+        ],
+        [
+          1654,
+          15.745832443237305
+        ],
+        [
+          73594,
+          15.704330444335938
+        ],
+        [
+          1986,
+          15.697547912597656
+        ],
+        [
+          66,
+          15.679780006408691
+        ]
+      ],
+      "greedy": [
+        129500,
+        39292,
+        21601,
+        123882,
+        8414,
+        141872,
+        29949,
+        90898,
+        99086,
+        11278,
+        46236,
+        59001,
+        93404,
+        99226,
+        6004,
+        10630,
+        39441,
+        78702,
+        58729,
+        97817,
+        123139,
+        114029,
+        76225,
+        87255,
+        50638,
+        133694,
+        79511,
+        102272,
+        15905,
+        114840,
+        150713,
+        1336,
+        9084,
+        144808,
+        116214,
+        78296,
+        137931,
+        96085,
+        139258,
+        147892,
+        114409,
+        50025,
+        69918,
+        87610,
+        134265,
+        124239,
+        84924,
+        94391,
+        7650,
+        24216,
+        131212,
+        111123,
+        123811,
+        62525,
+        21675,
+        90755,
+        21555,
+        35739,
+        35711,
+        75657,
+        1784,
+        85483,
+        5461,
+        63884,
+        53292,
+        35448,
+        17331,
+        103213,
+        24975,
+        67428,
+        10111,
+        3148,
+        99771,
+        21525,
+        116435,
+        34001,
+        46921,
+        125540,
+        135249,
+        35590,
+        106746,
+        105835,
+        132532,
+        103419,
+        116731,
+        144724,
+        51887,
+        142045,
+        83005,
+        73514,
+        47255,
+        48729,
+        94403,
+        80262,
+        92627,
+        134663,
+        16187,
+        107783,
+        35097,
+        48098,
+        132548,
+        17639,
+        22935,
+        63717,
+        79891,
+        68156,
+        33472,
+        109427,
+        93346,
+        41879,
+        86810,
+        18700,
+        141276,
+        32697,
+        26666,
+        47167,
+        24223,
+        9737,
+        52794,
+        85177,
+        115859,
+        130080,
+        1520,
+        30542,
+        84938,
+        29544,
+        149210,
+        87612
+      ],
+      "hot_refresh_s": 0.0,
+      "load_s": 1.006565165,
+      "max_splits": 4,
+      "memory": [
+        {
+          "capacity": 2347727872,
+          "device": "CUDA0",
+          "kind": "weights",
+          "tier": "vram",
+          "used": 2347727872
+        },
+        {
+          "capacity": 4290379776,
+          "device": "CUDA0",
+          "kind": "slots",
+          "tier": "vram",
+          "used": 4290379776
+        },
+        {
+          "capacity": 221773824,
+          "device": "CUDA0",
+          "kind": "kv",
+          "tier": "vram",
+          "used": 221773824
+        },
+        {
+          "capacity": 15016329216,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 15016329216
+        },
+        {
+          "capacity": 996462592,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 996462592
+        },
+        {
+          "capacity": 16777216,
+          "device": "host",
+          "kind": "staging",
+          "tier": "ram",
+          "used": 16777216
+        },
+        {
+          "capacity": 487515520,
+          "device": "CUDA0",
+          "kind": "workspace",
+          "tier": "vram",
+          "used": 487515520
+        },
+        {
+          "capacity": 34308576,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 34308576
+        },
+        {
+          "capacity": 2508188672,
+          "device": "CUDA0",
+          "kind": "weights",
+          "tier": "vram",
+          "used": 2508188672
+        },
+        {
+          "capacity": 4290379776,
+          "device": "CUDA0",
+          "kind": "slots",
+          "tier": "vram",
+          "used": 4290379776
+        },
+        {
+          "capacity": 221773824,
+          "device": "CUDA0",
+          "kind": "kv",
+          "tier": "vram",
+          "used": 221773824
+        },
+        {
+          "capacity": 15016329216,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 15016329216
+        },
+        {
+          "capacity": 996462592,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 996462592
+        },
+        {
+          "capacity": 16777216,
+          "device": "host",
+          "kind": "staging",
+          "tier": "ram",
+          "used": 16777216
+        },
+        {
+          "capacity": 485566592,
+          "device": "CUDA0",
+          "kind": "workspace",
+          "tier": "vram",
+          "used": 485566592
+        },
+        {
+          "capacity": 34046240,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 34046240
+        }
+      ],
+      "peak_rss_bytes": 32932843520,
+      "prefill_io": null,
+      "prefill_profile_per_ubatch": null,
+      "prefill_s": 46.8667308,
+      "prefill_tok_s": 43.69837547960567,
+      "prefill_tokens": 2048,
+      "request_log": [
+        "timed:reset",
+        "timed:prefill",
+        "timed:decode"
+      ],
+      "rss_bytes": 32694112256,
+      "segment": {
+        "hidden_in": null,
+        "hidden_out": {
+          "bytes": 35660316,
+          "file": "/root/tetraeder/runs/sc/hidden.bin",
+          "fnv1a64": "ff1814cf0b5fdb9b",
+          "layer": 47,
+          "rows": 2176
+        },
+        "layers": [
+          0,
+          94
+        ],
+        "segments": [
+          {
+            "embed": true,
+            "head": false,
+            "layers": [
+              0,
+              47
+            ]
+          },
+          {
+            "embed": false,
+            "head": true,
+            "layers": [
+              47,
+              94
+            ]
+          }
+        ]
+      },
+      "ubatch": 2048,
+      "ubatch_s": [
+        46.859455055
+      ],
+      "warm": {
+        "covering": false,
+        "prefix_reuse": false,
+        "prompt_cache": false,
+        "requests": 0,
+        "timed_prefill_disk_bytes": 0,
+        "unclean": false
+      },
+      "warm_prefill": null,
+      "warm_requests": []
+    }
+  ],
+  "slot_bytes_all_layers": 1072594944,
+  "host": {
+    "prefill": {
+      "seconds": 48.0184383392334,
+      "tokens": 2048,
+      "samples": 44,
+      "read_bytes": 130896457728,
+      "read_ops": 1030409,
+      "cgroup_read_bytes": 130811678720,
+      "read_bytes_per_token": 63914286.0,
+      "read_mb_s": 2725.9624064252675,
+      "disk_queue_depth_mean": 65.55450591211905,
+      "disk_inflight_max": 273,
+      "io_psi_src": "/sys/fs/cgroup/io.pressure",
+      "io_some_share": 0.08835143638008888,
+      "io_full_share": 0.0852563961176368,
+      "cpu_psi_src": "/sys/fs/cgroup/cpu.pressure",
+      "cpu_some_share": 0.0009754586283937819,
+      "cpu_full_share": 0.0007268666205556826,
+      "throttle_src": "/sys/fs/cgroup/cpu.stat",
+      "throttled_share": 0.0,
+      "throttled_ms_per_s": 0.0,
+      "cpu_steal_share": 0.0,
+      "cpu_mhz_mean": 1825.2519843750001,
+      "ctxsw_vol_per_s": 192.00957629783665,
+      "ctxsw_invol_per_s": 76.09576917486932,
+      "anon_huge_gb": null,
+      "cpus_used": 175,
+      "numa_nodes_used": 2,
+      "top_node_share": 0.5388698630136987,
+      "majflt": 0,
+      "majflt_per_token": 0.0,
+      "cpu_busy_pct": 3.1575071480657093,
+      "host_busy_cores": 9.205556721927746,
+      "container_cores": 1.9260793603200828,
+      "engine_cores": 1.8553289753117428,
+      "outside_cores": 7.279477361607663,
+      "smt_pairs_busy": 0,
+      "host_cpus": 256,
+      "cpu_busy_pct_top_cpus": 12.894608977394558,
+      "gpu_busy_pct": 20.386363636363637,
+      "gpu_mem_max_mib": 15946,
+      "rss_max_gb": 32.074212,
+      "cache_file_gb_max": 43.777691648,
+      "anon_gb_max": 487.993933824,
+      "bytes_per_token": 63914286.0,
+      "disk_util": null,
+      "tok_s_ceiling_disk": null,
+      "read_wait_share": null,
+      "io_class": "not_io_bound",
+      "io_class_missing": []
+    },
+    "decode": {
+      "seconds": 117.30688691139221,
+      "tokens": 128,
+      "samples": 109,
+      "read_bytes": 248584257536,
+      "read_ops": 1957671,
+      "cgroup_read_bytes": 248556523520,
+      "read_bytes_per_token": 1942064512.0,
+      "read_mb_s": 2119.0934657039206,
+      "disk_queue_depth_mean": 29.724290634647936,
+      "disk_inflight_max": 237,
+      "io_psi_src": "/sys/fs/cgroup/io.pressure",
+      "io_some_share": 0.011443317910345426,
+      "io_full_share": 0.010385426057041559,
+      "cpu_psi_src": "/sys/fs/cgroup/cpu.pressure",
+      "cpu_some_share": 0.0010261290122797566,
+      "cpu_full_share": 0.0009455881314435228,
+      "throttle_src": "/sys/fs/cgroup/cpu.stat",
+      "throttled_share": 0.0,
+      "throttled_ms_per_s": 0.0,
+      "cpu_steal_share": 0.0,
+      "cpu_mhz_mean": 1801.675455078125,
+      "ctxsw_vol_per_s": 13483.777821116058,
+      "ctxsw_invol_per_s": 88.92061049986825,
+      "anon_huge_gb": null,
+      "cpus_used": 232,
+      "numa_nodes_used": 2,
+      "top_node_share": 0.5835386890093642,
+      "majflt": 0,
+      "majflt_per_token": 0.0,
+      "cpu_busy_pct": 29.160811733467707,
+      "host_busy_cores": 25.58350045081879,
+      "container_cores": 17.788095157415302,
+      "engine_cores": 17.703990402274606,
+      "outside_cores": 7.795405293403487,
+      "smt_pairs_busy": 0,
+      "host_cpus": 256,
+      "cpu_busy_pct_top_cpus": 20.624573912010554,
+      "gpu_busy_pct": 2.110091743119266,
+      "gpu_mem_max_mib": 15296,
+      "rss_max_gb": 32.074212,
+      "cache_file_gb_max": 29.93932288,
+      "anon_gb_max": 487.993933824,
+      "bytes_per_token": 1942064512.0,
+      "disk_util": null,
+      "tok_s_ceiling_disk": null,
+      "read_wait_share": null,
+      "io_class": "not_io_bound",
+      "io_class_missing": []
+    },
+    "decode_windows": [
+      {
+        "seconds": 117.30688691139221,
+        "tokens": 128,
+        "samples": 109,
+        "read_bytes": 248584257536,
+        "read_ops": 1957671,
+        "cgroup_read_bytes": 248556523520,
+        "read_bytes_per_token": 1942064512.0,
+        "read_mb_s": 2119.0934657039206,
+        "disk_queue_depth_mean": 29.724290634647936,
+        "disk_inflight_max": 237,
+        "io_psi_src": "/sys/fs/cgroup/io.pressure",
+        "io_some_share": 0.011443317910345426,
+        "io_full_share": 0.010385426057041559,
+        "cpu_psi_src": "/sys/fs/cgroup/cpu.pressure",
+        "cpu_some_share": 0.0010261290122797566,
+        "cpu_full_share": 0.0009455881314435228,
+        "throttle_src": "/sys/fs/cgroup/cpu.stat",
+        "throttled_share": 0.0,
+        "throttled_ms_per_s": 0.0,
+        "cpu_steal_share": 0.0,
+        "cpu_mhz_mean": 1801.675455078125,
+        "ctxsw_vol_per_s": 13483.777821116058,
+        "ctxsw_invol_per_s": 88.92061049986825,
+        "anon_huge_gb": null,
+        "cpus_used": 232,
+        "numa_nodes_used": 2,
+        "top_node_share": 0.5835386890093642,
+        "majflt": 0,
+        "majflt_per_token": 0.0,
+        "cpu_busy_pct": 29.160811733467707,
+        "host_busy_cores": 25.58350045081879,
+        "container_cores": 17.788095157415302,
+        "engine_cores": 17.703990402274606,
+        "outside_cores": 7.795405293403487,
+        "smt_pairs_busy": 0,
+        "host_cpus": 256,
+        "cpu_busy_pct_top_cpus": 20.624573912010554,
+        "gpu_busy_pct": 2.110091743119266,
+        "gpu_mem_max_mib": 15296,
+        "rss_max_gb": 32.074212,
+        "cache_file_gb_max": 29.93932288,
+        "anon_gb_max": 487.993933824,
+        "bytes_per_token": 1942064512.0,
+        "disk_util": null,
+        "tok_s_ceiling_disk": null,
+        "read_wait_share": null,
+        "io_class": "not_io_bound",
+        "io_class_missing": []
+      }
+    ]
+  },
+  "host_windows": {
+    "prefill": [
+      1795544744.7221737,
+      1795544791.5889044,
+      2048
+    ],
+    "decode": [
+      1795544791.5889044,
+      1795544907.9927657,
+      128
+    ],
+    "threads": 61
+  },
+  "cotenant_ok": true,
+  "balloon_ok": true
+}
