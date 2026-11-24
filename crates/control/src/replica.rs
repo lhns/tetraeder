@@ -297,17 +297,19 @@ impl ReplicaServer {
         tx: &Mutex<W>,
     ) {
         let event = |e: GenEvent| send(tx, &ReplicaEvent::Event { id, event: e });
+        // A replica holds one model. Its id is the file's name on this node (a sha256 stem) or
+        // `--alias`, and the head's is its own: the request means the model the replica serves.
+        let Some(model) = self.engine.models().first().map(|m| m.id.clone()) else {
+            let _ = event(GenEvent::Error("the engine serves no model".into()));
+            return;
+        };
         if let Some(f) = &fetch {
             let ok = self.fetch(f);
             if !send(tx, &ReplicaEvent::Fetched { id, fetched: ok }) {
                 return;
             }
         }
-        let constraint = match wire
-            .constraint
-            .as_ref()
-            .map(|c| self.constraint(&wire.model, c))
-        {
+        let constraint = match wire.constraint.as_ref().map(|c| self.constraint(&model, c)) {
             Some(Err(e)) => {
                 let _ = event(GenEvent::Error(format!("constraint: {e}")));
                 return;
@@ -316,7 +318,7 @@ impl ReplicaServer {
             None => None,
         };
         let rx = self.engine.generate(GenerateRequest {
-            model: wire.model,
+            model,
             prompt: wire.prompt,
             params: wire.params,
             constraint,

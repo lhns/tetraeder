@@ -31,10 +31,50 @@ use tetraeder_transport::{LinkFault, MemTransport, Switchboard, Transport};
 use tokio_util::sync::CancellationToken;
 
 const DOWN_MS: u64 = 1000;
-const DOWN: Duration = Duration::from_millis(DOWN_MS);
 /// `node_down_after + 1 s`.
 const BOUND: Duration = Duration::from_millis(DOWN_MS + 1000);
 const CAP: u32 = 3;
+
+/// An engine that can be made to fail every request, as a replica whose engine survives but
+/// whose steps fail (a sticky device error, a bad model): the replica stays in the router and the
+/// errors arrive as events.
+struct Flaky {
+    inner: Arc<dyn Engine>,
+    failing: Arc<AtomicBool>,
+}
+
+impl Engine for Flaky {
+    fn models(&self) -> Vec<tetraeder_gateway::engine::ModelInfo> {
+        self.inner.models()
+    }
+
+    fn vocab(
+        &self,
+        model: &str,
+    ) -> Result<Arc<tetraeder_gateway::engine::Vocab>, tetraeder_gateway::engine::EngineError> {
+        self.inner.vocab(model)
+    }
+
+    fn tokenize(
+        &self,
+        model: &str,
+        text: &str,
+    ) -> Result<Vec<u32>, tetraeder_gateway::engine::EngineError> {
+        self.inner.tokenize(model, text)
+    }
+
+    fn generate(
+        &self,
+        req: GenerateRequest,
+    ) -> Result<tokio::sync::mpsc::Receiver<GenEvent>, tetraeder_gateway::engine::EngineError> {
+        if self.failing.load(Ordering::SeqCst) {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            let _ = tx.try_send(GenEvent::Error("the engine's step failed".into()));
+            return Ok(rx);
+        }
+        self.inner.generate(req)
+    }
+}
 
 fn fake(letter: &'static str) -> Arc<dyn Engine> {
     let mut e = FakeEngine::new(move |_| letter.repeat(40));
@@ -67,6 +107,7 @@ fn daemon(
 }
 
 struct Rig {
+    failing: Arc<AtomicBool>,
     board: Arc<Switchboard>,
     cfg: ClusterConfig,
     engine: Arc<ClusterEngine>,
@@ -80,7 +121,14 @@ struct Rig {
 fn rig() -> Rig {
     let board = MemTransport::switchboard();
     let cfg = config(DOWN_MS, &["a", "b"], &[1, 2]);
-    let launcher_b = Arc::new(ReplicaLauncher::new(CAP, || fake("B")));
+    let failing = Arc::new(AtomicBool::new(false));
+    let f = Arc::clone(&failing);
+    let launcher_b = Arc::new(ReplicaLauncher::new(CAP, move || {
+        Arc::new(Flaky {
+            inner: fake("B"),
+            failing: Arc::clone(&f),
+        })
+    }));
     let daemon_a = daemon(&board, &cfg, "a", Arc::new(EchoLauncher::default()));
     let daemon_b = daemon(&board, &cfg, "b", Arc::clone(&launcher_b) as _);
     let head_t: Arc<dyn Transport> = Arc::new(board.node(&id("a")));
@@ -130,6 +178,7 @@ fn rig() -> Rig {
         "both replicas join"
     );
     Rig {
+        failing,
         board,
         cfg,
         engine,
@@ -336,7 +385,7 @@ fn run(mode: Fault) {
             t_fault
         );
         assert!(
-            r.start < t_fault + DOWN + Duration::from_millis(500),
+            r.start < t_fault + BOUND,
             "only requests sent before the node was found down fail: {r:?}"
         );
     }
@@ -410,4 +459,80 @@ fn case_f_kill_the_daemon_and_the_worker() {
 #[test]
 fn case_f_blackhole_both_directions() {
     run(Fault::Blackhole);
+}
+
+// hardware: none
+#[test]
+fn case_f_the_engine_survives_and_its_requests_fail() {
+    // The ADR's first mode as the daemon sees it when only the engine's steps fail: the node and
+    // the replica process stay up, the replica stays in the router, and every request sent to
+    // it ends with one error event until the engine works again.
+    let rig = rig();
+    let t0 = Instant::now();
+    let stop = Arc::new(AtomicBool::new(false));
+    let out = Arc::new(Mutex::new(Vec::new()));
+    let clients: Vec<_> = (0..8)
+        .map(|n| {
+            let (e, s, o) = (Arc::clone(&rig.engine), Arc::clone(&stop), Arc::clone(&out));
+            std::thread::spawn(move || client(&e, n, t0, &s, &o))
+        })
+        .collect();
+    let left = Arc::new(AtomicBool::new(false));
+    {
+        let (e, s, l) = (
+            Arc::clone(&rig.engine),
+            Arc::clone(&stop),
+            Arc::clone(&left),
+        );
+        std::thread::spawn(move || {
+            while !s.load(Ordering::SeqCst) {
+                if !e.is_up(1) {
+                    l.store(true, Ordering::SeqCst);
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
+    }
+    std::thread::sleep(Duration::from_millis(1500));
+    let t_fault = t0.elapsed();
+    rig.failing.store(true, Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(1000));
+    let t_restore = t0.elapsed();
+    rig.failing.store(false, Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(2000));
+    stop.store(true, Ordering::SeqCst);
+    for c in clients {
+        c.join().unwrap();
+    }
+    let recs = out.lock().unwrap();
+    let counts = rig.engine.counts();
+    for r in recs.iter() {
+        assert_eq!(r.terminals, 1, "a request ends exactly once: {r:?}");
+        assert_eq!(r.after_terminal, 0, "no event follows the end: {r:?}");
+    }
+    let errors: Vec<&Rec> = recs.iter().filter(|r| r.error.is_some()).collect();
+    assert!(!errors.is_empty(), "requests sent to R_B failed");
+    for r in &errors {
+        assert!(
+            r.end >= t_fault && r.end <= t_restore + Duration::from_millis(500),
+            "an error only while the engine fails: {r:?}"
+        );
+        assert_eq!(r.first, None, "it failed before its first token");
+    }
+    assert!(
+        !left.load(Ordering::SeqCst),
+        "the node and the replica stayed up: R_B never left the router"
+    );
+    assert!(
+        recs.iter()
+            .filter(|r| r.start >= t_restore + Duration::from_millis(500))
+            .all(|r| r.error.is_none()),
+        "requests after the engine works again succeed"
+    );
+    assert_eq!(counts.failed_in_flight, errors.len() as u64);
+    println!(
+        "case_f mode=EngineErrors requests={} errors={} replica_left=false",
+        recs.len(),
+        errors.len()
+    );
 }

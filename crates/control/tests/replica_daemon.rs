@@ -218,3 +218,123 @@ fn a_request_does_not_outlive_the_head_connection_that_started_it() {
     assert_eq!(n, 3);
     let _ = EchoLauncher::default();
 }
+
+// hardware: none
+#[test]
+fn a_replica_answers_for_the_model_it_holds_whatever_the_head_calls_it() {
+    // The head's id is the file's stem or its alias; the replica's is the sha256 name of its own
+    // copy. A request for one is a request for the other.
+    let board = MemTransport::switchboard();
+    let cfg = config(1000, &["a", "b"], &[1, 2]);
+    let launcher = Arc::new(ReplicaLauncher::new(1, || {
+        let mut e = FakeEngine::new(|_| "ok".into());
+        e.set_model_id("5eed5eed");
+        Arc::new(e)
+    }));
+    let _b = daemon(&board, &cfg, "b", launcher as _);
+    let ta: Arc<dyn Transport> = Arc::new(board.node(&id("a")));
+    let peer = cfg.peer(&id("b")).unwrap();
+    client::request(ta.as_ref(), &peer, &start(1, "p"), &[]).unwrap();
+    let front: Arc<dyn Engine> = Arc::new(FakeEngine::fixed("x"));
+    let e = RemoteEngine::new(front, ta, peer, 1);
+    e.connect(&|_| {}).unwrap();
+    // The request names the head's model, `fake`.
+    let mut rx = ask(&e, "hello", 5);
+    let mut tokens = 0;
+    let mut last = None;
+    while let Some(ev) = rx.blocking_recv() {
+        match ev {
+            GenEvent::Token(_) => tokens += 1,
+            other => last = Some(other),
+        }
+    }
+    assert_eq!(
+        tokens, 2,
+        "the replica generated for its own model: {last:?}"
+    );
+    assert!(matches!(last, Some(GenEvent::Finished { .. })));
+}
+
+// hardware: none
+#[test]
+fn the_router_sends_a_replica_no_more_than_it_reports() {
+    use tetraeder_control::head::{ClusterEngine, ClusterHead, ReplicaTarget, StartSpec};
+    use tetraeder_control::monitor::Monitor;
+    let board = MemTransport::switchboard();
+    let cfg = config(1000, &["a", "b"], &[1, 2]);
+    // The replica takes one request at once; the plan said three.
+    let launcher = Arc::new(ReplicaLauncher::new(1, || {
+        let mut e = FakeEngine::new(|_| "z".repeat(60));
+        e.token_delay = Duration::from_millis(10);
+        Arc::new(e)
+    }));
+    let _a = daemon(&board, &cfg, "a", Arc::new(EchoLauncher::default()));
+    let _b = daemon(&board, &cfg, "b", launcher as _);
+    let ta: Arc<dyn Transport> = Arc::new(board.node(&id("a")));
+    let monitor = Arc::new(Monitor::start(Arc::clone(&ta), cfg.clone()));
+    let front: Arc<dyn Engine> = Arc::new(FakeEngine::fixed("x"));
+    let remote = RemoteEngine::new(
+        Arc::clone(&front),
+        Arc::clone(&ta),
+        cfg.peer(&id("b")).unwrap(),
+        0,
+    );
+    let engine = Arc::new(ClusterEngine::new(
+        front,
+        vec![ReplicaTarget {
+            engine: remote.clone() as Arc<dyn Engine>,
+            remote: Some(remote),
+            cap: 3,
+        }],
+        8,
+        None,
+    ));
+    let _head = ClusterHead::start(
+        &engine,
+        &monitor,
+        &ta,
+        vec![(
+            0,
+            id("b"),
+            StartSpec {
+                plan: String::new(),
+                model_sha256: "0".repeat(64),
+                segments: Vec::new(),
+                predicted_s: Vec::new(),
+            },
+        )],
+    );
+    assert!(wait_until(Duration::from_secs(10), || engine.up_count() == 1).is_some());
+    let e = Arc::clone(&engine);
+    let load: Vec<_> = (0..3)
+        .map(|i| {
+            let e = Arc::clone(&e);
+            std::thread::spawn(move || {
+                let mut rx = e
+                    .generate(GenerateRequest {
+                        model: "fake".into(),
+                        prompt: format!("request {i}").bytes().map(u32::from).collect(),
+                        params: SamplingParams {
+                            max_tokens: 100,
+                            ..SamplingParams::default()
+                        },
+                        constraint: None,
+                        cancel: CancellationToken::new(),
+                    })
+                    .unwrap();
+                while rx.blocking_recv().is_some() {}
+            })
+        })
+        .collect();
+    let mut most = 0;
+    let t0 = std::time::Instant::now();
+    while t0.elapsed() < Duration::from_millis(400) {
+        most = most.max(engine.outstanding(0));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(most, 1, "one at the replica, the others wait at the router");
+    assert!(engine.queued() >= 1);
+    for t in load {
+        t.join().unwrap();
+    }
+}

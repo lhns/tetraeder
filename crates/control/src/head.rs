@@ -192,6 +192,20 @@ impl ClusterEngine {
         self.inner.set_up(r, up);
     }
 
+    /// What replica `r` reported it takes at once: the router sends it at most the smaller of
+    /// that and the cap it was configured with (requests over its limit would queue inside the
+    /// replica, where they cannot move).
+    pub fn set_reported_cap(&self, r: u32, reported: u32) {
+        let configured = self.inner.targets[r as usize].cap;
+        let cap = if reported == 0 {
+            configured
+        } else {
+            configured.min(reported)
+        };
+        let actions = lock(&self.inner.state).router.set_cap(ReplicaId(r), cap);
+        self.inner.execute(actions);
+    }
+
     pub fn set_kv_format(&self, r: u32, format: &str) {
         if let Some(f) = lock(&self.inner.state).kv_formats.get_mut(r as usize) {
             *f = format.to_owned();
@@ -661,6 +675,7 @@ fn join_loop(
         match attempt() {
             Ok(info) => {
                 e.set_kv_format(r, &info.kv_format);
+                e.set_reported_cap(r, info.cap);
                 // The node may have gone down while the probe ran.
                 if monitor.state(node) == Some(NodeState::Up) && remote.is_connected() {
                     e.set_up(r, true);

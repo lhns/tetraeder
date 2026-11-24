@@ -304,6 +304,15 @@ impl Router {
         }
     }
 
+    /// Sets replica `r`'s limit (what its engine reports, at most what the plan gives it).
+    pub fn set_cap(&mut self, r: ReplicaId, cap: u32) -> Vec<Action> {
+        match self.replicas.get_mut(r.0 as usize) {
+            Some(x) if x.cap != cap => x.cap = cap,
+            _ => return Vec::new(),
+        }
+        self.pump()
+    }
+
     /// A replica joins (loaded, probed) or leaves (its node went `Down`, or its link broke). A
     /// leaving replica's in-flight requests fail; its prefixes are forgotten; the requests
     /// waiting here go to the others.
