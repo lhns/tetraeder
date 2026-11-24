@@ -73,7 +73,6 @@ fn total_hits(o: &Outcome) -> u64 {
     o.prefill.ram_hits + o.decode.ram_hits
 }
 
-#[test]
 fn step(step: u32, n_tokens: u32, ids: &[u16]) -> Record {
     Record::Step(LayerStep {
         step,
