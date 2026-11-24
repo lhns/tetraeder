@@ -14,6 +14,15 @@ cd "$(dirname "$0")/.." || exit 1
 mkdir -p runs/vast
 log=runs/vast/fetch_exit.log
 echo "=== RUN $(date +%FT%T) fetch_exit_model.sh ===" >> "$log"
+# REQUIRE_ONE_NUMA=1 (judged sessions, ADR 0091 answer 8): a host with more than one NUMA node is refused before a byte
+# of the 142 GB is paid for
+if [ "${REQUIRE_ONE_NUMA:-0}" = 1 ]; then
+  lscpu > runs/vast/lscpu.txt 2>&1
+  if ! python3 -I scripts/sc_gates.py numa runs/vast/lscpu.txt >> "$log" 2>&1; then
+    echo "FETCH_DONE rc=3 (not a one-NUMA-node host, nothing downloaded)" >> "$log"
+    exit 3
+  fi
+fi
 model=Qwen/Qwen3-235B-A22B-GGUF
 q=Q4_K_M/Qwen3-235B-A22B-Q4_K_M
 dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}/Qwen__Qwen3-235B-A22B-GGUF"

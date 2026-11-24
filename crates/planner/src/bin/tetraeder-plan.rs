@@ -166,6 +166,15 @@ enum Command {
         /// `VRAM_SLOTS,RAM_SLOTS` of the segment and its anchors.
         #[arg(long)]
         pin: String,
+        /// The segment holds the embedding (the first segment of a model).
+        #[arg(long)]
+        embed: bool,
+        /// The segment computes the output head (the last segment of a model).
+        #[arg(long)]
+        head: bool,
+        /// Refuse to write a prediction whose anchor fit band is above this (ADR 0092 section 6).
+        #[arg(long, default_value_t = tetraeder_planner::segment::FIT_BAND_LIMIT)]
+        max_band: f64,
         #[arg(long, default_value_t = 2048)]
         ubatch: u32,
         #[arg(long, default_value_t = 2048)]
@@ -469,6 +478,9 @@ fn main() -> Result<()> {
             layout,
             layers,
             pin,
+            embed,
+            head,
+            max_band,
             ubatch,
             prompt,
             r#gen,
@@ -524,7 +536,11 @@ fn main() -> Result<()> {
             let (pred, fitted) = tetraeder_planner::segment_predict(
                 &graph,
                 &layout,
-                span,
+                tetraeder_plan::SegmentShape {
+                    layers: span,
+                    embed,
+                    head,
+                },
                 (v, r),
                 &w,
                 threads,
@@ -533,13 +549,14 @@ fn main() -> Result<()> {
                 &replay,
             )
             .map_err(anyhow::Error::msg)?;
+            pred.check_fit_band(max_band).map_err(anyhow::Error::msg)?;
             if let Some(p) = &hw_out {
                 std::fs::write(p, fitted.to_toml()?)
                     .with_context(|| format!("write {}", p.display()))?;
             }
             let rv: serde_json::Value = serde_json::from_str(&read(&tier_replay)?)
                 .with_context(|| format!("parse {}", tier_replay.display()))?;
-            let env: BTreeMap<String, String> = BTreeMap::from([
+            let mut env: BTreeMap<String, String> = BTreeMap::from([
                 ("TETRAEDER_EXIT_GPU".into(), "1".into()),
                 ("TETRAEDER_EXIT_LAYERS".into(), layers.clone()),
                 ("TETRAEDER_EXIT_SLOTS".into(), v.to_string()),
@@ -550,6 +567,9 @@ fn main() -> Result<()> {
                 ("TETRAEDER_EXIT_DECODE".into(), r#gen.to_string()),
                 ("TETRAEDER_EXIT_THREADS".into(), threads.to_string()),
             ]);
+            if head {
+                env.insert("TETRAEDER_EXIT_HEAD".into(), "1".into());
+            }
             let doc = serde_json::json!({
                 "kind": "segment-predict",
                 "hw_sha256": multi_cli::sha256_hex(hw_text.as_bytes()),

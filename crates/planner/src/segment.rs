@@ -17,8 +17,14 @@ use serde::Serialize;
 use serde_json::Value;
 use tetraeder_costmodel::calib::{Anchor, fit};
 use tetraeder_costmodel::predict::{ReadPath, predict};
-use tetraeder_plan::{KvFormat, Span};
+use tetraeder_plan::{KvFormat, SegmentShape, Span};
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
+
+/// The largest fit band a prediction may be frozen on (ADR 0092 section 6, owner answer 7 of
+/// ADR 0091): the band is the largest |ln(pred / meas)| of the anchors after the fit. Real-hidden
+/// anchors measured 0.07; the limit is the 0.15 line the prediction itself is judged by, since an
+/// anchor fit that misses its own anchors by more cannot be trusted to land inside it.
+pub const FIT_BAND_LIMIT: f64 = 0.15;
 
 /// One anchor: a span, its slot pair and the result files of its rounds (`exit_regime` JSON).
 pub struct SegmentAnchor {
@@ -39,6 +45,8 @@ pub struct SegmentPrediction {
     pub pp_tps: f64,
     pub tg_tps: f64,
     pub request_s: f64,
+    /// The same features on the unfitted graph: the node-predict and cluster segment terms.
+    pub uncalibrated_request_s: f64,
     pub binding: String,
     pub tg_breakdown: Vec<(String, f64)>,
     pub pp_breakdown: Vec<(String, f64)>,
@@ -60,6 +68,21 @@ pub struct SegmentPrediction {
     pub replay_full_hit_share: f64,
     pub replay_ram_hit_rate: f64,
     pub replay_layer_rows: usize,
+}
+
+impl SegmentPrediction {
+    /// Refuses a prediction whose anchors the fit does not reproduce within `limit`; a
+    /// prediction is not frozen on such a fit.
+    pub fn check_fit_band(&self, limit: f64) -> Result<(), String> {
+        if self.band.is_finite() && self.band <= limit {
+            Ok(())
+        } else {
+            Err(format!(
+                "the fit band {:.3} is above the limit {limit}: the anchors do not agree, nothing is frozen",
+                self.band
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -89,14 +112,16 @@ fn used(a: &SegmentAnchor, r: &BuilderRun) -> AnchorUsed {
     }
 }
 
-/// Fits `hw` to `anchors` and prices `span` of `layout` at `(vram, ram)` slots from `replay`.
+/// Fits `hw` to `anchors` and prices the segment `seg` of `layout` at `(vram, ram)` slots from
+/// `replay`. The anchors are always bare spans (no embedding, no head); `seg` says whether the
+/// segment holds them, so the whole model `0..n` with both prices as `node-predict` does.
 /// Returns the prediction and the fitted graph. `threads` and `ubatch` are the runs' (anchors
-/// and judged share them). The replay must hold per-layer rows for exactly `span`.
+/// and judged share them). The replay must hold per-layer rows for exactly the span.
 #[allow(clippy::too_many_arguments)]
 pub fn segment_predict(
     hw: &HardwareGraph,
     layout: &ModelLayout,
-    span: Span,
+    seg: SegmentShape,
     (vram, ram): (u32, u32),
     w: &Workload,
     threads: u32,
@@ -104,6 +129,7 @@ pub fn segment_predict(
     anchors: &[SegmentAnchor],
     replay: &[TierOutcome],
 ) -> Result<(SegmentPrediction, HardwareGraph), String> {
+    let span = seg.layers;
     if span.1 as usize > layout.layers.len() || span.0 >= span.1 {
         return Err(format!(
             "span {}..{} outside the layout's {} layers",
@@ -149,7 +175,7 @@ pub fn segment_predict(
         .ok_or("no link between the GPU and the CPU")?;
     let f = fit(hw, &list, &gpu.id, &cpu.id, &link.id).map_err(|e| e.to_string())?;
 
-    let sub = segment_layout(layout, span, false, false);
+    let sub = segment_layout(layout, span, seg.embed, seg.head);
     let o = replay
         .iter()
         .find(|t| t.vram_slots == vram && t.ram_slots == ram && t.policy == "lru" && t.prefetch)
@@ -185,6 +211,7 @@ pub fn segment_predict(
         pp_tps: p.pp_tok_s,
         tg_tps: p.tg_tok_s,
         request_s: p.request_s,
+        uncalibrated_request_s: u.request_s,
         binding: p.binding,
         tg_breakdown: p.tg_breakdown,
         pp_breakdown: p.pp_breakdown,

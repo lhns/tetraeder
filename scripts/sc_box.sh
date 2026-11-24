@@ -2,6 +2,8 @@
 # Session segment-confirm (tree node bench-235b-segment-confirm, ADR 0092 section 6, ADR 0091 Case S): one exit segment of the
 # Qwen3-235B-A22B (layers SPLIT..END, no head, VRAM slots and RAM slots per layer, ubatch 2048) predicted from a routing trace
 # and anchors, then measured. Stages (STAGES, in order; each ends with a marker in runs/sc/sc_box.log):
+#   gates    first, before the model download (run it alone: STAGES=gates): lscpu shows exactly one NUMA node and the co-tenant
+#            reading of `engine_sample.py cotenant` is under the limit (ADR 0091 answer 8; scripts/sc_gates.py), else abort
 #   env      host facts of the box -> env/
 #   build    cargo release build: tetraeder (CUDA), tetraeder-plan, tetraeder-bench and the exit_regime test binary
 #   disk     stage 1: `tetraeder plan layout`, `tetraeder-bench disk-curve` (idle, with copy_bytes_per_s), the node graph
@@ -10,15 +12,20 @@
 #            env.json and into hw.toml (cpu0 capacity_bytes)
 #   trace    stage 2: whole-model streamed greedy run of the frozen exit prompt as two chained builders (DUMP_V, DUMP_R slots
 #            each, no warm, report only): the routing trace and the hidden rows entering layer SPLIT; both hashed
-#   anchors  stage 3: the segment truncated to A1_END and A2_END, SLOTS (VRAM, RAM), fixed-seed hidden input, no head, warm 1,
-#            ANCHOR_ROUNDS (2) rounds each
+#   anchors  stage 3: the segment truncated to A1_END and A2_END, SLOTS (VRAM, RAM), the hidden rows dumped from the frozen prompt
+#            (TETRAEDER_EXIT_HIDDEN_IN, ADR 0091 answer 7), no head, warm 1, ANCHOR_ROUNDS (2) rounds each
 #   predict  stage 4: `tetraeder-bench replay --layers SPLIT..END --warm 1` of the trace, `tetraeder-plan segment-predict`
-#            (fit on the anchors, price the segment from the replay), then the freeze: SHA256SUMS and FROZEN.sha256
-#   judged   stage 5: refuses to run unless FROZEN_SHA equals predictions/FROZEN.sha256 and every frozen file matches; the
-#            segment with the trace run's hidden rows as input, warm 1, ROUNDS (3) rounds (a rerun with more adds rounds)
-#   report   stage 6, report only: the segment with fixed-seed input, and the anchors again with real hidden rows plus the
-#            fit redone on them (report/pred-real-anchors.json, not frozen)
-# Env: RESULTS_NAME, STAGES, FROZEN_SHA, ROUNDS, ANCHOR_ROUNDS, THREADS, EMULATE_RAM_GB (64; 0 = no balloon),
+#            (fit on the anchors, price the segment from the replay), then the freeze: SHA256SUMS and FROZEN.sha256. The freeze is
+#            refused (nothing written) when an anchor ran on fixed-seed input or the fit band is above FIT_BAND_MAX (0.15)
+#   judged   stage 5: refuses to run unless `sc_gates.py judged-start` passes (one NUMA node, the co-tenant reading under the
+#            limit, FROZEN_SHA equal to predictions/FROZEN.sha256 and every frozen file matching, fit band within the limit,
+#            anchors on real hidden rows); the segment with the trace run's hidden rows as input, warm 1, ROUNDS (3) rounds
+#            (a rerun with more adds rounds). Right after round 2 the early A/A (r1 against r2, band 0.08 on T) aborts the
+#            session when it is outside the band
+#   aalast   the A/A last: the judged plan once more as judged/aa-last.json, behind the same gates. It must be the last stage
+#            of the session; scripts/sc_summary.py counts the session clean only with it inside the band
+#   report   stage 6, report only: the segment with fixed-seed input
+# Env: RESULTS_NAME, STAGES, FROZEN_SHA, FIT_BAND_MAX, COTENANT_S, ROUNDS, ANCHOR_ROUNDS, THREADS, EMULATE_RAM_GB (64; 0 = no balloon),
 # MODEL (the first shard), PROMPT_FILE (default bench/prompts/exit_prompt.txt; empty = pseudo-random ids), SPLIT, END, A1_END,
 # A2_END, V, R, DUMP_V, DUMP_R, UBATCH, PREFILL, DECODE. Defaults are the 235B segment; the rehearsal on the synthetic model
 # overrides them (docs in bench/results/<name>/README.md). Never overwrite this file while it runs.
@@ -31,7 +38,7 @@ name="${RESULTS_NAME:?set RESULTS_NAME}"
 out="$root/bench/results/$name"
 mkdir -p "$out"/{env,disk,trace,anchors,predictions,judged,report,build} runs/sc
 log=runs/sc/sc_box.log
-stages="${STAGES:-env build disk balloon trace anchors predict}"
+stages="${STAGES:-gates env build disk balloon trace anchors predict}"
 say() { echo "[$(date +%T)] $*"; }
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:/root/.local/bin:$PATH"
@@ -104,6 +111,17 @@ run_one() { # run_one TAG JSON [ENV=VALUE...]
 # the segment's exit_regime environment (the planner's segment-predict writes the same keys; stage predict checks it)
 seg_env() { # seg_env END
   echo "TETRAEDER_EXIT_LAYERS=$split..$1" "TETRAEDER_EXIT_SLOTS=$vs" "TETRAEDER_EXIT_RAM_SLOTS=$rs" "TETRAEDER_EXIT_PREFILL_WARM=1"
+}
+
+# ADR 0091 answer 8 and docs/box-driver.md: one NUMA node and a quiet host, read by the repo's own sampler. Run it before the
+# model download (STAGES=gates); the judged stages check both again from the files it writes.
+st_gates() {
+  lscpu > "$out/env/lscpu.txt" 2>&1
+  python3 -I scripts/sc_gates.py numa "$out/env/lscpu.txt" || die "not a one-NUMA-node host: destroy the box before the download"
+  python3 scripts/engine_sample.py cotenant --seconds "${COTENANT_S:-20}" --out "$out/env/cotenant.json" \
+    || die "co-tenant reading over the limit or without counters (env/cotenant.json): destroy the box"
+  python3 -I scripts/sc_gates.py cotenant "$out/env/cotenant.json" || die "co-tenant gate"
+  say "gates done"
 }
 
 st_env() {
@@ -187,9 +205,9 @@ st_anchors() {
   local r
   for r in $(seq 1 "$arounds"); do
     # shellcheck disable=SC2046
-    run_one "a1-r$r" "$out/anchors/a1-r$r.json" $(seg_env "$a1")
+    run_one "a1-r$r" "$out/anchors/a1-r$r.json" $(seg_env "$a1") "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
     # shellcheck disable=SC2046
-    run_one "a2-r$r" "$out/anchors/a2-r$r.json" $(seg_env "$a2")
+    run_one "a2-r$r" "$out/anchors/a2-r$r.json" $(seg_env "$a2") "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
   done
   say "anchors done"
 }
@@ -204,12 +222,15 @@ st_predict() {
   [ -s "$trace" ] || die "no routing trace on the box"
   local tsha
   tsha=$(awk '{print $1}' "$out/trace/routing.sha256")
+  rm -f "$p/SHA256SUMS" "$p/FROZEN.sha256" # a refused freeze leaves no frozen prediction behind
+  # ADR 0091 answer 7: anchors on real hidden rows, and no freeze on a fit band over the limit
+  python3 -I scripts/sc_gates.py anchors-real "$out"/anchors/a*-r*.json || die "anchors are not on real hidden rows: nothing frozen"
   "$bench" replay --trace "$trace" --vram "$vs" --ram "$rs" --policies lru --vram-policy static --layers "$split..$end" --warm 1 \
     --out "$p/replay.json" || die "replay"
   # shellcheck disable=SC2046
   "$plan" segment-predict --hw "$p/hw.toml" --layout "$out/layout.json" --layers "$split..$end" --pin "$vs,$rs" --ubatch "$ub" \
     --prompt "$pre" --gen "$dec" $(anchor_args "$out/anchors" "") --tier-replay "$p/replay.json" --trace-sha256 "$tsha" \
-    --out "$p/pred.json" --hw-out "$p/fitted.toml" || die "segment-predict"
+    --max-band "${FIT_BAND_MAX:-0.15}" --out "$p/pred.json" --hw-out "$p/fitted.toml" || die "segment-predict (a fit band over the limit refuses the freeze)"
   # the environment the planner wrote must be the one the anchors ran (apart from the span's end and the warm count)
   python3 -I - "$p/pred.json" "$vs" "$rs" "$ub" "$pre" "$dec" "$threads" << 'EOF' || die "pred.json environment differs from the anchors'"
 import json, sys
@@ -228,6 +249,7 @@ if pr["footprint_gpu"] > pr["gpu_budget"] or pr["footprint_host"] > pr["ram_budg
     print("the pick does not fit its budgets")
     sys.exit(1)
 EOF
+  python3 -I scripts/sc_gates.py fitband "$p/pred.json" --limit "${FIT_BAND_MAX:-0.15}" || die "fit band over the limit: nothing frozen"
   (cd "$out" && sha256sum layout.json disk/disk-curve.json predictions/hw.toml predictions/fitted.toml predictions/replay.json \
     predictions/pred.json trace/routing.sha256 trace/hidden.sha256 anchors/*.json $(ls env.json 2> /dev/null) > predictions/SHA256SUMS \
     && (cd predictions && sha256sum SHA256SUMS > FROZEN.sha256))
@@ -236,17 +258,15 @@ EOF
   say "predict done: frozen, fetch and commit predictions/ before the judged stage"
 }
 
+# Everything the judged stages need, as code (scripts/sc_gates.py judged-start): one NUMA node, the co-tenant reading, the frozen
+# hash and files, the fit band, anchors on real hidden rows. The hidden rows file is not in the repo, so it is checked here.
 freeze_gate() {
-  [ -s "$p/FROZEN.sha256" ] || die "no $p/FROZEN.sha256: the prediction is not written"
-  local want
-  want=$(awk '{print $1}' "$p/FROZEN.sha256")
-  [ "${FROZEN_SHA:-}" = "$want" ] || die "FROZEN_SHA '${FROZEN_SHA:-}' is not the sha256 of SHA256SUMS ($want): commit the prediction first, then pass it"
-  (cd "$p" && sha256sum -c FROZEN.sha256 && cd "$out" && sha256sum -c predictions/SHA256SUMS) > "$out/judged/freeze-check.txt" 2>&1 \
-    || die "a frozen file changed (see $out/judged/freeze-check.txt)"
+  python3 -I scripts/sc_gates.py judged-start --results "$out" --frozen-sha "${FROZEN_SHA:-}" > "$out/judged/gates.txt" 2>&1 \
+    || { cat "$out/judged/gates.txt"; die "a judged gate failed (see $out/judged/gates.txt)"; }
   local h
   h=$(sha256sum "$hidden" | awk '{print $1}')
   [ "$h" = "$(awk '{print $1}' "$out/trace/hidden.sha256")" ] || die "the hidden rows file differs from the traced one"
-  say "freeze gate ok ($want)"
+  say "judged gates ok ($(awk '{print $1}' "$p/FROZEN.sha256"))"
 }
 
 judged_env() { # the frozen environment of pred.json plus the real hidden rows and the warm request
@@ -264,29 +284,33 @@ st_judged() {
   while IFS= read -r line; do [ -n "$line" ] && envs+=("$line"); done < <(judged_env)
   for r in $(seq 1 "$rounds"); do
     run_one "judged-r$r" "$out/judged/r$r.json" "${envs[@]}" "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
+    # the early A/A (ADR 0091 answer 8): the first two rounds are one pair of the same plan right after warm-up
+    if [ "$r" = 2 ]; then
+      python3 -I scripts/sc_gates.py aa "$out/judged/r1.json" "$out/judged/r2.json" | tee "$out/judged/aa-early.txt"
+      [ "${PIPESTATUS[0]}" = 0 ] || die "early A/A outside the band: the session cannot be clean, abort and destroy the box"
+    fi
   done
   say "judged done"
+}
+
+# the A/A last: the judged plan once more, behind the same gates, as the last run of the session
+st_aalast() {
+  freeze_gate
+  local line envs=()
+  while IFS= read -r line; do [ -n "$line" ] && envs+=("$line"); done < <(judged_env)
+  run_one "aa-last" "$out/judged/aa-last.json" "${envs[@]}" "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
+  [ -s "$out/judged/aa-last.json" ] || die "the A/A last left no result"
+  python3 -I scripts/sc_gates.py aa "$out/judged/r1.json" "$out/judged/aa-last.json" | tee "$out/judged/aa-last.txt" || true
+  say "aalast done"
 }
 
 st_report() {
   [ -s "$p/FROZEN.sha256" ] || die "no frozen prediction"
   local r line envs=()
   while IFS= read -r line; do [ -n "$line" ] && envs+=("$line"); done < <(judged_env)
-  for r in 1 2; do
+  for r in 1 2; do # the fixed-seed segment: the routing gap between anchor-style input and the real rows
     run_one "seed-r$r" "$out/report/seed-r$r.json" "${envs[@]}"
   done
-  for r in $(seq 1 "$arounds"); do
-    # shellcheck disable=SC2046
-    run_one "real-a1-r$r" "$out/report/real-a1-r$r.json" $(seg_env "$a1") "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
-    # shellcheck disable=SC2046
-    run_one "real-a2-r$r" "$out/report/real-a2-r$r.json" $(seg_env "$a2") "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
-  done
-  local af1="" af2=""
-  for r in $(seq 1 "$arounds"); do af1="$af1${af1:+,}$out/report/real-a1-r$r.json"; af2="$af2${af2:+,}$out/report/real-a2-r$r.json"; done
-  "$plan" segment-predict --hw "$p/hw.toml" --layout "$out/layout.json" --layers "$split..$end" --pin "$vs,$rs" --ubatch "$ub" \
-    --prompt "$pre" --gen "$dec" --anchor "a1:$split..$a1:$af1" --anchor "a2:$split..$a2:$af2" --tier-replay "$p/replay.json" \
-    --trace-sha256 "$(awk '{print $1}' "$out/trace/routing.sha256")" --out "$out/report/pred-real-anchors.json" \
-    --hw-out "$out/report/fitted-real-anchors.toml" || say "refit on real-hidden anchors failed"
   say "report done"
 }
 
@@ -321,7 +345,18 @@ st_pinned() {
   say "pinned done"
 }
 
+# aalast is the last judged-plan run of the session: nothing may follow it, or it is not the A/A last
+check_order() {
+  local s seen=0
+  for s in $stages; do
+    [ "$seen" = 1 ] && die "stage $s after aalast: the A/A last must be the last stage"
+    [ "$s" = aalast ] && seen=1
+    declare -F "st_$s" > /dev/null || die "unknown stage $s"
+  done
+}
+
 main() {
+  check_order
   say "sc_box start stages='$stages' threads=$threads out=$out model=$model span=$split..$end slots=$vs,$rs"
   gpu_sampler_start
   local s

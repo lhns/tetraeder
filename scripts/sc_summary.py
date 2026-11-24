@@ -3,17 +3,22 @@
 
     sc_summary.py bench/results/<name>        writes <name>/verdict.json and prints the tables
 
-Order of judgement (ADR 0092 section 1 and 6, owner answers 1 and 3):
-  1. cleanliness per judged round: warm block says covering and not unclean (timed prefill read 0 bytes), balloon_ok not
-     false, cotenant_ok not false, no disqualifying GPU throttle bit before or after the run, the engine's own result.
-     At least ROUNDS (3) clean rounds are needed, else no verdict (rerun).
-  2. the routing gate on the medians of the clean rounds against the replay used for the frozen prediction: decode
-     vram share within 0.02 of vram_pair_share, full-hit share within 0.02 of full_hit_rate_mean, RAM hit within 0.005 of
-     ram_hit_rate_mean. A miss is no verdict; the errors are still printed beside it.
-  2b. the session A/A (ADR 0068, ADR 0091 Case S): the judged plan repeated as the last run of the session (the last
-     report/extra round) agrees with the first judged round within 0.08 on T = 2048 / pp + 128 / tg, else no verdict.
-  3. e = pred / meas - 1 on the medians of the clean rounds, for pp (prefill_tok_s) and tg (decode_tok_s); pass when both
-     are within 0.15. The line is not changed after a miss.
+Clean, then judged (ADR 0091 answers 7 and 8; every rule is a line of `rules` in verdict.json, all must hold):
+  rounds_clean     per judged round: warm block says covering and not unclean (timed prefill read 0 bytes), balloon_ok not
+                   false, cotenant_ok not false, no disqualifying GPU throttle bit before or after the run; at least
+                   ROUNDS (3) clean rounds
+  routing_gate     medians of the clean rounds against the replay of the frozen prediction: decode vram share within 0.02
+                   of vram_pair_share, full-hit share within 0.02, RAM hit within 0.005
+  aa_early         judged r1 against r2 (right after warm-up) within 0.08 on T = 2048 / pp + 128 / tg
+  aa               judged r1 against judged/aa-last.json, the judged plan repeated as the last run, within 0.08 on T
+  one_numa_node    env/lscpu.txt shows exactly one NUMA node
+  cotenant_ssh     env/cotenant.json written by `engine_sample.py cotenant`, under the limit
+  freeze           predictions/FROZEN.sha256 and every file of SHA256SUMS match
+  fit_band         the anchors' fit band within FIT_BAND_LIMIT (scripts/sc_gates.py, crates/planner/src/segment.rs)
+  anchors_real_hidden  every anchor ran on the dumped hidden rows, not fixed-seed input
+There is no prefill noise band (owner answer 8). An unclean session gives no verdict; the errors on the medians are still printed.
+Then, only when clean: e = pred / meas - 1 on the medians of the clean rounds, for pp (prefill_tok_s) and tg
+(decode_tok_s); pass when both are within 0.15. The line is not changed after a miss.
 Everything else (anchors, fixed-seed segment, whole-model run, refit on real-hidden anchors) is report only.
 """
 
@@ -26,11 +31,13 @@ import os
 import statistics
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sc_gates as sg  # noqa: E402
+
 LINE = 0.15
 GATE_SHARE = 0.02
 GATE_RAM = 0.005
-AA_BAND = 0.08  # bench/spec/phase0.toml, ADR 0091 Case S "A/A of the judged plan within band b on T"
-PROMPT, GEN = 2048, 128
+AA_BAND = sg.AA_BAND
 ROUNDS_NEEDED = 3
 OK_BITS = 0x1 | 0x2 | 0x4 | 0x100 | 0x200 | 0x400  # idle, app clocks, power cap software, and the idle gate's others
 
@@ -138,7 +145,10 @@ def main() -> int:
                                 "routing_trace": pred["routing_trace"], "hw_sha256": pred["hw_sha256"],
                                 "uncalibrated_pp_tps": pr["uncalibrated_pp_tps"],
                                 "uncalibrated_tg_tps": pr["uncalibrated_tg_tps"], "band": pr["band"]}}
-    frozen = open(os.path.join(res, "predictions", "FROZEN.sha256"), encoding="utf-8").read().split()[0]
+    try:
+        frozen = open(os.path.join(res, "predictions", "FROZEN.sha256"), encoding="utf-8").read().split()[0]
+    except (OSError, IndexError):
+        frozen = ""
     out["frozen_sha256"] = frozen
 
     files = sorted(glob.glob(os.path.join(res, "judged", "r[0-9]*.json")))
@@ -154,10 +164,12 @@ def main() -> int:
         if not why:
             clean.append(row)
     out["rounds"] = per
-    status = ""
-    if len(clean) < ROUNDS_NEEDED:
-        status = f"no verdict: {len(clean)} clean rounds of {len(per)} (need {ROUNDS_NEEDED})"
-        out["verdict"] = "no verdict"
+    rules: list[dict] = []
+
+    def rule(name: str, ok: bool, detail: str) -> None:
+        rules.append({"name": name, "ok": bool(ok), "detail": detail})
+
+    rule("rounds_clean", len(clean) >= ROUNDS_NEEDED, f"{len(clean)} clean rounds of {len(per)} (need {ROUNDS_NEEDED})")
     if clean:
         m = {k: med([c[k] for c in clean]) for k in ("pp", "tg", "vram_pair_share", "full_hit_rate_mean", "ram_hit_rate_mean")}
         out["median"] = m
@@ -172,37 +184,53 @@ def main() -> int:
             g["ok"] = g["diff"] is not None and abs(g["diff"]) <= g["line"]
         out["gate"] = gate
         out["gate_held"] = all(g["ok"] for g in gate.values())
-        if "verdict" not in out:
-            if not out["gate_held"]:
-                out["verdict"] = "no verdict"
-                status = "no verdict: the routing gate missed (" + ", ".join(
-                    f"{k} {g['diff']:+.4f} against {g['line']}" for k, g in gate.items() if not g["ok"]) + ")"
-            else:
-                ok = abs(out["e_pp"]) <= LINE and abs(out["e_tg"]) <= LINE
-                out["verdict"] = "pass" if ok else "miss"
-                status = ("pass" if ok else "miss") + f": e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}"
-                # ADR 0068 / ADR 0091 Case S: the session is clean only when the judged plan, repeated as the last run of the
-                # session (A/A), agrees with its first run within the band on T = prompt / pp + gen / tg
-                last = sorted(glob.glob(os.path.join(res, "report", "extra-r[0-9]*.json")))
-                last = [f for f in last if not f.endswith(".gpu.json")]
-                if not last:
-                    out["aa"] = None
-                    out["verdict"] = "no verdict"
-                    status = "no verdict: no A/A run of the judged plan at the end of the session (would be " + status + ")"
-                elif per:
-                    def t_of(row: dict) -> float:
-                        return PROMPT / row["pp"] + GEN / row["tg"]
-                    r_end = run_of(load(last[-1]))
-                    t0 = t_of(per[0])
-                    t1 = PROMPT / r_end["prefill_tok_s"] + GEN / r_end["decode_tok_s"]
-                    d = t1 / t0 - 1.0
-                    out["aa"] = {"start": os.path.relpath(files[0], res).replace(os.sep, "/"), "end": os.path.relpath(last[-1], res).replace(os.sep, "/"),
-                                 "t_start": t0, "t_end": t1, "diff": d, "band": AA_BAND, "ok": abs(d) <= AA_BAND,
-                                 "t_rounds": [t_of(x) for x in per]}
-                    if abs(d) > AA_BAND:
-                        out["verdict"] = "no verdict"
-                        status = (f"no verdict: the session is not clean, A/A of the judged plan on T {t0:.2f} -> {t1:.2f} s "
-                                  f"({d:+.3f}) outside the band {AA_BAND} (on the medians it would be {status})")
+        rule("routing_gate", out["gate_held"], "; ".join(f"{k} {g['diff']:+.4f} against {g['line']}" for k, g in gate.items() if g["diff"] is not None))
+
+    # A/A (ADR 0068, ADR 0091 case S, owner answer 8): the first judged round against the second right after warm-up
+    # (the early abort) and against a repeat of the judged plan as the last run of the session (judged/aa-last.json)
+    def aa_rule(name: str, a_file: str | None, b_file: str | None) -> None:
+        if not a_file or not b_file or not os.path.exists(a_file) or not os.path.exists(b_file):
+            out[name] = None
+            rule(name, False, "no such run")
+            return
+        r = sg.aa(load(a_file), load(b_file), AA_BAND)
+        r.update(first=os.path.relpath(a_file, res).replace(os.sep, "/"), second=os.path.relpath(b_file, res).replace(os.sep, "/"))
+        out[name] = r
+        rule(name, r["ok"], f"T {r['t_first']:.2f} -> {r['t_second']:.2f} s, {r['diff']:+.3f} against {AA_BAND}")
+
+    aa_rule("aa_early", files[0] if files else None, files[1] if len(files) > 1 else None)
+    aa_rule("aa", files[0] if files else None, os.path.join(res, "judged", "aa-last.json"))
+    out["t_rounds"] = [sg.t_of(run_of(load(f))) for f in files if run_of(load(f)).get("prefill_tok_s")]
+
+    # host, freeze and calibration gates, re-checked from the committed files
+    env = os.path.join(res, "env")
+    try:
+        why = sg.check_numa(open(os.path.join(env, "lscpu.txt"), encoding="utf-8").read())
+    except OSError:
+        why = ["no env/lscpu.txt"]
+    rule("one_numa_node", not why, "; ".join(why) or "lscpu shows one NUMA node")
+    why = sg.check_cotenant(os.path.join(env, "cotenant.json"))
+    rule("cotenant_ssh", not why, "; ".join(why) or "under the limit, read by engine_sample.py")
+    why = sg.check_freeze(res)
+    rule("freeze", not why, "; ".join(why) or "FROZEN.sha256 and every frozen file match")
+    why = sg.check_fit_band(os.path.join(res, "predictions", "pred.json"))
+    rule("fit_band", not why, "; ".join(why) or f"{pr['band']:.3f} within {sg.FIT_BAND_LIMIT}")
+    why = sg.check_anchors_real(sg.anchor_files(res))
+    rule("anchors_real_hidden", not why, "; ".join(why) or "every anchor ran on the dumped hidden rows")
+
+    out["rules"] = rules
+    out["clean"] = all(r["ok"] for r in rules)
+    bad = [r for r in rules if not r["ok"]]
+    out["verdict"] = "no verdict"
+    status = ""
+    if bad:
+        status = "no verdict: the session is not clean (" + "; ".join(f"{r['name']}: {r['detail']}" for r in bad) + ")"
+        if out.get("median"):
+            status += f"; on the medians e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}, not a verdict"
+    else:
+        ok = abs(out["e_pp"]) <= LINE and abs(out["e_tg"]) <= LINE
+        out["verdict"] = "pass" if ok else "miss"
+        status = ("pass" if ok else "miss") + f": e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}"
     out["status"] = status
 
     # report only
@@ -256,12 +284,11 @@ def main() -> int:
     if out.get("median"):
         m = out["median"]
         print(f"  median of {len(clean)} clean: pp {m['pp']:.2f} tg {m['tg']:.3f}  e_pp {out['e_pp']:+.3f} e_tg {out['e_tg']:+.3f}")
-        if out.get("aa"):
-            a = out["aa"]
-            print(f"  A/A on T: {a['start']} {a['t_start']:.2f} s -> {a['end']} {a['t_end']:.2f} s, {a['diff']:+.3f} against {a['band']} "
-                  f"{'ok' if a['ok'] else 'MISS'}; T of the rounds {', '.join(f'{t:.1f}' for t in a['t_rounds'])} s")
         for k, g in out["gate"].items():
             print(f"  gate {k:15} replay {g['replay']:.4f} measured {g['measured']:.4f} diff {g['diff']:+.4f} line {g['line']} {'ok' if g['ok'] else 'MISS'}")
+    print(f"  T of the judged rounds {', '.join(f'{t:.1f}' for t in out['t_rounds'])} s")
+    for r in rules:
+        print(f"  rule {r['name']:20} {'ok  ' if r['ok'] else 'FAIL'} {r['detail']}")
     return 0
 
 
