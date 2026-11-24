@@ -1,6 +1,6 @@
 # 0092. Cost model 6: routing as an input, the reader copy rate and the chunked offload copy for streamed MoE segments
 
-Status: Proposed 2026-11-24. Phase 6, milestone M3. Tree node `planner-costmodel-stream-terms`. Amends ADR 0056 (tier term, fidelity gate) and ADR 0040's builder scoring; extends ADR 0050 (c) (the replay). Fills in what ADR 0091 Case S leaves unsaid (the routing input of owner answer 6, the warm state of a judged round, the RAM budget under the balloon); Case S's candidates, workload, rounds and 15% rule do not change. Supersedes nothing.
+Status: Accepted (owner, 2026-11-24, on the recommendations; answers under "Owner answers"). Proposed 2026-11-24. Phase 6, milestone M3. Tree node `planner-costmodel-stream-terms`. Amends ADR 0056 (tier term, fidelity gate) and ADR 0040's builder scoring; extends ADR 0050 (c) (the replay). Fills in what ADR 0091 Case S leaves unsaid (the routing input of owner answer 6, the warm state of a judged round, the RAM budget under the balloon); Case S's candidates, workload, rounds and 15% rule do not change. Supersedes nothing.
 
 Evidence: [`docs/notes/stream-predict-diagnosis.md`](../notes/stream-predict-diagnosis.md) (the diagnosis; its section 7 is the outline of this ADR) and [`bench/results/stream-predict-20261124/README.md`](../../bench/results/stream-predict-20261124/README.md). Measured numbers live there; this ADR holds forms, thresholds and rules.
 
@@ -96,6 +96,14 @@ Unit and fixture tests:
 Property tests (rule 5) and fixtures and faults (rule 4), on every simulated fixture with a synthetic trace: predicted decode time non-increasing in per-layer VRAM share (Reader and Service paths; under `ServiceOverlap` only with bytes that fall with the share, as ADR 0056's notes found), in `copy_bytes_per_s` and in RAM slots at fixed VRAM slots; offload copy bytes non-decreasing in chunks; the footprint of every pick within `ram_budget`; `tier = None` and zero bytes bit-identical to cost model 5; the throttled-NVMe and co-tenant faults of ADR 0056 still move or keep the pick as before.
 
 Metrics (rule 6): no runtime component is added. The runtime counterparts exist: the VRAM pair share (`tetraeder.expert.cache.requests`), disk bytes (`tetraeder.moe.read.*`, `tetraeder.io.*`) and the plan residual per segment (`tetraeder.plan.residual`, `TetraederSegmentDrift`). `ram_budget` is recorded in `env.json`, not exported.
+
+## Owner answers (2026-11-24)
+
+1. Judged Case S rounds start warm: one request with the same prompt, then a timed request that recomputes every token with prefix reuse and prompt cache off.
+2. The node budget in Case S is the measured RAM headroom under the balloon (the rule in this ADR), not the nominal 64 GB.
+3. A routing-gate miss on the judged run is no verdict and blocks the exit like a miss; it never counts as a pass.
+4. The report-only single-node reference at about 28 RAM slots (with 16 VRAM slots) is acceptable; enumeration stays unchanged.
+5. If no RTX 3090 box with enough RAM passes the gates, `bench-235b-segment-confirm` may run on an A40 or A6000 planned against 24 GiB of VRAM, recorded as a deviation.
 
 ## Consequences
 
