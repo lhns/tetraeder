@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import types
 
 import pytest
 
@@ -293,3 +294,57 @@ def test_the_driver_prices_the_traffic_into_offers_and_create():
     assert dry("offers", "--download-gb", "20").returncode == 2
     assert dry("offers", DOWNLOAD_GB="20").returncode == 2
     assert dry("sell").returncode == 2
+
+
+# ---- the engine_sample.py cotenant subcommand and the committed real session --------------------------------------
+
+
+def fake_host(monkeypatch, busy_cpus, cg_cores):
+    """A clock that advances 1 s per sleep and a host whose `busy_cpus` CPUs are fully busy, 8 CPUs in all."""
+    now = [1000.0]
+    monkeypatch.setattr(es.time, "time", lambda: now[0])
+    monkeypatch.setattr(es.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+
+    def jiffies():
+        t = int((now[0] - 1000.0) * 100)
+        return [(t if i < busy_cpus else 0, t) for i in range(8)]
+
+    monkeypatch.setattr(es, "stat_jiffies", jiffies)
+    monkeypatch.setattr(es.ds, "cgroup_cpu_usec", lambda: int((now[0] - 1000.0) * 1e6 * cg_cores))
+
+
+@pytest.mark.parametrize("busy, rc", [(1, 0), (6, 1)])
+def test_the_cotenant_subcommand_exits_with_the_verdict(monkeypatch, tmp_path, busy, rc):
+    fake_host(monkeypatch, busy, 0.5)
+    out = tmp_path / "c.json"
+    args = types.SimpleNamespace(seconds=5.0, out=str(out))
+    assert es.cotenant(args) == rc
+    r = json.loads(out.read_text(encoding="utf-8"))
+    assert r["source"] == sg.COTENANT_SOURCE and r["host_cpus"] == 8 and r["limit"] == 4.0
+    assert abs(r["outside_cores"] - (busy - 0.5)) < 1e-6 and r["ok"] is (rc == 0)
+    assert (sg.check_cotenant(str(out)) == []) is (rc == 0)  # the gate reads the same verdict
+
+
+def test_the_cotenant_subcommand_without_a_window_is_not_a_pass(monkeypatch, tmp_path):
+    fake_host(monkeypatch, 1, 0.5)
+    assert es.cotenant(types.SimpleNamespace(seconds=0.0, out=None)) == 2
+
+
+def test_main_passes_only_the_cotenant_code_on(monkeypatch, tmp_path):
+    fake_host(monkeypatch, 1, 0.5)
+    monkeypatch.setattr(sys, "argv", ["engine_sample.py", "cotenant", "--seconds", "3"])
+    assert es.main() == 0
+
+
+def test_the_committed_two_socket_session_fails_the_numa_and_fit_gates():
+    res = ROOT / "bench" / "results" / "segment-confirm-20261124"
+    if not (res / "env" / "lscpu.txt").exists():
+        pytest.skip("no bench/results checkout")
+    assert "2 NUMA nodes" in sg.check_numa((res / "env" / "lscpu.txt").read_text(encoding="utf-8"))[0]
+    assert sg.check_freeze(str(res)) == []  # real sha256sum output, whatever the checkout's line endings
+    assert sg.check_fit_band(str(res / "predictions" / "pred.json"))  # 1.226
+    assert sg.check_fit_band(str(res / "report" / "pred-real-anchors.json")) == []  # 0.071
+    assert sg.check_anchors_real(sg.anchor_files(str(res)))  # fixed-seed anchors
+    assert sg.check_anchors_real([str(res / "report" / "real-a1-r1.json")]) == []
+    aa = sg.aa(sg.load(str(res / "judged" / "r1.json")), sg.load(str(res / "report" / "extra-r5.json")))
+    assert not aa["ok"] and abs(aa["diff"] + 0.099) < 0.001

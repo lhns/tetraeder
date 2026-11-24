@@ -1019,8 +1019,10 @@ def main():
     o.add_argument("--otel-dir", required=True, help="directory of the collector's OTLP JSON-lines files (recursive)")
     o.add_argument("--results", required=True, help="results directory whose JSONs get host_otlp")
     a = ap.parse_args()
-    return {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
-            "otlp-merge": otlp_merge, "cotenant": cotenant}[a.cmd](a)
+    if a.cmd == "cotenant":  # the only subcommand whose exit code is a verdict
+        return cotenant(a)
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+     "otlp-merge": otlp_merge}[a.cmd](a)
 
 
 if __name__ == "__main__":

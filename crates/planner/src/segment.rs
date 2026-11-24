@@ -20,7 +20,7 @@ use tetraeder_costmodel::predict::{ReadPath, predict};
 use tetraeder_plan::{KvFormat, SegmentShape, Span};
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
-/// The largest fit band a prediction may be frozen on (ADR 0092 section 6, owner answer 7 of
+/// The largest fit band a prediction may be frozen on (ADR 0092 "Rerun rules", the value proposed; owner answer 7 of
 /// ADR 0091): the band is the largest |ln(pred / meas)| of the anchors after the fit. Real-hidden
 /// anchors measured 0.07; the limit is the 0.15 line the prediction itself is judged by, since an
 /// anchor fit that misses its own anchors by more cannot be trusted to land inside it.
