@@ -38,6 +38,7 @@ gantt
     Planner picks the KV format :memory_kv_auto, 2026-11-23, 2026-11-23
     Disk prefix restore off the step :memory_prefix_disk_async, 2026-11-23, 2026-11-23
     Prefix cache spills to SSD :memory_prefix_ssd, 2026-11-23, 2026-11-23
+    Read-free covering expert tiers :memory_ram_tier_complement, 2026-11-24, 2026-11-24
     section planner - planner and cost model
     One placement plan format :planner_plan_ir, 2026-10-29, 2026-10-31
     Quality profile per tensor :planner_quality, 2026-10-29, 2026-11-10
@@ -53,6 +54,7 @@ gantt
     Price routed expert traffic :planner_cost_v4, 2026-11-19, 2026-11-19
     Price decode at measured clocks :planner_cost_model_v5, 2026-11-20, 2026-11-21
     Experts on GPU and SSD only :planner_low_ram_modes, 2026-11-23, 2026-11-23
+    Node prediction equals the cluster refe… :planner_node_predict_check, 2026-11-24, 2026-11-24
     Recheck expert-parallel prefill error :planner_ep_prefill_recheck, 2026-11-21, 2026-11-21
     Approve the low-clock anchor :planner_owner_layer_anchor, 2026-11-21, 2026-11-21
     section multi - multi-GPU executor
@@ -85,6 +87,7 @@ gantt
     LoRA, multimodal, multi-model scope :serving_parity_owner_scope, 2026-11-23, 2026-11-23
     Which Strata model families to add :serving_strata_owner_scope, 2026-11-23, 2026-11-23
     Recurrent models break slot reuse :serving_recurrent_reuse, 2026-11-23, 2026-11-23
+    libllama path differs on CUDA :serving_cuda_parity, 2026-11-24, 2026-11-24
     section bench - benchmarks and verdicts
     Paired benchmark harness, baselines :bench_harness, 2026-10-30, 2026-11-15
     Measured noise bands per GPU :bench_noise_bands, 2026-11-09, 2026-11-11
@@ -147,5 +150,5 @@ gantt
     Routing trace as prediction input :cluster_owner_routing_input, 2026-11-24, 2026-11-24
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-exit-segment-harness`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-ram-tier-complement`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-node-predict-check`, `planner-costmodel-stream-terms`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-cuda-parity`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-rehearsal`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-235b-segment-confirm`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-planner-hardening`, `cluster-join-leave`, `cluster-pipeline-prefill`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-exit-segment-harness`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-costmodel-stream-terms`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-rehearsal`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-235b-segment-confirm`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-planner-hardening`, `cluster-join-leave`, `cluster-pipeline-prefill`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
 <!-- END GENERATED: timeline -->

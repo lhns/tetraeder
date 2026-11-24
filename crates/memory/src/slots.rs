@@ -174,6 +174,15 @@ impl LayerSlots {
         }
     }
 
+    /// Free the slot of `expert` (it keeps its pin, if any) and return it; `None` when the
+    /// expert was not resident. The slot is the next one a miss takes.
+    pub fn release(&mut self, expert: u32) -> Option<u32> {
+        let slot = self.table.remove(&expert)?;
+        self.owner[slot as usize] = None;
+        self.stamp[slot as usize] = 0;
+        Some(slot)
+    }
+
     /// Forget every resident (a load failed and the slots hold no valid weights). Pins and
     /// statistics stay.
     pub fn clear(&mut self) {
@@ -614,6 +623,25 @@ impl SlotCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_frees_a_slot_for_the_next_miss() {
+        let mut l = LayerSlots::new(8, 2);
+        assert!(matches!(l.lookup(3), Lookup::Miss { slot: 0, .. }));
+        assert!(matches!(l.lookup(4), Lookup::Miss { slot: 1, .. }));
+        assert_eq!(l.release(3), Some(0));
+        assert_eq!(l.release(3), None);
+        assert_eq!((l.slot_of(3), l.owner_of(0), l.resident()), (None, None, 1));
+        // The freed slot is taken before 4 (the older of the rest) is evicted.
+        assert_eq!(
+            l.lookup(5),
+            Lookup::Miss {
+                slot: 0,
+                evicted: None
+            }
+        );
+        assert_eq!(l.lookup(4), Lookup::Hit(1));
+    }
 
     #[test]
     fn lru_evicts_the_oldest_unpinned() {

@@ -17,7 +17,7 @@ use tetraeder_planner::layout::{ModelLayout, fixtures};
 use tetraeder_planner::serve::{predict_plan_tier, uniform_tier};
 use tetraeder_planner::{
     ClusterCandidate, Workload, cluster_features, enumerate_cluster, predict_cluster_plan,
-    single_node_references,
+    single_node_references, single_node_runs,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -357,6 +357,51 @@ fn a_reference_predicts_as_the_single_node_path_does() {
             assert_eq!(c, r.prediction, "{name}");
         }
     }
+}
+
+/// The single-node prediction tool (`node-predict`) and the cluster reference price the same plan
+/// bit for bit, pinned to the reference's pair and unpinned (same pick). Pins the diagnosis in
+/// `docs/notes/stream-predict-diagnosis.md`: the two numbers differ by the hardware graph only.
+#[test]
+fn a_reference_equals_its_node_run() {
+    let layout = fixtures::moe_235b();
+    let mut checked = 0;
+    for (name, hw) in graphs() {
+        for r in single_node_references(&hw, &layout, &Hints::default()) {
+            let seg = segments(&r.plan, 0, &hw).unwrap().remove(0);
+            let sp = segment_plan(&r.plan, 0, &seg);
+            let st = &sp.replicas[0].stages[0];
+            if st.expert_cache.is_empty() {
+                continue; // a CPU-only node: node_run needs a GPU
+            }
+            let slots = |id: &str| {
+                st.expert_cache
+                    .iter()
+                    .find(|c| c.device == id)
+                    .unwrap()
+                    .slots
+            };
+            let (v, ram, ub) = (slots("gpu0"), slots("cpu0"), r.plan.knobs.ubatch.unwrap());
+            let one = hw.node_graph(seg.node.as_deref());
+            if one.device("nvme0").is_none() {
+                continue; // node_run needs the builder disk
+            }
+            let (pinned, _) = single_node_runs(&one, &layout, &W, Some((v, ram)), None).unwrap();
+            let run = pinned.iter().find(|x| x.ubatch == ub).unwrap();
+            let want = &r.prediction;
+            assert_eq!(run.pp_tps.to_bits(), want.pp_tps.to_bits(), "{name}");
+            assert_eq!(run.tg_tps.to_bits(), want.tg_tps.to_bits(), "{name}");
+            assert_eq!(run.request_s.to_bits(), want.request_s.to_bits(), "{name}");
+            let (all, _) = single_node_runs(&one, &layout, &W, None, None).unwrap();
+            assert_eq!(
+                all[0].request_s.to_bits(),
+                want.request_s.to_bits(),
+                "{name}: same pick"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 0, "no reference had a GPU and a disk");
 }
 
 #[test]

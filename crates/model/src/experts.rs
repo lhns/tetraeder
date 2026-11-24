@@ -1579,8 +1579,45 @@ impl Streamer {
                 // The hot set is only the initial contents: decode admissions replace it by LRU.
                 self.compute.layer_mut(il).set_hot_set(&[]);
             }
+            self.complement_ram(file, il)?;
         }
         self.refresh_freq_pins();
+        Ok(())
+    }
+
+    /// Warm entry point: leaves the RAM tier of every layer holding the experts outside the
+    /// compute tier, where the two tiers together cover the layer (see [`Self::complement_ram`]).
+    /// For a harness that warms a covering plan without waiting for a first prefill's counts.
+    pub(crate) fn warm_ram_tier(&mut self, file: &ModelFile) -> Result<()> {
+        self.settle();
+        for il in self.first..self.first + self.compute_tensors.len() {
+            self.complement_ram(file, il)?;
+        }
+        self.refresh_freq_pins();
+        Ok(())
+    }
+
+    /// When the compute tier and the RAM tier together hold every expert of layer `il` (the
+    /// experts outside the compute tier fit the RAM slots), makes the RAM tier hold exactly
+    /// those: frees the RAM copies of the compute-tier residents, which no step reads from RAM,
+    /// and reads the missing outside experts into the freed slots. Every later request then
+    /// finds every non-resident expert in RAM, whatever it routes. Otherwise does nothing.
+    fn complement_ram(&mut self, file: &ModelFile, il: usize) -> Result<()> {
+        let Some(ram) = &mut self.ram else {
+            return Ok(());
+        };
+        let compute = self.compute.layer(il);
+        let (inside, outside): (Vec<u32>, Vec<u32>) =
+            (0..self.n_expert).partition(|&e| compute.slot_of(e).is_some());
+        if outside.len() > ram.slots {
+            return Ok(());
+        }
+        for e in inside {
+            if ram.cache.layer_mut(il).release(e).is_some() {
+                self.prefetched[il][e as usize] = false;
+            }
+        }
+        self.stage_ram(file, il, &outside)?;
         Ok(())
     }
 
