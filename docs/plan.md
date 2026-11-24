@@ -477,7 +477,8 @@ Every layer emits OpenTelemetry metrics, traces and logs from the first commit; 
 | `tetraeder.scheduler.queue.depth`, `.batch.size` | gauge, histogram | node, priority | detector |
 | `tetraeder.spec.acceptance` | histogram | method (draft, n-gram, MTP) | advisor |
 | `tetraeder.request.cost` | histogram | caller, model, resource (GPU-seconds, bytes streamed) | cost accounting, bottleneck attribution per caller |
-| `tetraeder.plan.residual` | histogram | stage | recalibration |
+| `tetraeder.plan.residual` | histogram | stage, segment | recalibration; per segment of a replica across nodes (ADR 0091) |
+| `tetraeder.segment.duration` | histogram | segment | time a segment spent on a step, apart from the hops (ADR 0091) |
 | `tetraeder.plan.regret` | gauge | plan | planner quality |
 
 Full per-expert and per-op-instance data stays in an in-process ring buffer; only aggregates and the top 16 per layer leave the process.

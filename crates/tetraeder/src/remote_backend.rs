@@ -24,7 +24,10 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
-use tetraeder_scheduler::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
+use tetraeder_scheduler::{
+    BackendError, BatchBackend, Feed, Outputs, SegmentBackend, SegmentInfo, SeqId, SeqInput,
+    StepOut,
+};
 use tetraeder_transport::{LinkMetrics, Peer, Purpose, Transport};
 
 /// What the two processes say to each other.
@@ -117,6 +120,16 @@ pub mod wire {
         pub bytes_streamed: Option<u64>,
     }
 
+    /// What a worker that runs a share of the layers holds (ADR 0091, step 4).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct SegmentInfo {
+        pub embed: bool,
+        pub head: bool,
+        pub n_embd: usize,
+        /// Layers computed, `[start, end)`.
+        pub layers: (u32, u32),
+    }
+
     /// The constant facts, sent in the reply to `Info`.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Info {
@@ -128,6 +141,12 @@ pub mod wire {
         pub on_gpu: bool,
         pub kv_row_bytes: usize,
         pub max_step_tokens: u64,
+        /// `None` for a whole model. A `decode` to a segment without the embedding carries the
+        /// hidden rows of every input token as its payload (F32 little endian, `n_embd` per
+        /// token, tokens still in the header); a reply from a segment without the head carries
+        /// the hidden rows of every input token, and `spans` count rows.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub segment: Option<SegmentInfo>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +158,10 @@ pub mod wire {
         #[serde(default)]
         pub info: Option<Info>,
         pub state: State,
+        /// Seconds the worker spent in the backend for a `decode`: the compute time of a segment,
+        /// apart from the network (`tetraeder.segment.duration`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub step_s: Option<f64>,
     }
 }
 
@@ -392,11 +415,14 @@ pub struct RemoteBackend {
     restart_counter: Counter<u64>,
     /// Round trips as `tetraeder.link.latency`, for a worker on a node.
     link: Option<LinkLatency>,
+    /// The worker's own time for the last `decode` (`Reply::step_s`).
+    last_step: Option<Duration>,
 }
 
 /// `tetraeder.link.latency` of one link, by what the call carries.
 struct LinkLatency {
     hidden: LinkMetrics,
+    logits: LinkMetrics,
     kv: LinkMetrics,
     request: LinkMetrics,
 }
@@ -406,13 +432,16 @@ impl LinkLatency {
         let m = |p| LinkMetrics::new(transport.local(), &peer.id, transport.name(), p);
         Self {
             hidden: m("hidden"),
+            logits: m("logits"),
             kv: m("kv"),
             request: m("request"),
         }
     }
 
-    fn record(&self, call: &str, secs: f64) {
+    /// `logits`: the reply of a `decode` is logits (the worker holds the head), else hidden rows.
+    fn record(&self, call: &str, secs: f64, logits: bool) {
         match call {
+            "decode" if logits => &self.logits,
             "decode" => &self.hidden,
             "seq_snapshot" | "seq_restore" => &self.kv,
             _ => &self.request,
@@ -478,6 +507,7 @@ impl RemoteBackend {
             logits: Vec::new(),
             spans: Vec::new(),
             link,
+            last_step: None,
         })
     }
 
@@ -567,7 +597,8 @@ impl RemoteBackend {
         self.ipc
             .record(took, &[KeyValue::new("tetraeder.call", req.name())]);
         if let Some(l) = &self.link {
-            l.record(req.name(), took);
+            let logits = self.info.segment.is_none_or(|s| s.head);
+            l.record(req.name(), took, logits);
         }
         match res {
             Err(e) => {
@@ -676,52 +707,7 @@ impl BatchBackend for RemoteBackend {
     }
 
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
-        for i in inputs {
-            self.check_lost(i.seq)?;
-        }
-        let req = Request::Decode {
-            inputs: inputs
-                .iter()
-                .map(|i| wire::WireInput {
-                    seq: i.seq,
-                    tokens: i.tokens.to_vec(),
-                    all_logits: i.all_logits,
-                })
-                .collect(),
-            trace: current_traceparent(),
-        };
-        let (reply, payload) = self.call(&req, &[])?;
-        let nv = self.info.n_vocab;
-        if reply.spans.len() != inputs.len() || nv == 0 {
-            return Err(self.protocol_error("span count"));
-        }
-        let rows = payload.len() / 4 / nv;
-        let ok =
-            payload.len() == rows * nv * 4 && reply.spans.iter().all(|&(a, b)| a <= b && b <= rows);
-        if !ok {
-            return Err(self.protocol_error("logits do not match their spans"));
-        }
-        self.logits.clear();
-        self.logits.extend(
-            payload
-                .chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
-        );
-        self.spans.clear();
-        self.spans.extend(reply.spans.iter().map(|&(a, b)| a..b));
-        Ok(Outputs::new(nv, &self.logits, &self.spans))
-    }
-
-    fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
-        self.check_lost(seq)?;
-        self.call(&Request::SeqSnapshot { seq }, &[])
-            .map(|(_, payload)| payload)
-    }
-
-    fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
-        self.call(&Request::SeqRestore { seq, n }, bytes)?;
-        self.lost.remove(&seq);
-        Ok(())
+        self.decode_feed(inputs, None)
     }
 
     fn kv_format(&self) -> String {
@@ -742,6 +728,136 @@ impl BatchBackend for RemoteBackend {
 
     fn max_step_tokens(&self) -> usize {
         usize::try_from(self.info.max_step_tokens).unwrap_or(usize::MAX)
+    }
+
+    fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
+        self.check_lost(seq)?;
+        self.call(&Request::SeqSnapshot { seq }, &[])
+            .map(|(_, payload)| payload)
+    }
+
+    fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
+        self.call(&Request::SeqRestore { seq, n }, bytes)?;
+        self.lost.remove(&seq);
+        Ok(())
+    }
+}
+
+impl RemoteBackend {
+    /// Floats per reply row: `n_vocab`, or `n_embd` from a segment without the head.
+    fn out_width(&self) -> usize {
+        match self.info.segment {
+            Some(s) if !s.head => s.n_embd,
+            _ => self.info.n_vocab,
+        }
+    }
+
+    /// One `decode`; `hidden` is the input of a segment without the embedding.
+    fn decode_feed(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        hidden: Option<&[f32]>,
+    ) -> Result<Outputs<'_>, BackendError> {
+        for i in inputs {
+            self.check_lost(i.seq)?;
+        }
+        let takes_hidden = self.info.segment.is_some_and(|s| !s.embed);
+        match (takes_hidden, hidden) {
+            (true, None) => {
+                return Err(BackendError::Failed(
+                    "this worker's segment takes hidden rows, not tokens".into(),
+                ));
+            }
+            (false, Some(_)) => {
+                return Err(BackendError::Failed(
+                    "this worker's segment takes tokens, not hidden rows".into(),
+                ));
+            }
+            _ => {}
+        }
+        let payload: Vec<u8> = hidden
+            .into_iter()
+            .flatten()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+        let req = Request::Decode {
+            inputs: inputs
+                .iter()
+                .map(|i| wire::WireInput {
+                    seq: i.seq,
+                    tokens: i.tokens.to_vec(),
+                    all_logits: i.all_logits,
+                })
+                .collect(),
+            trace: current_traceparent(),
+        };
+        let (reply, payload) = self.call(&req, &payload)?;
+        self.last_step = reply.step_s.map(Duration::from_secs_f64);
+        let nv = self.out_width();
+        if reply.spans.len() != inputs.len() || nv == 0 {
+            return Err(self.protocol_error("span count"));
+        }
+        let rows = payload.len() / 4 / nv;
+        let ok =
+            payload.len() == rows * nv * 4 && reply.spans.iter().all(|&(a, b)| a <= b && b <= rows);
+        if !ok {
+            return Err(self.protocol_error("logits do not match their spans"));
+        }
+        self.logits.clear();
+        self.logits.extend(
+            payload
+                .chunks_exact(4)
+                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+        );
+        self.spans.clear();
+        self.spans.extend(reply.spans.iter().map(|&(a, b)| a..b));
+        Ok(Outputs::new(nv, &self.logits, &self.spans))
+    }
+
+    /// The worker's own time for the last `decode`, apart from the network.
+    pub fn last_step(&self) -> Option<Duration> {
+        self.last_step
+    }
+}
+
+impl SegmentBackend for RemoteBackend {
+    fn segment(&self) -> SegmentInfo {
+        match self.info.segment {
+            Some(s) => SegmentInfo {
+                embed: s.embed,
+                head: s.head,
+                n_embd: s.n_embd,
+                layers: s.layers,
+            },
+            None => SegmentInfo {
+                embed: true,
+                head: true,
+                n_embd: 0,
+                layers: (0, 0),
+            },
+        }
+    }
+
+    fn step(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        feed: Feed<'_>,
+    ) -> Result<StepOut<'_>, BackendError> {
+        let hidden = match feed {
+            Feed::Tokens => None,
+            Feed::Hidden(h) => Some(h),
+        };
+        let head = self.info.segment.is_none_or(|s| s.head);
+        let out = self.decode_feed(inputs, hidden)?;
+        Ok(if head {
+            StepOut::Logits(out)
+        } else {
+            StepOut::Hidden(out)
+        })
+    }
+
+    fn last_step_time(&self) -> Option<Duration> {
+        self.last_step
     }
 }
 

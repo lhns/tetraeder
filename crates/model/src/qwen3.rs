@@ -12,13 +12,14 @@
 mod ranked;
 
 use crate::attn::{
-    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, MASK_ROW_PAD, SeqEval, alloc_kv,
+    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, MASK_ROW_PAD, SeqEval, alloc_kv_layers,
     attention_seqs, copy_rows, mask_tail, mask_view, rms_norm_mul,
 };
 use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
 use crate::hparams::names;
 use crate::qwen3moe::{BackendChoice, MemoryUse, ModelError, Result};
+use crate::segment::SegmentSpec;
 use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans, write_direct};
 use crate::shard::{gather_rows, scatter_rows};
 use std::io::{Read, Seek, SeekFrom};
@@ -159,6 +160,9 @@ pub struct DenseOptions {
     /// Run only the first N layers and the head (calibration anchors, ADR 0068); the logits
     /// are meaningless, the timing is real. Executor path, one stage only.
     pub layer_limit: Option<u32>,
+    /// Load and run only this share of the model (ADR 0091, step 4): its layers, the embedding
+    /// and the head as the spec says. Scheduler path only. `None` is the whole model.
+    pub segment: Option<SegmentSpec>,
 }
 
 impl DenseOptions {
@@ -177,6 +181,7 @@ impl DenseOptions {
             telemetry: None,
             use_executor: std::env::var(EXECUTOR_ENV).is_ok_and(|v| v == "1"),
             layer_limit: None,
+            segment: None,
         }
     }
 }
@@ -196,6 +201,7 @@ impl std::fmt::Debug for DenseOptions {
             .field("extra_bufts", &self.extra_bufts)
             .field("use_executor", &self.use_executor)
             .field("layer_limit", &self.layer_limit)
+            .field("segment", &self.segment)
             .finish_non_exhaustive()
     }
 }
@@ -209,13 +215,27 @@ struct Layer {
 }
 
 struct Weights {
-    tok_embd: OwnedTensor,
-    out_norm: OwnedTensor,
-    /// `None` when the output projection is tied to the token embedding.
+    /// The embedding, held by a segment with `embed` or with a tied head.
+    tok_embd: Option<OwnedTensor>,
+    /// The output norm, held by a segment with `head`.
+    out_norm: Option<OwnedTensor>,
+    /// `None` when the output projection is tied to the token embedding (or no head here).
     output: Option<OwnedTensor>,
+    /// The layers of the segment, in order (the KV cache indexes them from 0 too).
     layers: Vec<Layer>,
     /// One weight of each extra buffer type's context, so a kept step graph holds those too.
     extra_anchors: Vec<OwnedTensor>,
+}
+
+impl Weights {
+    /// A weight of the main context: a kept graph holding it keeps the context alive.
+    fn anchor(&self) -> &OwnedTensor {
+        self.tok_embd
+            .as_ref()
+            .or(self.out_norm.as_ref())
+            .or(self.layers.first().map(|l| &l.ffn_norm))
+            .expect("a segment holds a weight")
+    }
 }
 
 /// Sizes of a step's inputs: tokens, `n_kv` (0 with attention per sequence), outputs and the
@@ -245,6 +265,8 @@ struct State {
     rows: OwnedTensor,
     mask: OwnedTensor,
     outputs: OwnedTensor,
+    /// The hidden rows a segment without the embedding takes, `[n_embd, n]` F32.
+    hidden: Option<OwnedTensor>,
 }
 
 /// A step graph kept across steps. It holds the contexts of the weights, KV cache and state it
@@ -266,6 +288,7 @@ struct SchedEngine {
     weight_bufts: Vec<String>,
     weights: Weights,
     kv: Kv,
+    segment: SegmentSpec,
     step: Option<StepGraph>,
     state: Option<State>,
     /// Pinned staging for snapshots of a GPU cache (ADR 0074); `None` reads straight.
@@ -281,6 +304,7 @@ enum Engine {
 /// A Qwen3 dense model serving several sequences from one KV pool.
 pub struct Qwen3 {
     h: DenseHparams,
+    segment: SegmentSpec,
     engine: Engine,
     pool: KvPool,
     /// Rows of every KV tensor.
@@ -344,7 +368,19 @@ impl Qwen3 {
     /// [`DenseOptions::use_executor`] as one rank of the executor.
     pub fn load(path: impl AsRef<Path>, opts: &DenseOptions) -> Result<Qwen3> {
         let (gguf, h) = open(path.as_ref(), opts)?;
+        let segment = match &opts.segment {
+            Some(s) => {
+                s.validate(h.attn.n_layer)?;
+                s.clone()
+            }
+            None => SegmentSpec::whole(h.attn.n_layer),
+        };
         if let (BackendChoice::Gpu { index }, true) = (&opts.backend, opts.use_executor) {
+            if opts.segment.is_some() {
+                return Err(ModelError::Invalid(
+                    "a segment runs on the scheduler path, not on the executor".into(),
+                ));
+            }
             let topo = Topology::single(&format!("gpu{index}"), Some(*index), h.attn.n_layer);
             return Self::load_ranked(&gguf, h, &topo, opts);
         }
@@ -374,9 +410,18 @@ impl Qwen3 {
             Some(gpu) => (gpu.clone(), vec![gpu, cpu]),
         };
         let sched = Sched::new(&backends, step_nodes(a, opts.n_seq_max) * 4, false)?;
-        let (weights, weights_bytes, extra) = load_weights(&gguf, &h, &primary, opts.extra_bufts)?;
+        let (weights, weights_bytes, extra) =
+            load_weights(&gguf, &h, &segment, &primary, opts.extra_bufts)?;
         let rows = pad(opts.n_ctx_pool.max(1), KV_PAD);
-        let (kv, kv_bytes) = alloc_kv(a, rows, &primary, opts.kv, opts.kv_rotation)?;
+        let (kv, kv_bytes) = alloc_kv_layers(
+            a,
+            segment.layers.clone(),
+            a.n_head_kv,
+            rows,
+            &primary,
+            opts.kv,
+            opts.kv_rotation,
+        )?;
         let pool = KvPool::new(Box::new(Chunked::new(rows)));
         tracing::debug!(
             backend = primary.name(),
@@ -393,6 +438,7 @@ impl Qwen3 {
         };
         Ok(Qwen3 {
             h,
+            segment: segment.clone(),
             engine: Engine::Sched(Box::new(SchedEngine {
                 sched,
                 primary,
@@ -400,6 +446,7 @@ impl Qwen3 {
                 kv_bytes: kv_bytes as u64,
                 weights,
                 kv,
+                segment,
                 step: None,
                 state: None,
                 weight_bufts: extra,
@@ -430,6 +477,11 @@ impl Qwen3 {
         opts: &DenseOptions,
     ) -> Result<Qwen3> {
         let (gguf, h) = open(path.as_ref(), opts)?;
+        if opts.segment.is_some() {
+            return Err(ModelError::Invalid(
+                "a segment runs on the scheduler path, not on the executor".into(),
+            ));
+        }
         Self::load_ranked(&gguf, h, topo, opts)
     }
 
@@ -449,6 +501,7 @@ impl Qwen3 {
             "qwen3 dense loaded on the executor"
         );
         Ok(Qwen3 {
+            segment: SegmentSpec::whole(h.attn.n_layer),
             h,
             engine: Engine::Ranked(Box::new(ranked)),
             // The executor has no attention per sequence.
@@ -919,18 +972,67 @@ impl Qwen3 {
         inputs: &[SeqEval<'_>],
         out: &mut Vec<f32>,
     ) -> Result<Vec<Range<usize>>> {
+        self.decode_hidden(inputs, None, out)
+    }
+
+    /// The segment spec this model runs (the whole model when it was loaded without one).
+    pub fn segment(&self) -> &SegmentSpec {
+        &self.segment
+    }
+
+    /// Floats per output row: `n_vocab` with the head, else `n_embd` (hidden rows).
+    pub fn out_width(&self) -> usize {
+        self.segment
+            .out_width(self.h.attn.n_embd as usize, self.h.attn.n_vocab as usize)
+    }
+
+    /// [`Qwen3::decode`] for a segment (ADR 0091). Without the embedding `hidden` holds the
+    /// input rows of every token of every input, `n_embd` F32 each, in input order (the tokens
+    /// still say how many); with it `hidden` is `None`. Without the head the output is the
+    /// hidden rows of every token, whatever `all_logits` says, and the ranges count those rows.
+    pub fn decode_hidden(
+        &mut self,
+        inputs: &[SeqEval<'_>],
+        hidden: Option<&[f32]>,
+        out: &mut Vec<f32>,
+    ) -> Result<Vec<Range<usize>>> {
         let t0 = Instant::now();
         if inputs.is_empty() {
             return Err(ModelError::Invalid("no sequences".into()));
         }
         let n_vocab = self.h.attn.n_vocab;
+        let n_embd = self.h.attn.n_embd as usize;
+        let n_in: usize = inputs.iter().map(|i| i.tokens.len()).sum();
+        match (self.segment.embed, hidden) {
+            (true, Some(_)) => {
+                return Err(ModelError::Invalid(
+                    "a segment with the embedding takes tokens, not hidden rows".into(),
+                ));
+            }
+            (false, None) => {
+                return Err(ModelError::Invalid(
+                    "a segment without the embedding needs hidden rows".into(),
+                ));
+            }
+            (false, Some(h)) if h.len() != n_in * n_embd => {
+                return Err(ModelError::Invalid(format!(
+                    "{} hidden floats for {n_in} tokens of {n_embd}",
+                    h.len()
+                )));
+            }
+            _ => {}
+        }
         let mut step = Vec::with_capacity(inputs.len());
         for inp in inputs {
             self.check_seq(inp.seq)?;
             if inp.tokens.is_empty() {
                 return Err(ModelError::Invalid("no tokens".into()));
             }
-            if let Some(&t) = inp.tokens.iter().find(|&&t| t < 0 || t as u32 >= n_vocab) {
+            if let Some(&t) = inp
+                .tokens
+                .iter()
+                .find(|&&t| t < 0 || (self.segment.embed && t as u32 >= n_vocab))
+            {
                 return Err(ModelError::Invalid(format!(
                     "token {t} outside the vocabulary"
                 )));
@@ -938,7 +1040,8 @@ impl Qwen3 {
             step.push(StepInput {
                 seq: inp.seq,
                 n_tokens: inp.tokens.len(),
-                all_logits: inp.all_logits,
+                // Every row is wanted when the next segment takes the hidden rows.
+                all_logits: inp.all_logits || !self.segment.head,
             });
         }
         let trace = step_trace();
@@ -989,6 +1092,7 @@ impl Qwen3 {
                 &self.h,
                 &plans[0],
                 &tokens,
+                hidden,
                 self.reuse_step_graph,
                 &mut self.step_graphs_built,
                 out,
@@ -1088,6 +1192,7 @@ impl SchedEngine {
         h: &DenseHparams,
         plan: &StepPlan,
         tokens: &[i32],
+        hidden: Option<&[f32]>,
         reuse: bool,
         built: &mut u64,
         out: &mut Vec<f32>,
@@ -1100,11 +1205,15 @@ impl SchedEngine {
             // The kept graph holds the old state's context: drop it first, then the buffers.
             self.step = None;
             self.state = None;
-            self.state = Some(alloc_state(state_key, &self.primary)?);
+            let width = (!self.segment.embed).then_some(h.attn.n_embd as usize);
+            self.state = Some(alloc_state(state_key, &self.primary, width)?);
         }
         let st = self.state.as_ref().expect("state allocated above");
         let t_upload = Instant::now();
         st.tokens.get().set_i32(tokens)?;
+        if let (Some(t), Some(rows)) = (&st.hidden, hidden) {
+            t.get().set_f32(rows)?;
+        }
         st.pos.get().set_i32(&plan.pos)?;
         st.rows.get().set_i32(&plan.rows)?;
         st.mask.get().set_f16_bits(&plan.mask)?;
@@ -1125,13 +1234,17 @@ impl SchedEngine {
             self.step = None;
             let nodes = step_nodes(&h.attn, plan.seqs.len());
             let ctx = Rc::new(Context::new(nodes, nodes)?);
-            let (graph, logits) = build_step(h, &self.weights, &self.kv, st, &plan.seqs, &ctx);
-            let mut deps = vec![
-                &self.weights.tok_embd,
-                &self.kv.k[0],
-                &self.kv.v[0],
-                &st.tokens,
-            ];
+            let (graph, logits) = build_step(
+                h,
+                &self.weights,
+                &self.kv,
+                st,
+                &plan.seqs,
+                &ctx,
+                &self.segment,
+            );
+            let mut deps = vec![self.weights.anchor(), &st.tokens];
+            deps.extend(self.kv.k.first().into_iter().chain(self.kv.v.first()));
             deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
             deps.extend(&self.weights.extra_anchors);
             fresh = StepGraph {
@@ -1158,9 +1271,9 @@ impl SchedEngine {
     }
 }
 
-fn alloc_state(key: StateKey, backend: &Backend) -> Result<State> {
+fn alloc_state(key: StateKey, backend: &Backend, hidden: Option<usize>) -> Result<State> {
     let (n, _, n_out, mask) = key;
-    let ctx = Rc::new(Context::new(8, 0)?);
+    let ctx = Rc::new(Context::new(10, 0)?);
     let state = State {
         key,
         tokens: ctx.new_persistent(Type::I32, &[n as i64]),
@@ -1168,6 +1281,7 @@ fn alloc_state(key: StateKey, backend: &Backend) -> Result<State> {
         rows: ctx.new_persistent(Type::I32, &[n as i64]),
         mask: ctx.new_persistent(Type::F16, &[mask[0] as i64, mask[1] as i64]),
         outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
+        hidden: hidden.map(|w| ctx.new_persistent(Type::F32, &[w as i64, n as i64])),
     };
     ctx.alloc_tensors(backend)?;
     // The mask padding is read by ggml-cuda (MASK_ROW_PAD) but never written: keep it finite.
@@ -1182,10 +1296,11 @@ fn alloc_state(key: StateKey, backend: &Backend) -> Result<State> {
 fn load_weights(
     gguf: &Gguf,
     h: &DenseHparams,
+    seg: &SegmentSpec,
     backend: &Backend,
     extra_bufts: bool,
 ) -> Result<(Weights, usize, Vec<String>)> {
-    let n_tensors = 3 + h.attn.n_layer as usize * 11;
+    let n_tensors = 3 + seg.n_layers() * 11;
     let extra = if extra_bufts && backend.is_cpu() {
         cpu::extra_bufts()
     } else {
@@ -1217,15 +1332,21 @@ fn load_weights(
         loaded.push((t.clone(), info.shard, info.offset, info.nbytes, at));
         Ok(t)
     };
-    let tok_embd = make(names::TOK_EMBD, false)?;
-    let out_norm = make(names::OUTPUT_NORM, false)?;
-    let output = if h.tied_output {
+    // A tied head reads the embedding, so a head segment holds it too.
+    let tok_embd = (seg.embed || (seg.head && h.tied_output))
+        .then(|| make(names::TOK_EMBD, false))
+        .transpose()?;
+    let out_norm = seg
+        .head
+        .then(|| make(names::OUTPUT_NORM, false))
+        .transpose()?;
+    let output = if h.tied_output || !seg.head {
         None
     } else {
         Some(make(names::OUTPUT, true)?)
     };
     let mut layers = Vec::new();
-    for il in 0..h.attn.n_layer {
+    for il in seg.layers.clone() {
         let mut l = |w: &str, matmul: bool| make(&names::layer(il, w), matmul);
         layers.push(Layer {
             attn: AttnWeights {
@@ -1300,10 +1421,15 @@ fn build_step<'a>(
     st: &'a State,
     seqs: &[SeqAttn],
     ctx: &'a Context,
+    seg: &SegmentSpec,
 ) -> (Graph<'a>, Tensor<'a>) {
     let a = &h.attn;
     let mut g = ctx.new_graph(step_nodes(a, seqs.len()));
-    let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
+    let mut x = match (&w.tok_embd, &st.hidden) {
+        (Some(t), _) if seg.embed => ctx.get_rows(t.get(), st.tokens.get()),
+        (_, Some(hidden)) => hidden.get(),
+        _ => unreachable!("a segment without the embedding has a hidden input"),
+    };
     let (n_tokens, n_kv, n_out, _) = st.key;
     let mask = if seqs.is_empty() {
         mask_view(ctx, st.mask.get(), n_kv, n_tokens)
@@ -1319,7 +1445,7 @@ fn build_step<'a>(
     };
     for (il, lw) in w.layers.iter().enumerate() {
         let mut ffn_inp = attention_seqs(a, ctx, &mut g, &lw.attn, kv, il, &step, seqs, x);
-        if il + 1 == w.layers.len() && n_out < n_tokens {
+        if seg.head && il + 1 == w.layers.len() && n_out < n_tokens {
             // libllama selects the output rows after attention and before the residual add;
             // `attention` adds the residual itself and a row-wise add commutes with the
             // selection, so the values are the same.
@@ -1332,8 +1458,23 @@ fn build_step<'a>(
         );
         x = ctx.add(ctx.mul_mat(lw.down.get(), ffn), ffn_inp);
     }
-    let cur = rms_norm_mul(ctx, x, w.out_norm.get(), a.rms_eps);
-    let head = w.output.as_ref().unwrap_or(&w.tok_embd);
+    if !seg.head {
+        // The next segment takes every row.
+        let out = x.set_output();
+        g.expand(out);
+        return (g, out);
+    }
+    if w.layers.is_empty() && n_out < n_tokens {
+        // A head-only segment selects the rows here; with layers the last one did.
+        x = ctx.get_rows(x, st.outputs.get());
+    }
+    let norm = w.out_norm.as_ref().expect("a head segment holds the output norm");
+    let cur = rms_norm_mul(ctx, x, norm.get(), a.rms_eps);
+    let head = w
+        .output
+        .as_ref()
+        .or(w.tok_embd.as_ref())
+        .expect("a head segment holds the projection");
     let logits = ctx.mul_mat(head.get(), cur).set_output();
     g.expand(logits);
     (g, logits)
@@ -1370,10 +1511,10 @@ mod graph_order {
             panic!("the CPU backend uses the scheduler")
         };
         for (n, n_out) in [(1usize, 1usize), (5, 1), (5, 5)] {
-            let st = alloc_state((n, KV_PAD, n_out, [KV_PAD, n]), &e.primary).unwrap();
+            let st = alloc_state((n, KV_PAD, n_out, [KV_PAD, n]), &e.primary, None).unwrap();
             let nodes = step_nodes(&m.h.attn, 1);
             let ctx = Context::new(nodes, nodes).unwrap();
-            let (g, _) = build_step(&m.h, &e.weights, &e.kv, &st, &[], &ctx);
+            let (g, _) = build_step(&m.h, &e.weights, &e.kv, &st, &[], &ctx, &e.segment);
             let ops: Vec<String> = (0..g.n_nodes()).map(|i| g.node(i).op_name()).collect();
             let get_rows = ops.iter().filter(|o| *o == "GET_ROWS").count();
             // Embedding, plus the output selection when fewer rows than tokens are wanted.

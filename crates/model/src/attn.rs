@@ -195,6 +195,18 @@ pub(crate) fn alloc_kv_layers(
     rotation: Option<bool>,
 ) -> Result<(Kv, usize)> {
     let (tk, tv) = kv_types(h, fmt)?;
+    if layers.is_empty() {
+        // An embedding-only or head-only segment holds no cache.
+        let kv = Kv {
+            k: Vec::new(),
+            v: Vec::new(),
+            n_rows,
+            fmt,
+            rot_k: None,
+            rot_v: None,
+        };
+        return Ok((kv, 0));
+    }
     let (rot_k, rot_v) = alloc_rot(h, (tk, tv), rotation, backend)?;
     let ctx = Rc::new(Context::new(2 * layers.len() + 4, 0)?);
     let n_embd_kv = (n_head_kv * h.head_dim) as i64;

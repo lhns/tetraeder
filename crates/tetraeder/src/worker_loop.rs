@@ -4,11 +4,13 @@
 //! Test faults end the loop with `Flow::Exit(code)` instead of exiting the process; the binary
 //! turns that into `process::exit`, a test into a closed connection.
 
-use crate::remote_backend::wire::{Info, Reply, Request, SeqState, State, WireError, WireInput};
+use crate::remote_backend::wire::{
+    Info, Reply, Request, SegmentInfo, SeqState, State, WireError, WireInput,
+};
 use crate::remote_backend::{encode_raw, parse_header, read_frame, write_frame};
 use std::io::{Read, Write};
-use std::time::Duration;
-use tetraeder_scheduler::{BackendError, BatchBackend, SeqInput};
+use std::time::{Duration, Instant};
+use tetraeder_scheduler::{BackendError, BatchBackend, Feed, Outputs, SeqInput};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fault {
@@ -102,7 +104,16 @@ fn state(b: &dyn BatchBackend) -> State {
     }
 }
 
-fn info(b: &dyn BatchBackend) -> Info {
+fn info(b: &mut dyn BatchBackend) -> Info {
+    let segment = b.as_segment().map(|s| {
+        let i = s.segment();
+        SegmentInfo {
+            embed: i.embed,
+            head: i.head,
+            n_embd: i.n_embd,
+            layers: i.layers,
+        }
+    });
     Info {
         n_vocab: b.n_vocab(),
         n_seq_max: b.n_seq_max(),
@@ -112,7 +123,38 @@ fn info(b: &dyn BatchBackend) -> Info {
         on_gpu: b.on_gpu(),
         kv_row_bytes: b.kv_row_bytes(),
         max_step_tokens: u64::try_from(b.max_step_tokens()).unwrap_or(u64::MAX),
+        segment,
     }
+}
+
+/// The rows of a step into the reply: one span per input, the floats in the payload.
+fn fill(out: Outputs<'_>, reply: &mut Reply, payload: &mut Vec<u8>) {
+    let nv = out.n_vocab().max(1);
+    let mut row = 0;
+    for i in 0..out.len() {
+        let rows = out.rows(i);
+        let end = row + rows.len() / nv;
+        reply.spans.push((row, end));
+        row = end;
+        payload.reserve(rows.len() * 4);
+        for f in rows {
+            payload.extend_from_slice(&f.to_le_bytes());
+        }
+    }
+}
+
+/// The hidden rows of a request payload: F32 little endian, `n_embd` per input token.
+fn hidden_rows(bytes: &[u8], n_tokens: usize, n_embd: usize) -> Result<Vec<f32>, BackendError> {
+    if bytes.len() != n_tokens * n_embd * 4 {
+        return Err(BackendError::Failed(format!(
+            "{} payload bytes for {n_tokens} hidden rows of {n_embd} floats",
+            bytes.len()
+        )));
+    }
+    Ok(bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect())
 }
 
 fn error(e: BackendError) -> WireError {
@@ -139,6 +181,7 @@ fn handle(
         spans: Vec::new(),
         info: None,
         state: State::default(),
+        step_s: None,
     };
     let res: Result<(), BackendError> = match req {
         Request::Info => {
@@ -185,20 +228,29 @@ fn handle(
                     all_logits: i.all_logits,
                 })
                 .collect();
-            b.decode(&ins).map(|out| {
-                let nv = out.n_vocab().max(1);
-                let mut row = 0;
-                for i in 0..out.len() {
-                    let rows = out.rows(i);
-                    let end = row + rows.len() / nv;
-                    reply.spans.push((row, end));
-                    row = end;
-                    payload.reserve(rows.len() * 4);
-                    for f in rows {
-                        payload.extend_from_slice(&f.to_le_bytes());
-                    }
+            let t = Instant::now();
+            let n_tokens: usize = inputs.iter().map(|i| i.tokens.len()).sum();
+            // A segment serves hidden rows in and out; a whole model tokens and logits.
+            let done = match b.as_segment() {
+                Some(seg) => {
+                    let info = seg.segment();
+                    let hidden = if info.embed {
+                        Ok(None)
+                    } else {
+                        hidden_rows(bytes, n_tokens, info.n_embd).map(Some)
+                    };
+                    hidden.and_then(|h| {
+                        let feed = h.as_deref().map_or(Feed::Tokens, Feed::Hidden);
+                        seg.step(&ins, feed)
+                            .map(|o| fill(o.rows(), &mut reply, payload))
+                    })
                 }
-            })
+                None => b.decode(&ins).map(|o| fill(o, &mut reply, payload)),
+            };
+            if done.is_ok() {
+                reply.step_s = Some(t.elapsed().as_secs_f64());
+            }
+            done
         }
     };
     reply.err = res.err().map(error);

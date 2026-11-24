@@ -161,6 +161,68 @@ pub trait BatchBackend {
     fn max_step_tokens(&self) -> usize {
         usize::MAX
     }
+    /// This backend as a segment of the layers (ADR 0091), when it is one. The worker serves
+    /// hidden rows through it; a backend that holds the whole model is none.
+    fn as_segment(&mut self) -> Option<&mut dyn SegmentBackend> {
+        None
+    }
+}
+
+/// What a segment's backend holds (ADR 0091, step 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentInfo {
+    /// Holds the embedding: takes tokens, else hidden rows.
+    pub embed: bool,
+    /// Holds the head: returns logits, else hidden rows.
+    pub head: bool,
+    /// Floats of one hidden row.
+    pub n_embd: usize,
+    /// Layers computed, `[start, end)`.
+    pub layers: (u32, u32),
+}
+
+/// What a step of a segment consumes: the tokens (it holds the embedding), or the hidden rows of
+/// every token of every input, `n_embd` F32 each, in input order.
+#[derive(Debug, Clone, Copy)]
+pub enum Feed<'a> {
+    Tokens,
+    Hidden(&'a [f32]),
+}
+
+/// What a step of a segment returns. `Hidden` holds one row of `n_embd` floats per token of
+/// every input (whatever `all_logits` says), in `Outputs` whose row width is `n_embd`.
+#[derive(Debug, Clone, Copy)]
+pub enum StepOut<'a> {
+    Logits(Outputs<'a>),
+    Hidden(Outputs<'a>),
+}
+
+impl<'a> StepOut<'a> {
+    /// The rows, logits or hidden.
+    pub fn rows(&self) -> Outputs<'a> {
+        match *self {
+            Self::Logits(o) | Self::Hidden(o) => o,
+        }
+    }
+}
+
+/// A backend that runs part of the layers. [`BatchBackend::decode`] is `step` with
+/// `Feed::Tokens` on a segment that holds the embedding and the head; every other call of the
+/// trait works on the segment's own KV (its layers only), so a snapshot is that segment's share.
+pub trait SegmentBackend: BatchBackend {
+    fn segment(&self) -> SegmentInfo;
+    /// One step with the contract of [`BatchBackend::decode`] (sequences appended, rolled back
+    /// to their length and reservation on a failure).
+    fn step(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        feed: Feed<'_>,
+    ) -> Result<StepOut<'_>, BackendError>;
+    /// The time the segment itself spent on the last step, apart from any network, when it
+    /// knows (a remote segment reports its worker's time).
+    fn last_step_time(&self) -> Option<std::time::Duration> {
+        None
+    }
 }
 
 /// Inputs shorter than this are decoders (1 token, or 1 + drafts); longer ones are prompt chunks.
@@ -559,6 +621,8 @@ pub struct MoeBackend {
     model: Qwen3Moe,
     on_gpu: bool,
     n_vocab: usize,
+    /// Floats per output row: `n_vocab`, or `n_embd` for a segment without the head.
+    width: usize,
     logits: Vec<f32>,
     /// The rows of one model step, before the kept ones are copied to `logits`.
     step_logits: Vec<f32>,
@@ -574,10 +638,12 @@ impl MoeBackend {
     /// Like `new`, with `chunk` tokens per step (the plan's ubatch).
     pub fn with_chunk(model: Qwen3Moe, on_gpu: bool, chunk: usize) -> Self {
         let n_vocab = model.n_vocab();
+        let width = model.out_width();
         Self {
             model,
             on_gpu,
             n_vocab,
+            width,
             logits: Vec::new(),
             step_logits: Vec::new(),
             spans: Vec::new(),
@@ -647,18 +713,38 @@ impl MoeBackend {
 
     /// Runs `inputs` as `step_groups` splits them (on the CPU decoders and prompt chunks apart),
     /// and collects the rows of every input in `self.logits`, `self.spans` in input order.
-    fn run(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
+    fn run(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        hidden: Option<&[f32]>,
+    ) -> Result<(), BackendError> {
         self.spans.clear();
+        let n_embd = self.model.hparams().n_embd as usize;
+        let mut done = 0;
         for range in step_groups(inputs, self.on_gpu) {
-            self.run_group(&inputs[range])?;
+            let n: usize = inputs[range.clone()].iter().map(|i| i.tokens.len()).sum();
+            let rows = hidden.map(|h| &h[done * n_embd..(done + n) * n_embd]);
+            self.run_group(&inputs[range], rows)?;
+            done += n;
         }
         Ok(())
     }
 
     /// Runs the pieces of `inputs`, at most `chunk` tokens per model step, appends the rows of
     /// every input to `self.logits` and their spans to `self.spans`.
-    fn run_group(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
+    fn run_group(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        hidden: Option<&[f32]>,
+    ) -> Result<(), BackendError> {
         let cap = self.chunk;
+        let n_embd = self.model.hparams().n_embd as usize;
+        // A segment without the head returns every row: the next segment takes them all.
+        let every = !self.model.segment().head;
+        // The hidden rows of the tokens `done..done + used`.
+        let rows =
+            |done: usize, used: usize| hidden.map(|h| &h[done * n_embd..(done + used) * n_embd]);
+        let mut done = 0;
         // Only a call with a prompt chunk builds the CPU hot set: a long input, or several
         // tokens without logits for every row. A group of decoders is not a prefill however many
         // sequences it holds, and neither is a verify step (a pending token and drafts, with the
@@ -670,16 +756,18 @@ impl MoeBackend {
         // Per piece of the group: whether its rows are kept.
         let mut keep: Vec<bool> = Vec::new();
         let mut used = 0;
-        let mut next_row = self.logits.len() / self.n_vocab.max(1);
+        let mut next_row = self.logits.len() / self.width.max(1);
         let mut spans = Vec::with_capacity(inputs.len());
         for inp in inputs {
-            let rows = if inp.all_logits { inp.tokens.len() } else { 1 };
-            spans.push(next_row..next_row + rows);
-            next_row += rows;
+            let all = inp.all_logits || every;
+            let n_rows = if all { inp.tokens.len() } else { 1 };
+            spans.push(next_row..next_row + n_rows);
+            next_row += n_rows;
             let mut rest = inp.tokens;
             while !rest.is_empty() {
                 if used == cap {
-                    self.flush(&mut group, &mut keep, prefill)?;
+                    self.flush(&mut group, &mut keep, prefill, rows(done, used))?;
+                    done += used;
                     used = 0;
                 }
                 let take = rest.len().min(cap - used);
@@ -690,15 +778,59 @@ impl MoeBackend {
                     all_logits: inp.all_logits,
                 });
                 // Rows are kept for all_logits inputs, and for the last piece otherwise.
-                keep.push(inp.all_logits || tail.is_empty());
+                keep.push(all || tail.is_empty());
                 used += take;
                 rest = tail;
             }
         }
-        self.flush(&mut group, &mut keep, prefill)?;
-        debug_assert_eq!(self.logits.len(), next_row * self.n_vocab);
+        self.flush(&mut group, &mut keep, prefill, rows(done, used))?;
+        debug_assert_eq!(self.logits.len(), next_row * self.width);
         self.spans.extend(spans);
         Ok(())
+    }
+
+    /// One step: `hidden` is the input of a segment without the embedding.
+    fn decode_feed(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        hidden: Option<&[f32]>,
+    ) -> Result<Outputs<'_>, BackendError> {
+        self.spans.clear();
+        self.logits.clear();
+        // Validate everything and reserve before the step. A failure, here or in the step, gives
+        // back what this call reserved, so lengths and free rows are as they were.
+        let mut saved: Vec<(SeqId, usize, usize)> = Vec::with_capacity(inputs.len());
+        for inp in inputs {
+            self.check_seq(inp.seq)?;
+            if saved.iter().any(|s| s.0 == inp.seq) {
+                return Err(BackendError::Failed(format!("sequence {} twice", inp.seq)));
+            }
+            if inp.tokens.is_empty() {
+                return Err(BackendError::Failed("no tokens".into()));
+            }
+            saved.push((
+                inp.seq,
+                self.model.seq_len(inp.seq),
+                self.model.pool().reserved(inp.seq),
+            ));
+        }
+        let mut result = Ok(());
+        for (inp, &(_, len, _)) in inputs.iter().zip(&saved) {
+            result = self.reserve(inp.seq, len + inp.tokens.len());
+            if result.is_err() {
+                break;
+            }
+        }
+        if result.is_ok() {
+            result = self.run(inputs, hidden);
+        }
+        if let Err(e) = result {
+            self.restore(&saved);
+            self.logits.clear();
+            self.spans.clear();
+            return Err(e);
+        }
+        Ok(Outputs::new(self.width, &self.logits, &self.spans))
     }
 
     fn flush(
@@ -706,6 +838,7 @@ impl MoeBackend {
         group: &mut Vec<ModelSeqEval<'_>>,
         keep: &mut Vec<bool>,
         prefill: bool,
+        hidden: Option<&[f32]>,
     ) -> Result<(), BackendError> {
         if group.is_empty() {
             return Ok(());
@@ -713,7 +846,7 @@ impl MoeBackend {
         let mut buf = std::mem::take(&mut self.step_logits);
         let spans = self
             .model
-            .decode_group(group, &mut buf, prefill)
+            .decode_group_hidden(group, hidden, &mut buf, prefill)
             .map_err(failed);
         let spans = match spans {
             Ok(s) => s,
@@ -725,7 +858,7 @@ impl MoeBackend {
         for (r, &k) in spans.iter().zip(keep.iter()) {
             if k {
                 self.logits
-                    .extend_from_slice(&buf[r.start * self.n_vocab..r.end * self.n_vocab]);
+                    .extend_from_slice(&buf[r.start * self.width..r.end * self.width]);
             }
         }
         self.step_logits = buf;
@@ -793,42 +926,11 @@ impl BatchBackend for MoeBackend {
     }
 
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
-        self.spans.clear();
-        self.logits.clear();
-        // Validate everything and reserve before the step. A failure, here or in the step, gives
-        // back what this call reserved, so lengths and free rows are as they were.
-        let mut saved: Vec<(SeqId, usize, usize)> = Vec::with_capacity(inputs.len());
-        for inp in inputs {
-            self.check_seq(inp.seq)?;
-            if saved.iter().any(|s| s.0 == inp.seq) {
-                return Err(BackendError::Failed(format!("sequence {} twice", inp.seq)));
-            }
-            if inp.tokens.is_empty() {
-                return Err(BackendError::Failed("no tokens".into()));
-            }
-            saved.push((
-                inp.seq,
-                self.model.seq_len(inp.seq),
-                self.model.pool().reserved(inp.seq),
-            ));
-        }
-        let mut result = Ok(());
-        for (inp, &(_, len, _)) in inputs.iter().zip(&saved) {
-            result = self.reserve(inp.seq, len + inp.tokens.len());
-            if result.is_err() {
-                break;
-            }
-        }
-        if result.is_ok() {
-            result = self.run(inputs);
-        }
-        if let Err(e) = result {
-            self.restore(&saved);
-            self.logits.clear();
-            self.spans.clear();
-            return Err(e);
-        }
-        Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
+        self.decode_feed(inputs, None)
+    }
+
+    fn as_segment(&mut self) -> Option<&mut dyn SegmentBackend> {
+        Some(self)
     }
 
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
@@ -884,6 +986,36 @@ impl BatchBackend for MoeBackend {
     /// budget (not the chunk) decides how many waiting prompts share a step.
     fn max_step_tokens(&self) -> usize {
         usize::MAX
+    }
+}
+
+impl SegmentBackend for MoeBackend {
+    fn segment(&self) -> SegmentInfo {
+        let s = self.model.segment();
+        SegmentInfo {
+            embed: s.embed,
+            head: s.head,
+            n_embd: self.model.hparams().n_embd as usize,
+            layers: (s.layers.start, s.layers.end),
+        }
+    }
+
+    fn step(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        feed: Feed<'_>,
+    ) -> Result<StepOut<'_>, BackendError> {
+        let hidden = match feed {
+            Feed::Tokens => None,
+            Feed::Hidden(h) => Some(h),
+        };
+        let head = self.model.segment().head;
+        let out = self.decode_feed(inputs, hidden)?;
+        Ok(if head {
+            StepOut::Logits(out)
+        } else {
+            StepOut::Hidden(out)
+        })
     }
 }
 

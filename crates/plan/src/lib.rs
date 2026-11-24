@@ -44,6 +44,6 @@ pub use quality::{
     EstimateError, GroupEntry, QUALITY_SCHEMA, QualityError, QualityGroup, QualityIssue,
     QualityProfile,
 };
-pub use segment::{Segment, segment_plan, segments};
+pub use segment::{Segment, SegmentShape, segment_plan, segment_shape, segments};
 pub use topology::{RankId, RankSpec, StageSpec, Topology, block_slice, micro_batch_sizes};
 pub use validate::{At, Context, Issue, validate, validate_partial};
