@@ -1146,3 +1146,45 @@ fn a_save_is_written_whole_under_its_name_and_leaves_no_temp_file() {
     assert_eq!(left, 1, "only the directory stays");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// A prefix the engine holds is served to another replica (ADR 0091, step 6): the idle sequence
+/// that just finished is offered with all its tokens, an unrelated prompt gets nothing, and a
+/// worker that is given the snapshot reuses it for a request that starts with those tokens.
+#[test]
+fn a_prefix_is_served_from_an_idle_sequence_and_installed_in_another_worker() {
+    let mut a = worker(FakeKv::new(N_VOCAB, 2, 3200, 4000));
+    let p = prompt(7, 120);
+    let mut rx = submit(&mut a, &p, 4);
+    pump(&mut a);
+    events(&mut rx);
+    let fmt = a.backend.kv_format();
+    let asked: Vec<u32> = p[..100].to_vec();
+    let (toks, bytes) = a
+        .prefix_get(&fmt, &asked)
+        .expect("the idle sequence is offered");
+    assert!(toks.len() >= 100 && toks[..100] == asked[..]);
+    assert!(
+        a.prefix_get(&fmt, &prompt(9, 50)).is_none(),
+        "an unrelated prompt has no prefix"
+    );
+    assert!(
+        a.prefix_get(&fmt, &asked[..8]).is_none(),
+        "below the restore gain"
+    );
+
+    let mut b = worker(FakeKv::new(N_VOCAB, 2, 3200, 4000));
+    assert!(b.prefix_put(&fmt, &toks, bytes.clone()));
+    assert!(!b.prefix_put(&fmt, &toks, bytes), "already held");
+    let mut longer = p.clone();
+    longer.extend(prompt(3, 10));
+    let mut rx = submit(&mut b, &longer, 3);
+    pump(&mut b);
+    let cached = events(&mut rx)
+        .into_iter()
+        .find_map(|e| match e {
+            GenEvent::Finished { stats, .. } => Some(stats.cached_tokens),
+            _ => None,
+        })
+        .expect("the request finished");
+    assert!(cached >= 100, "the installed snapshot was reused: {cached}");
+}

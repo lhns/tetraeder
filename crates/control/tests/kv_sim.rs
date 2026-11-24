@@ -10,7 +10,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tetraeder_control::head::{ClusterEngine, ClusterHead, FetchPolicy, ReplicaTarget, StartSpec};
+use tetraeder_control::head::{
+    ClusterEngine, ClusterHead, FetchPolicy, KvInfo, ReplicaTarget, StartSpec,
+};
 use tetraeder_control::kv::{PrefixKey, PrefixStore, fetch_beats_recompute, serve_prefix};
 use tetraeder_control::monitor::Monitor;
 use tetraeder_control::node::{Daemon, NodeOptions, RestartPolicy};
@@ -130,13 +132,18 @@ enum Policy {
 }
 
 struct Fixed {
+    /// Times the router asked: it only asks when a request goes to a replica other than the one
+    /// holding the prefix, which is what these tests need to know (not a live count that a fast
+    /// runner can see change).
+    asked: Arc<AtomicUsize>,
     policy: Policy,
     node: NodeId,
     format: String,
 }
 
 impl FetchPolicy for Fixed {
-    fn plan(&self, _holder: u32, _target: u32, tokens: &[u32]) -> Option<FetchFrom> {
+    fn plan(&self, _holder: u32, _target: u32, tokens: &[u32], _kv: &KvInfo) -> Option<FetchFrom> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
         match self.policy {
             Policy::Decline => None,
             Policy::Fetch => Some(FetchFrom {
@@ -186,6 +193,7 @@ fn follow_up_on_the_other_replica(
     holder_has_it: bool,
     holder_format: &str,
 ) -> (Arc<Store>, Arc<Store>, Vec<GenEvent>) {
+    let asked = Arc::new(AtomicUsize::new(0));
     let board = MemTransport::switchboard();
     let cfg = config(1000, &["a", "b"], &[1, 2]);
     let (ta, tb): (Arc<dyn Transport>, Arc<dyn Transport>) = (
@@ -260,6 +268,7 @@ fn follow_up_on_the_other_replica(
         ],
         8,
         Some(Arc::new(Fixed {
+            asked: Arc::clone(&asked),
             policy,
             node: id("a"),
             format: "f16".into(),
@@ -292,9 +301,9 @@ fn follow_up_on_the_other_replica(
     assert!(wait_until(Duration::from_secs(2), || engine.outstanding(0) == 1).is_some());
     let events = run_one(&engine, &format!("{prefix} and one more turn"));
     assert_eq!(
-        engine.outstanding(0),
+        asked.load(Ordering::SeqCst),
         1,
-        "the follow-up did not wait for R0"
+        "the follow-up went to R1 while R0 held the prefix"
     );
     let _ = t.join();
     (store_a, store_b, events)

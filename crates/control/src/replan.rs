@@ -17,6 +17,12 @@ pub enum Trigger {
     },
     LoadShift,
     DeviceChange,
+    /// A node of the cluster changed state (`up`, `draining`, `down`): the head replans the
+    /// replicas that span it (ADR 0091, step 6).
+    NodeChange {
+        node: String,
+        state: String,
+    },
 }
 
 impl Trigger {
@@ -27,6 +33,7 @@ impl Trigger {
             Trigger::SloBurn { .. } => "slo_burn",
             Trigger::LoadShift => "load_shift",
             Trigger::DeviceChange => "device_change",
+            Trigger::NodeChange { .. } => "node_change",
         }
     }
 }

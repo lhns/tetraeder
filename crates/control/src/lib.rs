@@ -7,6 +7,7 @@ mod replan;
 
 pub mod client;
 pub mod cluster;
+pub mod cluster_replan;
 pub mod head;
 pub mod kv;
 pub mod membership;

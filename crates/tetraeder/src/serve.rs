@@ -434,6 +434,20 @@ pub struct ServeArgs {
     /// This node's certificate, with `--cluster`.
     #[arg(long, default_value = "cert.pem")]
     pub cert: PathBuf,
+    /// With `--cluster`: derive the replicas from a cluster plan (TOML) instead of writing
+    /// `--replicas`; the file wins when both are given. The plan is replanned when a node
+    /// changes state. Needs the cluster's hardware graph: `--cluster-hw`, else the head asks the
+    /// daemons for it.
+    #[arg(long, value_name = "FILE", requires = "cluster")]
+    pub cluster_plan: Option<PathBuf>,
+    /// With `--cluster`: the cluster's hardware graph (`tetraeder cluster profile --probe`),
+    /// which prices the plan and the prefix fetches (the probed links).
+    #[arg(long, value_name = "FILE", requires = "cluster")]
+    pub cluster_hw: Option<PathBuf>,
+    /// With `--cluster`: the sha256 of the model file, which every node keeps as
+    /// `<sha256>.gguf`; default the stem of `-m` when that is 64 hex digits.
+    #[arg(long, value_name = "HEX", requires = "cluster")]
+    pub model_sha256: Option<String>,
     /// Hardware graph (TOML or JSON, typically from `tetraeder-plan score`); default: discover
     /// the box and take GPU rates from the priors.
     #[arg(long, value_name = "FILE", requires = "plan")]
@@ -547,6 +561,10 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    anyhow::ensure!(
+        a.cluster.is_none() || a.plan.is_none(),
+        "--plan is the single-node plan; a cluster's plan is --cluster-plan"
+    );
     // A plan file the executor runs (see [`exec_plan`]) is served as written; every other
     // `--plan` is the replanner's.
     let planned = match &a.plan {
@@ -655,6 +673,16 @@ pub(crate) fn build_engine(
         e.bytes_streamed = None;
         return Ok((Arc::new(e), 1));
     }
+    let (engine, parallel) = build_scheduler(a, telemetry)?;
+    Ok((engine, parallel))
+}
+
+/// The scheduler of `a` over its own backend (not the scripted engine): `serve` and a replica
+/// use it as the gateway's engine, and a replica also serves its prefix cache from it.
+pub(crate) fn build_scheduler(
+    a: &ServeArgs,
+    telemetry: &Arc<Telemetry>,
+) -> anyhow::Result<(Arc<Scheduler>, usize)> {
     let path = a.model.clone().context("-m is required")?;
     let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
     let parallel = cfg.parallel;
@@ -696,7 +724,7 @@ pub(crate) fn scheduler_over(
     a: &ServeArgs,
     telemetry: &Arc<Telemetry>,
     make: impl FnOnce() -> Result<Box<dyn tetraeder_scheduler::BatchBackend>, String> + Send + 'static,
-) -> anyhow::Result<(Arc<dyn GatewayEngine>, usize)> {
+) -> anyhow::Result<(Arc<Scheduler>, usize)> {
     let path = a.model.clone().context("-m is required")?;
     let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
     let parallel = cfg.parallel;

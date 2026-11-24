@@ -177,6 +177,13 @@ impl PrefixCache {
             || self.disk.as_ref().is_some_and(|d| d.holds(format, tokens))
     }
 
+    /// RAM entry `i` as it is (a disk entry is not read here), for a copy to another replica.
+    pub fn peek(&self, i: usize) -> Option<(&[i32], &[u8])> {
+        self.entries
+            .get(i)
+            .map(|e| (e.tokens.as_slice(), e.bytes.as_slice()))
+    }
+
     /// Removes RAM entry `i` and returns its tokens and bytes. A disk entry is not read here: see
     /// `start_restore`.
     pub fn take(&mut self, i: usize) -> Option<(Vec<i32>, Vec<u8>)> {
