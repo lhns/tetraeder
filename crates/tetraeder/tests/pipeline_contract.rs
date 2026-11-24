@@ -454,3 +454,85 @@ fn copies_and_cuts_go_to_every_segment() {
         assert!(s.lock().unwrap().log.contains(&"cp 0 1 2".to_string()));
     }
 }
+
+/// What a replica's pipeline reports once it is built through `replica_pipeline` (ADR 0091, step
+/// 5; step 4 left `with_metrics` and `set_predicted` without a caller, so the segment panel and
+/// `TetraederSegmentDrift` stayed dark): one decode records `tetraeder.segment.duration` and the
+/// residual for every segment, and the planner's step time as the baseline.
+// hardware: none
+#[test]
+fn a_decode_records_the_segment_metrics_when_built_for_a_replica() {
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
+    use tetraeder::pipeline::replica_pipeline;
+
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let metrics = tetraeder_telemetry::Metrics::new(&mp.meter("test"));
+    let segs: Vec<Box<dyn SegmentBackend>> = vec![
+        fake(true, false, (0, 2), CAP).0,
+        fake(false, false, (2, 5), CAP).0,
+        fake(false, true, (5, 8), CAP).0,
+    ];
+    let mut p = replica_pipeline(segs, Some(metrics), &[0.01, 0.02, 0.03]).unwrap();
+    // A prompt, then one decode step of one sequence: the step the residual is measured on.
+    p.decode(&[input(0, &[1, 2, 3], false)]).unwrap();
+    p.decode(&[input(0, &[4], false)]).unwrap();
+    mp.force_flush().unwrap();
+    let (mut duration, mut residual, mut predicted) = (Vec::new(), Vec::new(), Vec::new());
+    for rm in exp.get_finished_metrics().unwrap().iter().rev().take(1) {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                let segments = |dps: Vec<String>| {
+                    let mut d = dps;
+                    d.sort();
+                    d.dedup();
+                    d
+                };
+                match (m.name(), m.data()) {
+                    (
+                        "tetraeder.segment.duration",
+                        AggregatedMetrics::F64(MetricData::Histogram(h)),
+                    ) => {
+                        duration = segments(
+                            h.data_points()
+                                .map(|dp| format!("{:?}", dp.attributes().collect::<Vec<_>>()))
+                                .collect(),
+                        );
+                    }
+                    (
+                        "tetraeder.plan.residual",
+                        AggregatedMetrics::F64(MetricData::Histogram(h)),
+                    ) => {
+                        residual = segments(
+                            h.data_points()
+                                .map(|dp| format!("{:?}", dp.attributes().collect::<Vec<_>>()))
+                                .collect(),
+                        );
+                    }
+                    (
+                        "tetraeder.plan.predicted_step",
+                        AggregatedMetrics::F64(MetricData::Gauge(g)),
+                    ) => {
+                        predicted = segments(
+                            g.data_points()
+                                .map(|dp| format!("{:?}", dp.attributes().collect::<Vec<_>>()))
+                                .collect(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    assert_eq!(duration.len(), 3, "a duration per segment: {duration:?}");
+    assert_eq!(residual.len(), 3, "a residual per segment: {residual:?}");
+    assert_eq!(
+        predicted.len(),
+        3,
+        "a prediction per segment: {predicted:?}"
+    );
+}

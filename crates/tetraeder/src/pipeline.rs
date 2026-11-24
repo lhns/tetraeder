@@ -422,6 +422,23 @@ impl BatchBackend for PipelineBackend {
     }
 }
 
+/// The backend of a replica that spans nodes: the segments behind one [`PipelineBackend`], with
+/// the metrics wired (`tetraeder.segment.duration`, the residual per segment) and the planner's
+/// decode step time of each segment as its baseline. Without this call the segment panel and
+/// the `TetraederSegmentDrift` alert stay dark.
+pub fn replica_pipeline(
+    segs: Vec<Box<dyn SegmentBackend>>,
+    metrics: Option<Metrics>,
+    predicted_s: &[f64],
+) -> Result<PipelineBackend, String> {
+    let mut p = PipelineBackend::new(segs)?;
+    if let Some(m) = metrics {
+        p = p.with_metrics(m);
+    }
+    p.set_predicted(predicted_s);
+    Ok(p)
+}
+
 /// The share of the layers of a segment plan (the TOML of `plan::segment_plan`) for a model of
 /// `n_layer` layers. The embedding and the head come from the layer bounds, not from the rules
 /// (a catch-all rule matches both in any stage): `plan::segment_shape`.

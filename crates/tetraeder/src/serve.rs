@@ -420,6 +420,20 @@ pub struct ServeArgs {
         conflicts_with = "plan"
     )]
     pub n_cpu_moe: Option<usize>,
+    /// Serve as the head of a cluster (ADR 0091): `cluster.toml`. The replicas come from
+    /// `--replicas`; this node's key and certificate from `--key` and `--cert`. A replica started
+    /// by a node's daemon (`tetraeder replica`) reads the same three for its segments.
+    #[arg(long, value_name = "FILE")]
+    pub cluster: Option<PathBuf>,
+    /// The cluster's replicas (`replicas.toml`), with `--cluster`.
+    #[arg(long, value_name = "FILE", requires = "cluster")]
+    pub replicas: Option<PathBuf>,
+    /// This node's private key, with `--cluster`.
+    #[arg(long, default_value = "key.pem")]
+    pub key: PathBuf,
+    /// This node's certificate, with `--cluster`.
+    #[arg(long, default_value = "cert.pem")]
+    pub cert: PathBuf,
     /// Hardware graph (TOML or JSON, typically from `tetraeder-plan score`); default: discover
     /// the box and take GPU rates from the priors.
     #[arg(long, value_name = "FILE", requires = "plan")]
@@ -541,8 +555,15 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         }
         _ => None,
     };
+    // Kept for the length of the run: dropping it stops the join loops and the monitor.
+    let mut _head = None;
     let (engine, parallel): (Arc<dyn GatewayEngine>, usize) = match &planned {
         Some(p) => (p.engine.clone(), 1),
+        None if a.cluster.is_some() => {
+            let (e, n, guard) = crate::head::start(a, &telemetry)?;
+            _head = Some(guard);
+            (e, n)
+        }
         None => build_engine(a, &telemetry)?,
     };
     let served = engine
@@ -614,7 +635,7 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
 }
 
 /// The engine and the number of requests the gateway lets generate at once.
-fn build_engine(
+pub(crate) fn build_engine(
     a: &ServeArgs,
     telemetry: &Arc<Telemetry>,
 ) -> anyhow::Result<(Arc<dyn GatewayEngine>, usize)> {
@@ -643,25 +664,48 @@ fn build_engine(
         let exe = std::env::current_exe().context("cannot find this executable")?;
         let model = path.clone();
         Scheduler::start(cfg, move || {
-            let tokenizer = Arc::new(
-                Model::load(
-                    &model,
-                    &ModelParams {
-                        vocab_only: true,
-                        ..ModelParams::default()
-                    },
-                )
-                .map_err(|e| e.to_string())?,
-            );
             let backend = RemoteBackend::start(RemoteConfig::new(exe, argv))?;
             Ok(Loaded {
                 backend: Box::new(backend),
-                tokenizer,
+                tokenizer: vocab_only(&model)?,
             })
         })
     } else {
         Scheduler::start(cfg, loader(a, Arc::clone(telemetry))?)
     }
+    .map_err(anyhow::Error::msg)?;
+    Ok((Arc::new(engine), parallel))
+}
+
+/// The tokenizer of a model whose backend runs elsewhere (a worker child, or other nodes).
+fn vocab_only(model: &Path) -> Result<Arc<Model>, String> {
+    Model::load(
+        model,
+        &ModelParams {
+            vocab_only: true,
+            ..ModelParams::default()
+        },
+    )
+    .map(Arc::new)
+    .map_err(|e| e.to_string())
+}
+
+/// The engine of `a` over a backend that `make` builds on the scheduler's thread (a pipeline
+/// over nodes): the model file is read for its tokenizer only.
+pub(crate) fn scheduler_over(
+    a: &ServeArgs,
+    telemetry: &Arc<Telemetry>,
+    make: impl FnOnce() -> Result<Box<dyn tetraeder_scheduler::BatchBackend>, String> + Send + 'static,
+) -> anyhow::Result<(Arc<dyn GatewayEngine>, usize)> {
+    let path = a.model.clone().context("-m is required")?;
+    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
+    let parallel = cfg.parallel;
+    let engine = Scheduler::start(cfg, move || {
+        Ok(Loaded {
+            backend: make()?,
+            tokenizer: vocab_only(&path)?,
+        })
+    })
     .map_err(anyhow::Error::msg)?;
     Ok((Arc::new(engine), parallel))
 }

@@ -7,12 +7,14 @@ mod comm_probe;
 mod detector_score;
 mod doctor;
 mod engine_args;
+mod head;
 mod info;
 mod llama_args;
 mod node;
 mod plan;
 mod quant;
 mod replan;
+mod replica;
 mod run;
 mod serve;
 mod sharded;
@@ -53,6 +55,9 @@ enum Command {
     Serve(serve::ServeArgs),
     /// One backend over stdin and stdout, for `serve --worker` (ADR 0069).
     Worker(worker::WorkerArgs),
+    /// The engine of `serve` over stdin and stdout, started by a node's daemon for a replica it
+    /// leads (ADR 0091).
+    Replica(replica::ReplicaArgs),
     /// The CPU backend this binary loaded: variant, ISA, module directory.
     Info(info::InfoArgs),
     /// Time the executor's all-reduces and copies between GPUs (collective curves).
@@ -79,6 +84,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::Advise(args)) => advise::run(&args),
         Some(Command::Serve(args)) => serve::run(&args),
         Some(Command::Worker(args)) => worker::run(&args),
+        Some(Command::Replica(args)) => replica::run(&args),
         Some(Command::Info(args)) => info::run(&args),
         Some(Command::CommProbe(args)) => comm_probe::run(&args),
         Some(Command::Node(args)) => node::run(&args),

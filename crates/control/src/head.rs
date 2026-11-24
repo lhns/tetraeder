@@ -158,6 +158,8 @@ impl ClusterEngine {
         policy: Option<Arc<dyn FetchPolicy>>,
     ) -> Self {
         let caps: Vec<u32> = targets.iter().map(|t| t.cap).collect();
+        metrics::replicas_planned(caps.len());
+        metrics::replicas_up(0);
         let inner = Arc::new(Inner {
             state: Mutex::new(State {
                 router: Router::new(&caps, min_prefix),

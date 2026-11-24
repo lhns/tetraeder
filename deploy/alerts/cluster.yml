@@ -54,3 +54,17 @@ groups:
         annotations:
           summary: "Segment {{ $labels.tetraeder_segment }} is off its predicted step time"
           description: "The median residual of the segment's decode step is above 0.15 for 30 minutes, so the prediction that picked this cut no longer holds. Recalibrate the node (tetraeder cluster probe, the segment's anchors) and replan."
+
+      # Step 5 (replicas): fewer replicas take requests than the plan has, so capacity is down and
+      # the survivors carry the load. The head's router sets tetraeder_router_replicas_up when a
+      # replica joins or leaves and tetraeder_router_replicas_planned at start. Requests that were
+      # in flight on a lost replica count as failed (tetraeder_router_requests_total, result
+      # failed_in_flight) and feed TetraederRequestsFailing and the SLO burn alerts.
+      - alert: TetraederReplicaOut
+        expr: max(tetraeder_router_replicas_up) < max(tetraeder_router_replicas_planned)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} replicas up, fewer than the plan has"
+          description: "A replica has been out of the router for 5 minutes: its node is down, its engine does not start or does not answer the probe step. Look at TetraederNodeDown, the node's daemon log (`tetraeder node`) and the replica child's stderr."

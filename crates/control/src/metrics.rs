@@ -1,6 +1,6 @@
 //! Metrics of the router (ADR 0091, step 5; rule 6): `tetraeder.router.requests` (counter,
 //! `replica` and `result`: `ok`, `failed_in_flight`, `moved`, `affinity`),
-//! `tetraeder.router.replicas.up` (gauge) and `tetraeder.kv.prefix.fetch` (counter, `result`:
+//! `tetraeder.router.replicas.up` and `.planned` (gauges) and `tetraeder.kv.prefix.fetch` (counter, `result`:
 //! `fetched`, `recomputed`). Dashboard row "Router: requests per replica and result, replicas
 //! up, prefix fetches" and alert `TetraederReplicaOut`.
 
@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 struct M {
     requests: Counter<u64>,
     up: Gauge<u64>,
+    planned: Gauge<u64>,
     prefix: Counter<u64>,
 }
 
@@ -26,6 +27,10 @@ fn m() -> &'static M {
             up: meter
                 .u64_gauge("tetraeder.router.replicas.up")
                 .with_description("Replicas the router sends requests to")
+                .build(),
+            planned: meter
+                .u64_gauge("tetraeder.router.replicas.planned")
+                .with_description("Replicas the plan has")
                 .build(),
             prefix: meter
                 .u64_counter("tetraeder.kv.prefix.fetch")
@@ -48,6 +53,11 @@ pub fn request(replica: u32, result: &'static str) {
 
 pub fn replicas_up(n: usize) {
     m().up.record(n as u64, &[]);
+}
+
+/// Replicas the plan has (the baseline of `TetraederReplicaOut`).
+pub fn replicas_planned(n: usize) {
+    m().planned.record(n as u64, &[]);
 }
 
 /// `result`: `fetched` or `recomputed`.
