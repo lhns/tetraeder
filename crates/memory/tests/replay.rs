@@ -226,7 +226,8 @@ fn prefetch_trace(seed: u64, n_steps: usize) -> Trace {
 
 proptest! {
     /// Rule 5 style: without prefetch the offline optimum never has fewer RAM hits than LRU, at
-    /// every slot count.
+    /// every slot count that leaves experts outside both tiers (a covering LRU tier also holds the
+    /// complement of the hot set; Belady does not model that fill).
     #[test]
     fn belady_never_loses_to_lru(
         seed in 1u64..u64::MAX,
@@ -244,7 +245,7 @@ proptest! {
             })
             .collect();
         let t = decode_trace(header(2, n_expert, n_used as u32), &steps, marker);
-        for ram in (n_used as u32).max(2)..n_expert {
+        for ram in (n_used as u32).max(2)..n_expert - 2 {
             let lru = replay(&t, &cfg(2, ram, Policy::Lru, false));
             let opt = replay(&t, &cfg(2, ram, Policy::Belady, false));
             prop_assert_eq!(lru.decode.ram_lookups + lru.prefill.ram_lookups,
