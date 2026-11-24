@@ -48,6 +48,8 @@ The driver picks the box by these rules and does not ask the owner. The coordina
 - Logs append across relaunches: wait loops must check the LAST line (`tail -n1`) for `*_DONE` markers, not grep the whole file.
 - `kernels-cpu` has no resume: do not relaunch it if its results exist.
 
+- co-tenant gate: measure with `scripts/engine_sample.py` (its host view counts iowait as idle, `engine_sample.py:357`), never an ad-hoc `/proc/stat` sum; on 2026-11-24 an ad-hoc count that took iowait as busy rejected host 254084 at 60 cores where the sampler would have read under 1. Skip hosts 570868 (rejected the SSH key) and 169171 (image pull stalled twice, 2026-11-24).
+
 ## Flow
 1. You are in an isolated worktree. `git fetch origin && git checkout -B <your-branch> origin/main`. taxameter pushes the committed HEAD of this worktree to the box; keep HEAD = origin/main until the results commit.
 2. `date +%T`; `uv run taxameter status`; `offers`; `create` (record the id; a job that needs open ports passes `create --ports 7000,7001/udp` and reads the mapping from `endpoint`, taxameter v0.3.6 ADR 0014; never patch or wrap taxameter); `provision --id <id>` with the models your profile needs (docs/sessions.md); the provision log must say `cuda: ok` or `cuda: ok_preload`, else destroy and report.
