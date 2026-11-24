@@ -222,6 +222,9 @@ Phase 6 code stays on branches until the regression-gate box (`bench-regression-
 
 6. Routing input (2026-11-24, after `stream-predict-20261124` and `docs/notes/stream-predict-diagnosis.md`): the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction; it describes the workload, not its timing. The uniform-prior "Expected numbers" above are unreliable where they rest on the routing share (see the diagnosis).
 
+7. Calibration (2026-11-24, after `segment-confirm-20261124`): the exit's anchors take real hidden rows dumped from the frozen prompt, not fixed-seed input (fixed-seed routing gave pair share 0.80 against 0.39 and a fit band of 1.23 against 0.07), and a prediction is not frozen when its anchors' fit band exceeds the limit set in ADR 0092; the session stops before anything is judged.
+8. Noise (2026-11-24): no prefill noise band in the clean rules. Judged sessions run on a host with one NUMA node, checked before the model download; an A/A pair right after warm-up aborts early, the A/A last stays; the 15% rule is unchanged.
+
 ## Questions as asked
 
 1. **Exit hardware.** (a) Two Vast boxes as specified, a low-RTT pair if offered, else WAN (recommended: available now, within caps, and the 15% rule judges the prediction, which prices the link); (b) your Linux host and Windows desktop on your LAN, the real homelab (needs a 24 GB-class GPU in each and the 235B on both disks; the Windows node then runs pipeline segments only, ADR 0008); (c) two containers on one Vast host (0.23 ms, but shared host memory and PCIe make it less like two machines). Recommendation: (a) for the verdict, (b) as a later confirmation.
