@@ -4,6 +4,9 @@
 # token: the process took the 64 GB (anon 60.9 GB at the kill, still rising). The planner's host footprint leaves about 3.2 GB
 # for everything else; the run needed more. This script prices the pick again with the RAM budget 5 GB lower (59 GB, RAM_D2_BYTES),
 # on the same layout, disk curve and routing trace, and freezes it in predictions/d2/ before arm D2 runs. Nothing else changes.
+# The planner's RAM slot options are a quarter, half and all of the experts outside VRAM (28, 56, 112), so a budget that drops the
+# pick to the next option halves the tier. PIN_D2 ("16,52") instead keeps the failed pick's VRAM slots and lowers its RAM slots by
+# 4 (4.3 GB more headroom), the largest tier that was expected to fit; the budget stays 64 GB (RAM_D2_BYTES 64000000000).
 # Needs predictions/ of sp_predict.sh. Env: RESULTS_NAME, TRACE, RAM_D2_BYTES, THREADS. Ends with SP_PREDICT_D2_DONE.
 exec 8> /root/tetraeder_sp_predict_d2.lock
 flock -n 8 || exit 0
@@ -22,16 +25,18 @@ plan="$root/target/release/tetraeder-plan"
 bench="$root/target/release/tetraeder-bench"
 prior="$root/crates/planner/fixtures/rtx3090_prior.toml"
 ram="${RAM_D2_BYTES:-59000000000}"
+pin=()
+[ -n "${PIN_D2:-}" ] && pin=(--pin "$PIN_D2")
 gpu_d="${GPU_D_BYTES:-25769803776}"
 die() { say "FATAL: $*"; echo "SP_PREDICT_D2_DONE rc=1"; exit 1; }
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
 main() {
-  say "sp_predict_d2 start ram=$ram threads=$threads"
+  say "sp_predict_d2 start ram=$ram pin=${PIN_D2:-none} threads=$threads"
   (cd "$p" && sha256sum -c FROZEN.sha256 && sha256sum -c SHA256SUMS) > /dev/null 2>&1 || die "the first freeze changed"
   python3 -I scripts/sp_make_hw.py --prior "$prior" --ram-bytes "$ram" --gpu-bytes "$gpu_d" --threads "$threads" \
     --disk-curve "$p/disk-curve.json" --out "$d/hw-D2.toml" || die "hw"
-  "$plan" node-predict --hw "$d/hw-D2.toml" --layout "$p/layout.json" --out "$d/pred-D2-uniform.json" || die "predict uniform"
+  "$plan" node-predict --hw "$d/hw-D2.toml" --layout "$p/layout.json" "${pin[@]}" --out "$d/pred-D2-uniform.json" || die "predict uniform"
   local pair
   pair=$(python3 -I -c "import json,sys; d=json.load(open(sys.argv[1]))['pick']; print(f\"{d['vram_slots']},{d['ram_slots']}\")" "$d/pred-D2-uniform.json")
   say "arm D2 pick $pair"
