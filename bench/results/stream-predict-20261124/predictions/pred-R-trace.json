@@ -1,0 +1,120 @@
+{
+  "hw_sha256": "dedc9503433425d8306fb435423452441b3cfecd7685ce601929f8f90cc16955",
+  "layout_sha256": "489ef9e3b706e43c09dc6aaa6e625a2958e43653a2b1bfbce64c8bf4489d8c3d",
+  "routing": "trace replay (decode), uniform prefill: /root/tetraeder/bench/results/stream-predict-20261124/predictions/replay-R.json",
+  "workload": {
+    "prompt": 2048,
+    "gen": 128
+  },
+  "pinned": true,
+  "pick": {
+    "vram_slots": 32,
+    "ram_slots": 96,
+    "ubatch": 2048,
+    "pp_tps": 255.41737265168894,
+    "tg_tps": 6.585291295626908,
+    "request_s": 27.455505737780893,
+    "binding": "compute:cpu0",
+    "tg_breakdown": [
+      [
+        "compute:gpu0",
+        0.02063283551574469
+      ],
+      [
+        "compute:cpu0",
+        0.12814185393510635
+      ],
+      [
+        "switches",
+        0.0029316190874999998
+      ],
+      [
+        "read:nvme0",
+        0.0001472625654921067
+      ]
+    ],
+    "pp_breakdown": [
+      [
+        "compute:gpu0",
+        1.6334261420968987
+      ],
+      [
+        "offload_copy:cpu0",
+        5.148470731200001
+      ],
+      [
+        "offload_compute:cpu0",
+        0.9209934110545701
+      ],
+      [
+        "compute:cpu0",
+        0.0016626562500000003
+      ],
+      [
+        "switches",
+        0.3136956958875
+      ]
+    ]
+  },
+  "exit_regime_env": {
+    "TETRAEDER_EXIT_DECODE": "128",
+    "TETRAEDER_EXIT_GPU": "1",
+    "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+    "TETRAEDER_EXIT_PREFILL": "2048",
+    "TETRAEDER_EXIT_RAM_SLOT_BYTES": "102969114624",
+    "TETRAEDER_EXIT_UBATCH": "2048",
+    "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "34323038208"
+  },
+  "runners_up": [
+    {
+      "vram_slots": 32,
+      "ram_slots": 96,
+      "ubatch": 256,
+      "pp_tps": 46.37395222792111,
+      "tg_tps": 6.585291295626908,
+      "request_s": 63.599979957743386,
+      "binding": "compute:cpu0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.02063283551574469
+        ],
+        [
+          "compute:cpu0",
+          0.12814185393510635
+        ],
+        [
+          "switches",
+          0.0029316190874999998
+        ],
+        [
+          "read:nvme0",
+          0.0001472625654921067
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.707508017096899
+        ],
+        [
+          "offload_copy:cpu0",
+          41.187765849600005
+        ],
+        [
+          "offload_compute:cpu0",
+          0.9209934110545701
+        ],
+        [
+          "compute:cpu0",
+          0.013301250000000002
+        ],
+        [
+          "switches",
+          0.3331543287
+        ]
+      ]
+    }
+  ],
+  "dropped": []
+}
