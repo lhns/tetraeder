@@ -2595,19 +2595,21 @@ nodes:
   title: Node certificates and trust rules
   track: cluster
   kind: feature
-  state: blocked
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/transport/src/tls_transport.rs
+  verdict_quote: 'Delivered by steps 1 and 2 - tetraeder cluster cert, pinned self-signed anchors through one verifier, forbid node in the validator (CI runs 45179950926 and 45178068154)'
+  headline: 'done in steps 1 and 2'
   depends_on:
   - cluster-transport
   - cluster-planner
   - cluster-owner-phase6-design
   replaced_by: []
   lane: cluster
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-24
   folded: []
   overview: false
   plain: 'Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).'
@@ -2616,7 +2618,7 @@ nodes:
   title: Node list, health and probes
   track: cluster
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -3437,7 +3439,7 @@ nodes:
   folded: []
   overview: false
   plain: 'serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.'
-  notes: 'Formats exist (ADR 0050 b); judged by a paired run on a model we run.'
+  notes: 'Formats exist (ADR 0050 b); judged by a paired run on a model we run. Measured 2026-11-23 (regression-gate-20261123) - on the 30B auto keeps f16 up to ctx 229376 and picks q8_0 at 262144 where f16 does not start; at ctx 32768 q8_0 over f16 is 0.92 at c4 and 0.86 at c1.'
 - id: planner-ep-split
   title: Expert-parallel split on two GPUs
   track: planner

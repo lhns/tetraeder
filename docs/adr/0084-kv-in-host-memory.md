@@ -17,7 +17,7 @@ KV bytes per token, F16 (Q8_0 about 0.53 of it), and the time to read the host p
 | Qwen3-30B-A3B | 48 x 4 | 98,304 | 3.2 GB | 12.9 GB | same |
 | Qwen3-235B-A22B | 94 x 4 | 192,512 | 6.3 GB | 25.2 GB | same |
 
-A decode step of the 8B on a 3090 is under 10 ms, so one GB of KV on host costs about 2 to 4 decode steps. Host KV is a way to fit a context, not a speed lever, on these models. The cheaper levers come first: Q8_0 KV (ADR 0050 b, 47% fewer bytes) and the planner's existing trade of KV rows against expert slots (about 1.1 GB per slot tier on the 235B).
+A decode step of the 8B on a 3090 is under 10 ms, so one GB of KV on host costs about 2 to 4 decode steps. Host KV is a way to fit a context, not a speed lever, on these models. The cheaper levers come first: Q8_0 KV (ADR 0050 b, 47% fewer bytes; measured 2026-11-23 on the 30B at ctx 32768 it costs 8% throughput at c4 and 14% at c1, `regression-gate-20261123`) and the planner's existing trade of KV rows against expert slots (about 1.1 GB per slot tier on the 235B).
 
 ## Decision
 

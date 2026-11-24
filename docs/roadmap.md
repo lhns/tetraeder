@@ -345,8 +345,7 @@ flowchart TB
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
-| Node certificates and trust rules | ⛔ blocked | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). |
-| Node list, health and probes | ⛔ blocked | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). |
+| Node list, health and probes | ○ next | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). |
 | Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). |
 | Pipeline stages across machines | ⛔ blocked | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
@@ -376,6 +375,10 @@ flowchart TB
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-235b-stream-predict`: Predict the 235B on one box
 - `serving-cuda-parity`: libllama path differs on CUDA
+
+**cluster**
+
+- `cluster-discovery`: Node list, health and probes
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -415,7 +418,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 113 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 114 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -816,6 +819,7 @@ Generated on 2026-11-24.
 - `serving-recurrent-reuse`: Recurrent models break slot reuse (✔ fixed). A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
 - `serving-strata-owner-scope`: Which Strata model families to add (✔ done · n/a). The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
 - `bench-regression-gate`: Regression gate on final main (✔ done · mixed). One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).
+- `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
 
 </details>
 
@@ -850,5 +854,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (20 done, 3 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (33 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (5 done, 8 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (6 done, 1 next, 6 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
