@@ -66,9 +66,25 @@
 //!   (default: all).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
 //!   (by default it comes from the first ubatch).
-//! - `TETRAEDER_EXIT_PREFILL_WARM=1`: one untimed prefill of the same prompt before the timed one
-//!   (KV reset between), so a RAM tier that holds every expert is full when the timed prefill
-//!   starts; the pass is reported as `warm_prefill`.
+//! - `TETRAEDER_EXIT_PREFILL_WARM=n` (default 0): the warm protocol (ADR 0092 section 3): `n`
+//!   untimed full requests (prefill and decode) of the same prompt, their routing dropped, then
+//!   the timed request from a cleared sequence. The harness drives the model directly, so every
+//!   prompt token is computed (no prefix reuse, no prompt cache). The result has `warm` (the
+//!   requests, whether the plan covers every expert, `timed_prefill_disk_bytes`, `unclean`: a
+//!   covering plan whose timed prefill read from disk), `warm_requests` and `warm_prefill` (the
+//!   first warm request's prefill).
+//! - `TETRAEDER_EXIT_LAYERS=a..b`: run only layers `a` to `b` (half open), with no head: a span
+//!   from layer 0 takes tokens, any other takes hidden rows from `TETRAEDER_EXIT_HIDDEN_IN` (a
+//!   dump file) or a fixed seed (`TETRAEDER_EXIT_HIDDEN_SEED`, default 20261124: standard
+//!   normal rows). `TETRAEDER_EXIT_HEAD=1` keeps the head when the span ends at the last layer
+//!   (the two-span parity test). A span cannot pick tokens, so its decode steps use the token
+//!   ids of the dump file, else fixed pseudo-random ones. The result's `segment` describes the
+//!   span and `decode_layers` covers its layers (`first_layer`, `vram_pair_share_layers`).
+//! - `TETRAEDER_EXIT_HIDDEN_OUT=layer,file`: a whole-model greedy run as two chained builders
+//!   (layers below `layer` without the head, the rest with it) that writes the hidden rows
+//!   entering `layer` for every prompt and decode token, with the token ids, to `file` (the
+//!   input of a later span run). Report only: the chain has no counters or profile, and its
+//!   routing trace (`TETRAEDER_EXIT_ROUTING_OUT`) is that of the whole model.
 //! - `TETRAEDER_EXIT_PROMPT_FILE`: text tokenized with the model's vocab (libllama, vocab
 //!   only), repeated to length. Default: deterministic pseudo-random token ids.
 //! - `TETRAEDER_EXIT_ENGINE=libllama`: the reference instead of the builder: libllama with
@@ -95,10 +111,15 @@
 
 mod common;
 
+use common::exit_segment::{
+    HiddenFile, HiddenIn, SegmentArgs, Workload, covers, fnv1a_bytes, resolve_inputs, run_protocol,
+    warm_requests, warm_summary,
+};
 use common::synth::{MoeSpec, quantized_moe_at};
 use common::trace::RoutingRecorder;
 use common::{argmax, prefetch_json, top_k};
 use serde_json::{Value, json};
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -109,7 +130,7 @@ use tetraeder_ggml_sys::llama::{
 use tetraeder_memory::process;
 use tetraeder_model::convert::ggml_type;
 use tetraeder_model::{
-    BackendChoice, ExpertStats, IoCounters, LoadOptions, MissPolicy, ModelFile, Qwen3Moe,
+    BackendChoice, ExpertStats, Hparams, IoCounters, LoadOptions, MissPolicy, ModelFile, Qwen3Moe,
     StepProfile,
 };
 use tetraeder_plan::KvFormat;
@@ -765,12 +786,25 @@ fn overlap_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
     })
 }
 
-/// Per layer, the share of decode layer steps with every routed expert in the compute tier,
-/// and the RAM-tier hit rate.
-fn layers_json(a: &ExpertStats, b: &ExpertStats) -> Value {
+/// Per layer of `span`, the share of decode layer steps with every routed expert in the compute
+/// tier, and the RAM-tier hit rate. The counter tables cover every layer of the model (zeros
+/// outside a segment), so the arrays and means cover the span only; `first_layer` says where it
+/// starts. `vram_pair_share_layers` is the per-layer form of `vram_pair_share` (compute-tier
+/// hits over hits plus `cpu` lookups; null where the layer saw no pair) and `pairs_layers` its
+/// weights: the aggregate is the pair-weighted mean of the layers.
+fn layers_json(a: &ExpertStats, b: &ExpertStats, span: Range<usize>) -> Value {
     let mut full = Vec::new();
     let mut ram_hit = Vec::new();
-    for (la, lb) in a.layers.iter().zip(&b.layers) {
+    let mut share = Vec::new();
+    let mut pairs = Vec::new();
+    let (mut hits, mut cpu) = (0u64, 0u64);
+    for (la, lb) in a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .skip(span.start)
+        .take(span.len())
+    {
         let f = lb.full_steps - la.full_steps;
         let p = lb.partial_steps - la.partial_steps;
         full.push(f as f64 / (f + p).max(1) as f64);
@@ -779,29 +813,201 @@ fn layers_json(a: &ExpertStats, b: &ExpertStats) -> Value {
             let m = rb.misses - ra.misses;
             ram_hit.push(h as f64 / (h + m).max(1) as f64);
         }
+        // The exit-JSON view of `tetraeder.expert.cache.requests`. A decode step has one token,
+        // so its distinct experts are its pairs.
+        let (h, c) = (lb.compute.hits - la.compute.hits, lb.cpu - la.cpu);
+        hits += h;
+        cpu += c;
+        pairs.push(h + c);
+        share.push(if h + c > 0 {
+            Some(h as f64 / (h + c) as f64)
+        } else {
+            None
+        });
     }
     let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
-    // The exit-JSON view of `tetraeder.expert.cache.requests`: compute-tier hits over hits plus
-    // `cpu` lookups. A decode step has one token, so its distinct experts are its pairs.
-    let hits: u64 = a
-        .layers
-        .iter()
-        .zip(&b.layers)
-        .map(|(x, y)| y.compute.hits - x.compute.hits)
-        .sum();
-    let cpu: u64 = a
-        .layers
-        .iter()
-        .zip(&b.layers)
-        .map(|(x, y)| y.cpu - x.cpu)
-        .sum();
     json!({
         "vram_pair_share": if hits + cpu > 0 { Some(hits as f64 / (hits + cpu) as f64) } else { None },
+        "first_layer": span.start,
+        "vram_pair_share_layers": share,
+        "pairs_layers": pairs,
         "full_hit_rate_mean": mean(&full),
         "ram_hit_rate_mean": mean(&ram_hit),
         "full_hit_rate": full,
         "ram_hit_rate": ram_hit,
     })
+}
+
+/// What one segment run needs (the flags of ADR 0092 steps E2 and E3).
+struct SegmentCtx<'a> {
+    path: &'a PathBuf,
+    h: &'a Hparams,
+    args: &'a SegmentArgs,
+    /// The base load options; every segment loads them with its own `segment`.
+    opts: &'a LoadOptions,
+    tokens: &'a [i32],
+    prompt_hash: &'a str,
+    routing_out: Option<PathBuf>,
+    ub: usize,
+    n_decode: usize,
+    n_warm: usize,
+}
+
+/// A run of a layer span (`TETRAEDER_EXIT_LAYERS`), or of the whole model as two chained
+/// segments that dump the hidden rows at a layer boundary (`TETRAEDER_EXIT_HIDDEN_OUT`): the
+/// warm protocol, then the timed request. The result has the fields of a whole-model run that a
+/// segment can fill (a chain has no counters or profile: its two builders each hold half of
+/// them), and `segment` describes the span. The dump is written after the timed request.
+fn segment_run(c: &SegmentCtx<'_>) -> Value {
+    let h = c.h;
+    let (n_embd, n_vocab) = (h.n_embd as usize, h.n_vocab as usize);
+    let specs = c.args.specs(h.n_layer);
+    let inputs = resolve_inputs(c.args, &specs[0], n_embd, n_vocab, c.tokens, c.n_decode)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let t0 = Instant::now();
+    let mut models: Vec<Qwen3Moe> = specs
+        .iter()
+        .map(|s| {
+            let mut o = c.opts.clone();
+            o.segment = Some(s.clone());
+            Qwen3Moe::load(c.path, &o).expect("segment loads")
+        })
+        .collect();
+    let load_s = t0.elapsed().as_secs_f64();
+    let mut recorder = c.routing_out.as_ref().map(|p| {
+        RoutingRecorder::create(p, &models[0], c.ub, c.prompt_hash, "first_prefill", None)
+    });
+    let w = Workload {
+        tokens: c.tokens,
+        ub: c.ub,
+        n_decode: c.n_decode,
+        decode_tokens: inputs.decode_tokens.as_deref(),
+        rows: inputs.rows.as_deref(),
+    };
+    let mut log = Vec::new();
+    let mut refs: Vec<&mut Qwen3Moe> = models.iter_mut().collect();
+    let covering = covers(refs[0].tier_slots(), h.n_expert as usize);
+    let proto = run_protocol(
+        &mut refs,
+        &w,
+        c.n_warm,
+        c.args.tap_at(),
+        &mut log,
+        &mut |ms: &mut [&mut Qwen3Moe]| {
+            if let Some(r) = recorder.as_mut() {
+                r.drain_chain(ms);
+            }
+        },
+    );
+    drop(refs);
+    if let Some(r) = recorder.take() {
+        r.finish();
+    }
+    let mut t = proto.timed;
+    let (n_prefill, n_decode) = (c.tokens.len(), c.n_decode);
+
+    let hidden_out = c.args.hidden_out.as_ref().map(|o| {
+        let mut tokens = c.tokens.to_vec();
+        tokens.extend(&t.decode_fed);
+        let f = HiddenFile {
+            layer: o.layer,
+            n_embd,
+            n_prompt: n_prefill,
+            tokens,
+            rows: std::mem::take(&mut t.tap),
+        };
+        assert_eq!(
+            f.rows.len(),
+            f.tokens.len() * n_embd,
+            "one hidden row per token"
+        );
+        let bytes = f.to_bytes();
+        std::fs::write(&o.file, &bytes).expect("hidden-row file");
+        json!({"layer": o.layer, "file": o.file.display().to_string(),
+               "bytes": bytes.len(), "fnv1a64": fnv1a_bytes(&bytes), "rows": f.tokens.len()})
+    });
+    let hidden_in = c.args.hidden_in.as_ref().map(|i| match i {
+        HiddenIn::File(p) => json!({"file": p.display().to_string()}),
+        HiddenIn::Seed(s) => json!({"seed": s, "distribution": "standard normal"}),
+    });
+    let first = &specs[0];
+    let span = first.layers.start as usize..specs[specs.len() - 1].layers.end as usize;
+    let (prefill_io, decode_io, decode_layers) = match &t.snaps {
+        Some(s) => (
+            io_json(
+                &s.start.io,
+                &s.after_prefill.io,
+                n_prefill as f64,
+                t.prefill_s,
+            ),
+            io_json(
+                &s.after_prefill.io,
+                &s.end.io,
+                n_decode.max(1) as f64,
+                t.decode_s,
+            ),
+            layers_json(&s.after_prefill, &s.end, span.clone()),
+        ),
+        None => (Value::Null, Value::Null, Value::Null),
+    };
+    let warm: Vec<Value> = proto
+        .warm
+        .iter()
+        .map(|r| {
+            json!({
+                "prefill_s": r.prefill_s,
+                "prefill_tok_s": n_prefill as f64 / r.prefill_s,
+                "decode_s": r.decode_s,
+                "io": r.snaps.as_ref().map(|s| io_json(&s.start.io, &s.after_prefill.io, n_prefill as f64, r.prefill_s)),
+            })
+        })
+        .collect();
+    let memory: Vec<Value> = models
+        .iter()
+        .flat_map(|m| m.memory())
+        .map(|u| {
+            json!({"device": u.device, "tier": u.tier, "kind": u.kind,
+                   "capacity": u.capacity, "used": u.used})
+        })
+        .collect();
+    let run = json!({
+        "engine": "tetraeder",
+        "ubatch": c.ub,
+        "load_s": load_s,
+        "segment": {
+            "layers": [span.start, span.end],
+            "segments": specs.iter().map(|s| json!({
+                "layers": [s.layers.start, s.layers.end], "embed": s.embed, "head": s.head,
+            })).collect::<Vec<_>>(),
+            "hidden_in": hidden_in,
+            "hidden_out": hidden_out,
+        },
+        "warm_prefill": warm.first().cloned().unwrap_or(Value::Null),
+        "warm_requests": warm,
+        "warm": warm_summary(c.n_warm, covering, t.prefill_disk_bytes()),
+        "prefill_tokens": n_prefill,
+        "prefill_s": t.prefill_s,
+        "prefill_tok_s": n_prefill as f64 / t.prefill_s,
+        "ubatch_s": t.ubatch_s,
+        "prefill_profile_per_ubatch": t.prefill_profile.as_ref().map(|p| profile_json(p, p.steps.max(1) as f64)),
+        "prefill_io": prefill_io,
+        "decode_tokens": n_decode,
+        "decode_tok_s": n_decode as f64 / t.decode_s,
+        "decode_profile_per_token": t.decode_profile.as_ref().map(|p| profile_json(p, n_decode.max(1) as f64)),
+        "decode_io": decode_io,
+        "decode_layers": decode_layers,
+        // the tokens the decode steps were fed: greedy with the head on a whole-model run
+        "decode_fed": t.decode_fed,
+        "first_top": specs[specs.len() - 1].head.then(|| top_json(&t.last)),
+        "greedy": if first.embed && specs[specs.len() - 1].head { json!(t.decode_fed) } else { Value::Null },
+        "request_log": log,
+        "max_splits": models[0].max_splits(),
+        "memory": memory,
+        "rss_bytes": process::current_rss(),
+        "peak_rss_bytes": process::peak_rss(),
+    });
+    eprintln!("{run}");
+    run
 }
 
 /// hardware: cpu (default) or gpu_* (`TETRAEDER_EXIT_GPU=1`). See the module docs.
@@ -845,10 +1051,39 @@ fn exit_regime() {
     let per_layer = file.expert_bytes_per_layer().expect("expert sizes");
     let slot_bytes_all_layers: u64 = per_layer.iter().sum();
 
+    let n_warm = env_u64("TETRAEDER_EXIT_PREFILL_WARM").unwrap_or(0) as usize;
+    let seg_args =
+        SegmentArgs::parse(|k| std::env::var(k).ok(), h.n_layer).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        !(reference && seg_args.is_segment_run()),
+        "TETRAEDER_EXIT_LAYERS and _HIDDEN_OUT run the builder, not the reference"
+    );
+    assert!(
+        !(routing_out.is_some() && seg_args.layers.is_some()),
+        "a routing trace needs a whole-model run or a hidden-row dump, not a span"
+    );
     let mut runs = Vec::new();
     let mut io_backend = None;
     let mut cpu_poll = None;
     for &ub in &ubatches {
+        if seg_args.is_segment_run() {
+            let ctx = SegmentCtx {
+                path: &path,
+                h: &h,
+                args: &seg_args,
+                opts: &opts,
+                tokens: &tokens,
+                prompt_hash: prompt_info["fnv1a64"].as_str().unwrap_or_default(),
+                routing_out: routing_out
+                    .as_ref()
+                    .map(|p| trace_path(p, ub, ubatches.len() > 1)),
+                ub,
+                n_decode,
+                n_warm,
+            };
+            runs.push(segment_run(&ctx));
+            continue;
+        }
         if reference {
             runs.push(reference_run(
                 &path, &tokens, ub, n_decode, n_ctx, threads, opts.kv,
@@ -861,24 +1096,36 @@ fn exit_regime() {
         io_backend = m.io_backend();
         cpu_poll = Some(m.cpu_poll());
         let mut s0 = m.expert_stats().expect("the exit regime streams experts");
-        // TETRAEDER_EXIT_PREFILL_WARM=1: one untimed prefill first, so a RAM tier that holds every
-        // expert is full before the timed one and no read from disk is left in it (the
-        // measurement of tree node bench-235b-stream-predict, arm R); its time is `warm_prefill`.
+        // TETRAEDER_EXIT_PREFILL_WARM=n: n untimed full requests of the same prompt first (ADR
+        // 0092 section 3), then the timed one from an empty sequence, so a covering tier is full
+        // and the timed prefill reads nothing from disk. `warm_prefill` is the first request's
+        // prefill (read by `sp_table.py`); `warm` has the protocol and the clean flag.
         let mut warm_prefill = Value::Null;
-        if env_flag("TETRAEDER_EXIT_PREFILL_WARM") {
-            let t = Instant::now();
-            for chunk in tokens.chunks(ub.max(1)) {
-                m.eval_last(chunk).expect("warm prefill");
+        let mut warm_requests_json = Vec::new();
+        if n_warm > 0 {
+            let w = Workload {
+                tokens: &tokens,
+                ub,
+                n_decode,
+                decode_tokens: None,
+                rows: None,
+            };
+            let warm = warm_requests(&mut [&mut m], &w, n_warm, &mut Vec::new());
+            for (k, r) in warm.iter().enumerate() {
+                let snaps = r.snaps.as_ref().expect("single model has counters");
+                let v = json!({
+                    "prefill_s": r.prefill_s,
+                    "prefill_tok_s": n_prefill as f64 / r.prefill_s,
+                    "decode_s": r.decode_s,
+                    "io": io_json(&snaps.start.io, &snaps.after_prefill.io, n_prefill as f64, r.prefill_s),
+                });
+                if k == 0 {
+                    warm_prefill = v.clone();
+                }
+                warm_requests_json.push(v);
             }
-            let warm_s = t.elapsed().as_secs_f64();
             m.reset();
-            let se = m.expert_stats().unwrap();
-            warm_prefill = json!({
-                "prefill_s": warm_s,
-                "prefill_tok_s": n_prefill as f64 / warm_s,
-                "io": io_json(&s0.io, &se.io, n_prefill as f64, warm_s),
-            });
-            s0 = se;
+            s0 = m.expert_stats().unwrap();
         }
         let mut recorder = routing_out.as_ref().map(|p| {
             let path = trace_path(p, ub, ubatches.len() > 1);
@@ -960,7 +1207,7 @@ fn exit_regime() {
                 "gap": gaps.json(),
                 "profile_per_token": profile_json(&p, n as f64),
                 "io": io_json(&sw.io, &se.io, n as f64, wall),
-                "layers": layers_json(&sw, &se),
+                "layers": layers_json(&sw, &se, 0..h.n_layer as usize),
             }));
             add_profile(&mut tg, &p);
             sw = se;
@@ -981,18 +1228,25 @@ fn exit_regime() {
                        "capacity": u.capacity, "used": u.used})
             })
             .collect();
+        let prefill_io = io_json(&s0.io, &s1.io, n_prefill as f64, prefill_s + refresh_s);
         let run = json!({
             "engine": "tetraeder",
             "ubatch": ub,
             "load_s": load_s,
             "warm_prefill": warm_prefill,
+            "warm_requests": warm_requests_json,
+            "warm": warm_summary(
+                n_warm,
+                covers(m.tier_slots(), h.n_expert as usize),
+                prefill_io["bytes"].as_u64().unwrap_or(0),
+            ),
             "prefill_tokens": n_prefill,
             "prefill_s": prefill_s,
             "prefill_tok_s": n_prefill as f64 / prefill_s,
             "hot_refresh_s": refresh_s,
             "ubatch_s": ubatch_s,
             "prefill_profile_per_ubatch": profile_json(&pp, pp.steps.max(1) as f64),
-            "prefill_io": io_json(&s0.io, &s1.io, n_prefill as f64, prefill_s + refresh_s),
+            "prefill_io": prefill_io,
             "prefill_prefetch": prefetch_json(&s0, &s1, n_prefill as f64),
             "decode_tokens": n_decode,
             "decode_tok_s": n_decode as f64 / decode_s,
@@ -1000,7 +1254,7 @@ fn exit_regime() {
             "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64, decode_s),
             "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
             "decode_overlap": overlap_json(&s1.io, &s2.io, n_decode.max(1) as f64),
-            "decode_layers": layers_json(&s1, &s2),
+            "decode_layers": layers_json(&s1, &s2, 0..h.n_layer as usize),
             "first_top": first_top,
             "decode_windows": windows,
             "greedy": greedy,
@@ -1336,7 +1590,7 @@ fn exit_regime_arms() {
                     "gap": gaps.json(),
                     "profile_per_token": profile_json(&p, n as f64),
                     "io": io_json(&sw.io, &se.io, n as f64, wall),
-                    "layers": layers_json(&sw, &se),
+                    "layers": layers_json(&sw, &se, 0..h.n_layer as usize),
                 }));
                 add_profile(&mut tg, &p);
                 sw = se;
@@ -1373,7 +1627,7 @@ fn exit_regime_arms() {
                 "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64, decode_s),
                 "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
                 "decode_overlap": overlap_json(&s1.io, &s2.io, n_decode.max(1) as f64),
-                "decode_layers": layers_json(&s1, &s2),
+                "decode_layers": layers_json(&s1, &s2, 0..h.n_layer as usize),
                 "first_top": first_top.clone(),
                 "decode_windows": windows,
                 "greedy": greedy,
@@ -1472,5 +1726,458 @@ fn exit_regime_arms() {
     }
     if exact {
         assert!(all_equal, "greedy tokens differ between arms: {index}");
+    }
+}
+
+/// CI tests of the segment and warm parts of the harness (ADR 0092, steps E2 and E3) on a tiny
+/// synthetic MoE: the flags, the dump file, a two-span run against the whole run, the warm
+/// protocol and the result JSON. The exit regime itself needs `--ignored` and a real model.
+mod ci {
+    use super::*;
+    use crate::common::exit_segment::{
+        DEFAULT_SEED, HiddenFile, is_unclean, no_hook, pseudo_tokens, run_request, seeded_rows,
+    };
+    use crate::common::synth::write_moe;
+    use crate::common::{PROMPT, tol_batch};
+    use tetraeder_model::SegmentSpec;
+
+    const N_DEC: usize = 5;
+    const N_EMBD: usize = 64;
+
+    fn synth4(tag: &str) -> PathBuf {
+        let spec = MoeSpec {
+            layers: 4,
+            embd: N_EMBD,
+            heads: 4,
+            heads_kv: 2,
+            head_dim: 16,
+            experts: 8,
+            used: 2,
+            ff: 64,
+            seed: 20261125,
+        };
+        let p = std::env::temp_dir().join(format!(
+            "tetraeder-exitseg-{tag}-{}.gguf",
+            std::process::id()
+        ));
+        write_moe(&p, &spec);
+        p
+    }
+
+    /// 3 VRAM slots and `ram` RAM slots of 8 experts, the cpu miss policy and prefetch: the
+    /// path of the 235B on a node.
+    fn opts(ram: usize, record: bool) -> LoadOptions {
+        LoadOptions {
+            kv: KvFormat::F16,
+            kv_rotation: Some(false),
+            n_ctx: 512,
+            expert_slots: Some(3),
+            ram_slots: Some(ram),
+            miss: MissPolicy::Cpu,
+            prefetch: true,
+            record_routing: record,
+            ..LoadOptions::new(BackendChoice::Cpu { threads: Some(2) })
+        }
+    }
+
+    fn load(path: &PathBuf, o: &LoadOptions, seg: Option<SegmentSpec>) -> Qwen3Moe {
+        let mut o = o.clone();
+        o.segment = seg;
+        Qwen3Moe::load(path, &o).expect("loads")
+    }
+
+    fn work<'a>(dt: Option<&'a [i32]>, rows: Option<&'a [f32]>) -> Workload<'a> {
+        Workload {
+            tokens: &PROMPT,
+            ub: 4,
+            n_decode: N_DEC,
+            decode_tokens: dt,
+            rows,
+        }
+    }
+
+    fn close(got: &[f32], want: &[f32], what: &str) {
+        assert_eq!(got.len(), want.len(), "{what}");
+        let d = got
+            .iter()
+            .zip(want)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        assert!(d <= tol_batch(want), "{what}: {d:e}");
+    }
+
+    fn env_of<'a>(pairs: &'a [(&'a str, String)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())
+    }
+
+    fn parse(pairs: &[(&str, &str)], n: u32) -> Result<SegmentArgs, String> {
+        let owned: Vec<(&str, String)> =
+            pairs.iter().map(|(k, v)| (*k, (*v).to_string())).collect();
+        SegmentArgs::parse(env_of(&owned), n)
+    }
+
+    // hardware: none
+    #[test]
+    fn flags_parse_and_refuse_bad_combinations() {
+        assert_eq!(parse(&[], 94).unwrap(), SegmentArgs::default());
+        assert!(!parse(&[], 94).unwrap().is_segment_run());
+        // the confirmation segment: layers 47 to 93, no head, fixed seed
+        let a = parse(&[("TETRAEDER_EXIT_LAYERS", "47..94")], 94).unwrap();
+        assert_eq!(a.layers, Some(47..94));
+        assert!(!a.head);
+        assert_eq!(a.hidden_in, Some(HiddenIn::Seed(DEFAULT_SEED)));
+        let s = a.specs(94);
+        assert_eq!(s.len(), 1);
+        assert!(!s[0].embed && !s[0].head && s[0].layers == (47..94));
+        let a = parse(
+            &[
+                ("TETRAEDER_EXIT_LAYERS", "47..94"),
+                ("TETRAEDER_EXIT_HIDDEN_SEED", "7"),
+            ],
+            94,
+        )
+        .unwrap();
+        assert_eq!(a.hidden_in, Some(HiddenIn::Seed(7)));
+        let a = parse(
+            &[
+                ("TETRAEDER_EXIT_LAYERS", "47..94"),
+                ("TETRAEDER_EXIT_HEAD", "1"),
+                ("TETRAEDER_EXIT_HIDDEN_IN", "rows.bin"),
+            ],
+            94,
+        )
+        .unwrap();
+        assert!(a.head && a.specs(94)[0].head);
+        assert_eq!(a.hidden_in, Some(HiddenIn::File("rows.bin".into())));
+        // a span from layer 0 has the embedding and takes tokens
+        let a = parse(&[("TETRAEDER_EXIT_LAYERS", "0..47")], 94).unwrap();
+        assert!(a.hidden_in.is_none() && a.specs(94)[0].embed);
+        // a dump is the whole model cut in two at the layer
+        let a = parse(&[("TETRAEDER_EXIT_HIDDEN_OUT", "47,rows.bin")], 94).unwrap();
+        assert!(a.is_segment_run());
+        assert_eq!(a.tap_at(), Some(0));
+        let s = a.specs(94);
+        assert_eq!(s.len(), 2);
+        assert!(s[0].embed && !s[0].head && s[0].layers == (0..47));
+        assert!(!s[1].embed && s[1].head && s[1].layers == (47..94));
+        // refused
+        let bad: [&[(&str, &str)]; 13] = [
+            &[("TETRAEDER_EXIT_LAYERS", "5..5")],
+            &[("TETRAEDER_EXIT_LAYERS", "5..95")],
+            &[("TETRAEDER_EXIT_LAYERS", "a..b")],
+            &[("TETRAEDER_EXIT_LAYERS", "7")],
+            &[
+                ("TETRAEDER_EXIT_LAYERS", "47..90"),
+                ("TETRAEDER_EXIT_HEAD", "1"),
+            ],
+            &[
+                ("TETRAEDER_EXIT_LAYERS", "0..47"),
+                ("TETRAEDER_EXIT_HIDDEN_SEED", "1"),
+            ],
+            &[("TETRAEDER_EXIT_HIDDEN_SEED", "1")],
+            &[("TETRAEDER_EXIT_HIDDEN_IN", "rows.bin")],
+            &[
+                ("TETRAEDER_EXIT_LAYERS", "47..94"),
+                ("TETRAEDER_EXIT_HIDDEN_SEED", "x"),
+            ],
+            &[("TETRAEDER_EXIT_HIDDEN_OUT", "0,rows.bin")],
+            &[("TETRAEDER_EXIT_HIDDEN_OUT", "94,rows.bin")],
+            &[("TETRAEDER_EXIT_HIDDEN_OUT", "47")],
+            &[
+                ("TETRAEDER_EXIT_LAYERS", "0..47"),
+                ("TETRAEDER_EXIT_HIDDEN_OUT", "20,rows.bin"),
+            ],
+        ];
+        for b in bad {
+            assert!(parse(b, 94).is_err(), "{b:?}");
+        }
+    }
+
+    // hardware: none
+    #[test]
+    fn hidden_file_round_trips_and_the_seed_input_is_fixed() {
+        let f = HiddenFile {
+            layer: 3,
+            n_embd: 2,
+            n_prompt: 2,
+            tokens: vec![5, 6, 7],
+            rows: vec![0.5, -1.0, 2.0, 3.5, -0.25, 8.0],
+        };
+        let b = f.to_bytes();
+        assert_eq!(HiddenFile::from_bytes(&b).unwrap(), f);
+        assert!(HiddenFile::from_bytes(&b[..b.len() - 1]).is_err());
+        let mut bad = b.clone();
+        bad[0] = b'X';
+        assert!(HiddenFile::from_bytes(&bad).is_err());
+        let a = seeded_rows(9, 64, 128);
+        assert_eq!(a, seeded_rows(9, 64, 128));
+        assert_ne!(a, seeded_rows(10, 64, 128));
+        let n = a.len() as f32;
+        let mean = a.iter().sum::<f32>() / n;
+        let var = a.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n;
+        assert!(mean.abs() < 0.05 && (var - 1.0).abs() < 0.1, "{mean} {var}");
+        assert_eq!(pseudo_tokens(6, 260), pseudo_tokens(6, 260));
+        assert!(pseudo_tokens(50, 260).iter().all(|t| (0..260).contains(t)));
+    }
+
+    // hardware: cpu. Span [0,2) with the head off and [2,4) on its dumped rows give the whole
+    // run's logits within tol_batch, the same greedy tokens, and the rows the chain dumped.
+    #[test]
+    fn cpu_two_span_run_matches_the_whole_run() {
+        let path = synth4("parity");
+        let h = ModelFile::open(&path).unwrap().hparams.clone();
+        let o = opts(6, false);
+        let mut whole = load(&path, &o, None);
+        let want = run_request(
+            &mut [&mut whole],
+            &work(None, None),
+            "whole",
+            None,
+            &mut Vec::new(),
+            &mut no_hook,
+        );
+        let head_off = SegmentSpec {
+            layers: 0..2,
+            embed: true,
+            head: false,
+        };
+        let tail = SegmentSpec {
+            layers: 2..4,
+            embed: false,
+            head: true,
+        };
+        let mut a = load(&path, &o, Some(head_off));
+        let mut b = load(&path, &o, Some(tail));
+        let chain = run_request(
+            &mut [&mut a, &mut b],
+            &work(None, None),
+            "chain",
+            Some(0),
+            &mut Vec::new(),
+            &mut no_hook,
+        );
+        assert_eq!(chain.decode_fed, want.decode_fed);
+        close(&chain.last, &want.last, "chain prefill");
+        close(&chain.last_decode, &want.last_decode, "chain decode");
+        assert_eq!(chain.tap.len(), (PROMPT.len() + N_DEC) * N_EMBD);
+
+        // the dump, read back as the second span's input
+        let mut tokens = PROMPT.to_vec();
+        tokens.extend(&chain.decode_fed);
+        let fpath =
+            std::env::temp_dir().join(format!("tetraeder-exitseg-{}.rows", std::process::id()));
+        HiddenFile {
+            layer: 2,
+            n_embd: N_EMBD,
+            n_prompt: PROMPT.len(),
+            tokens,
+            rows: chain.tap.clone(),
+        }
+        .write(&fpath)
+        .unwrap();
+        let pairs = [
+            ("TETRAEDER_EXIT_LAYERS", "2..4".to_string()),
+            ("TETRAEDER_EXIT_HEAD", "1".to_string()),
+            ("TETRAEDER_EXIT_HIDDEN_IN", fpath.display().to_string()),
+        ];
+        let args = SegmentArgs::parse(env_of(&pairs), 4).unwrap();
+        let specs = args.specs(4);
+        let nv = h.n_vocab as usize;
+        let inp = resolve_inputs(&args, &specs[0], N_EMBD, nv, &PROMPT, N_DEC).unwrap();
+        let mut span = load(&path, &o, Some(specs[0].clone()));
+        let got = run_request(
+            &mut [&mut span],
+            &work(inp.decode_tokens.as_deref(), inp.rows.as_deref()),
+            "span",
+            None,
+            &mut Vec::new(),
+            &mut no_hook,
+        );
+        assert_eq!(got.decode_fed, want.decode_fed);
+        close(&got.last, &want.last, "span prefill");
+        close(&got.last_decode, &want.last_decode, "span decode");
+        // a file for another prompt is refused
+        assert!(resolve_inputs(&args, &specs[0], N_EMBD, nv, &[1, 2, 3], N_DEC).is_err());
+
+        // the first span alone: its last prompt row is the chain's dumped one
+        let pairs = [("TETRAEDER_EXIT_LAYERS", "0..2".to_string())];
+        let args = SegmentArgs::parse(env_of(&pairs), 4).unwrap();
+        let specs = args.specs(4);
+        let inp = resolve_inputs(&args, &specs[0], N_EMBD, nv, &PROMPT, N_DEC).unwrap();
+        assert!(inp.rows.is_none() && inp.decode_tokens.is_some());
+        let mut first = load(&path, &o, Some(specs[0].clone()));
+        let got = run_request(
+            &mut [&mut first],
+            &work(inp.decode_tokens.as_deref(), None),
+            "first",
+            None,
+            &mut Vec::new(),
+            &mut no_hook,
+        );
+        let n = PROMPT.len();
+        close(
+            &got.last,
+            &chain.tap[(n - 1) * N_EMBD..n * N_EMBD],
+            "first span",
+        );
+        let _ = std::fs::remove_file(&fpath);
+    }
+
+    // hardware: cpu. The warm protocol: n warm requests of the same prompt (prefill and
+    // decode), their routing dropped, then a timed request that recomputes every token; the
+    // unclean flag follows the timed prefill's disk bytes.
+    #[test]
+    fn cpu_warm_protocol_runs_warm_requests_then_the_timed_one() {
+        let path = synth4("warm");
+        let h = ModelFile::open(&path).unwrap().hparams.clone();
+        let o = opts(6, true);
+        let mut m = load(&path, &o, None);
+        let w = work(None, None);
+        let mut log = Vec::new();
+        let p = run_protocol(&mut [&mut m], &w, 2, None, &mut log, &mut no_hook);
+        assert_eq!(
+            log,
+            [
+                "warm0:reset",
+                "warm0:prefill",
+                "warm0:decode",
+                "warm1:reset",
+                "warm1:prefill",
+                "warm1:decode",
+                "discard_routing",
+                "timed:reset",
+                "timed:prefill",
+                "timed:decode",
+            ]
+        );
+        assert_eq!(p.warm.len(), 2);
+        // the timed request recomputed the whole prompt and decoded from it, the same way
+        assert_eq!(m.seq_len(0), PROMPT.len() + N_DEC);
+        assert!(p.warm.iter().all(|r| r.decode_fed == p.timed.decode_fed));
+        // a trace holds the timed request only
+        let routed = m.take_routing_log();
+        let layer0 = routed.iter().filter(|r| !r.refresh && r.layer == 0).count();
+        assert!(layer0 > 0 && layer0 <= 2 + N_DEC, "{layer0} layer-0 steps");
+
+        let covering = covers(m.tier_slots(), h.n_expert as usize);
+        assert!(covering, "3 + 6 slots of 8 experts");
+        let bytes = p.timed.prefill_disk_bytes();
+        let s = warm_summary(2, covering, bytes);
+        assert_eq!(s["requests"], 2);
+        assert_eq!(s["timed_prefill_disk_bytes"], bytes);
+        assert_eq!(s["unclean"], bytes > 0);
+        assert!(!s["prefix_reuse"].as_bool().unwrap());
+        assert!(!s["prompt_cache"].as_bool().unwrap());
+        // a cold first request reads; the warm one reads no more than that
+        let mut cold = load(&path, &o, None);
+        let c = run_protocol(&mut [&mut cold], &w, 0, None, &mut Vec::new(), &mut no_hook);
+        assert!(c.timed.prefill_disk_bytes() > 0);
+        assert!(bytes <= c.timed.prefill_disk_bytes());
+        // the predicate: only a covering segment can be unclean
+        assert!(is_unclean(true, 1) && !is_unclean(true, 0) && !is_unclean(false, 1));
+        assert!(!covers(Some((3, Some(4))), 8) && covers(Some((3, Some(5))), 8));
+        assert!(!covers(None, 8));
+    }
+
+    fn ctx<'a>(
+        path: &'a PathBuf,
+        h: &'a Hparams,
+        args: &'a SegmentArgs,
+        o: &'a LoadOptions,
+        routing_out: Option<PathBuf>,
+        n_warm: usize,
+    ) -> SegmentCtx<'a> {
+        SegmentCtx {
+            path,
+            h,
+            args,
+            opts: o,
+            tokens: &PROMPT,
+            prompt_hash: "test",
+            routing_out,
+            ub: 4,
+            n_decode: N_DEC,
+            n_warm,
+        }
+    }
+
+    // hardware: cpu. The span result carries the warm block, the timed prefill's bytes and the
+    // per-layer pair share of the span, consistent with the aggregate.
+    #[test]
+    fn cpu_span_result_has_the_warm_and_pair_share_fields() {
+        let path = synth4("json");
+        let h = ModelFile::open(&path).unwrap().hparams.clone();
+        let o = opts(6, false);
+        let pairs = [
+            ("TETRAEDER_EXIT_LAYERS", "2..4".to_string()),
+            ("TETRAEDER_EXIT_HEAD", "1".to_string()),
+        ];
+        let args = SegmentArgs::parse(env_of(&pairs), 4).unwrap();
+        let v = segment_run(&ctx(&path, &h, &args, &o, None, 1));
+        assert_eq!(v["segment"]["layers"], json!([2, 4]));
+        assert_eq!(v["segment"]["hidden_in"]["seed"], DEFAULT_SEED);
+        assert_eq!(v["warm"]["requests"], 1);
+        assert!(v["warm"]["covering"].as_bool().unwrap());
+        let bytes = v["prefill_io"]["bytes"].as_u64().unwrap();
+        assert_eq!(v["warm"]["timed_prefill_disk_bytes"], bytes);
+        assert_eq!(v["warm"]["unclean"], bytes > 0);
+        assert_eq!(v["warm_requests"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            v["request_log"],
+            json!([
+                "warm0:reset",
+                "warm0:prefill",
+                "warm0:decode",
+                "discard_routing",
+                "timed:reset",
+                "timed:prefill",
+                "timed:decode"
+            ])
+        );
+        assert!(v["first_top"].is_array());
+        assert!(v["decode_io"]["bytes_per_token"].is_number());
+        let l = &v["decode_layers"];
+        assert_eq!(l["first_layer"], 2);
+        let share = l["vram_pair_share_layers"].as_array().unwrap();
+        let weights = l["pairs_layers"].as_array().unwrap();
+        assert_eq!((share.len(), weights.len()), (2, 2));
+        let (mut hit, mut all) = (0.0, 0.0);
+        for (s, p) in share.iter().zip(weights) {
+            let (s, p) = (s.as_f64().unwrap(), p.as_f64().unwrap());
+            assert!((0.0..=1.0).contains(&s) && p > 0.0);
+            hit += s * p;
+            all += p;
+        }
+        let agg = l["vram_pair_share"].as_f64().unwrap();
+        assert!((hit / all - agg).abs() < 1e-9, "{} {agg}", hit / all);
+        assert_eq!(l["full_hit_rate"].as_array().unwrap().len(), 2);
+    }
+
+    // hardware: cpu. A dump run is the whole model as two segments: it writes the rows and the
+    // tokens, picks greedy tokens, and records one trace.
+    #[test]
+    fn cpu_dump_run_writes_the_hidden_rows() {
+        let path = synth4("dump");
+        let h = ModelFile::open(&path).unwrap().hparams.clone();
+        let o = opts(6, true);
+        let dir = std::env::temp_dir();
+        let id = std::process::id();
+        let rows = dir.join(format!("tetraeder-exitseg-dump-{id}.rows"));
+        let trace = dir.join(format!("tetraeder-exitseg-dump-{id}.trace"));
+        let pairs = [("TETRAEDER_EXIT_HIDDEN_OUT", format!("2,{}", rows.display()))];
+        let args = SegmentArgs::parse(env_of(&pairs), 4).unwrap();
+        let v = segment_run(&ctx(&path, &h, &args, &o, Some(trace.clone()), 1));
+        let f = HiddenFile::read(&rows).unwrap();
+        assert_eq!((f.layer, f.n_embd, f.n_prompt), (2, N_EMBD, PROMPT.len()));
+        assert_eq!(f.tokens.len(), PROMPT.len() + N_DEC);
+        assert_eq!(f.tokens[..PROMPT.len()], PROMPT);
+        assert_eq!(f.rows.len(), f.tokens.len() * N_EMBD);
+        assert_eq!(v["greedy"], json!(&f.tokens[PROMPT.len()..]));
+        assert_eq!(v["segment"]["hidden_out"]["rows"], f.tokens.len());
+        assert_eq!(v["segment"]["segments"].as_array().unwrap().len(), 2);
+        assert!(v["prefill_io"].is_null() && v["first_top"].is_array());
+        assert!(std::fs::metadata(&trace).unwrap().len() > 0);
+        let _ = std::fs::remove_file(&rows);
+        let _ = std::fs::remove_file(&trace);
     }
 }

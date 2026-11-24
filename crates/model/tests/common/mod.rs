@@ -1,6 +1,7 @@
 //! Shared by the model tests: the fixture, libllama as the reference and the logit checks.
 #![allow(dead_code)]
 
+pub mod exit_segment;
 pub mod multi_seq;
 pub mod shapes;
 pub mod split;
