@@ -1,0 +1,120 @@
+# 0092. Cost model 6: routing as an input, the reader copy rate and the chunked offload copy for streamed MoE segments
+
+Status: Proposed 2026-11-24. Phase 6, milestone M3. Tree node `planner-costmodel-stream-terms`. Amends ADR 0056 (tier term, fidelity gate) and ADR 0040's builder scoring; extends ADR 0050 (c) (the replay). Fills in what ADR 0091 Case S leaves unsaid (the routing input of owner answer 6, the warm state of a judged round, the RAM budget under the balloon); Case S's candidates, workload, rounds and 15% rule do not change. Supersedes nothing.
+
+Evidence: [`docs/notes/stream-predict-diagnosis.md`](../notes/stream-predict-diagnosis.md) (the diagnosis; its section 7 is the outline of this ADR) and [`bench/results/stream-predict-20261124/README.md`](../../bench/results/stream-predict-20261124/README.md). Measured numbers live there; this ADR holds forms, thresholds and rules.
+
+## Context
+
+`stream-predict-20261124` priced the single-node 235B uncalibrated and missed 15% in both regimes (arm R, the exit's segment regime, and arm D2, streamed). The diagnosis splits the errors:
+
+- **Routing input (structural).** In arm R (32 VRAM and 96 RAM slots, every expert resident) the decode error comes from the VRAM pair share, not a rate: uniform prior 0.25, a foreign trace 0.41, measured 0.70. ADR 0091's "the uniform routing prior does not enter" is wrong for its segments. The anchor fit does not repair it: on the `HitModel` path it takes the anchors' full-hit rate as the pair share, a different quantity, and the fit absorbs the gap into an unphysical CPU rate that transfers only if the judged run has the anchors' routing locality.
+- **Reader copy rate (structural).** `B_copy = cpu_rates(1)`, which for a CPU without a thread curve is `B_cpu / threads`, so it falls as the container gets more cores. One reader thread's copy rate does not.
+- **Cold start (protocol).** The VRAM and RAM tiers are independent LRU tables; after the hot-set refresh the RAM tier keeps copies of the hot set, so a covering plan still reads from disk on its second request and is read-free only from the third. Each Case S round is a fresh process, so a judged pp2048 is a cold first request unless the protocol says otherwise.
+- **Offload copy per chunk (structural).** With op offload, a prefill ubatch copies the whole RAM-slot tensor once per chunk of `ram_slots` experts, not the share of experts outside VRAM once.
+- **RAM budget.** The planner was given the nominal 64 GB; the balloon's page tables and the container left about 61 GB, and the 64 GB pick OOMed. The footprint was right.
+
+The diagnosis also shows that the errors calibration cannot fix survive the change from the A40 to the exit's 3090s, and that the hardware-dependent errors are exactly the fitted terms (diagnosis, section 6).
+
+## Decision
+
+### 1. Routing is an input
+
+**Replay output, per layer.** `tetraeder-bench replay` (`memory::replay`, `REPLAY_VERSION` 2) gains:
+
+- `--layers a..b`: replay only that half-open layer span, with the streamer a segment builds (`StreamerConfig::first`; no prefetch into the span's first layer from a layer outside it).
+- `--warm n`: replay the trace's request `n` times before the counted one, from an empty tier, with the hot-set refresh where the engine does it (after the process's first prefill), so the counted request starts from the state the warm protocol (section 3) leaves. The replay mirrors the complement fill of `memory-ram-tier-complement` (E1).
+- per phase, besides today's aggregates, `layers: [{layer, pairs, vram_share, full_hit_share, ram_hit_rate, sync_miss_bytes_per_token, prefetch_bytes_per_token, disk_bytes_per_token}]`.
+
+`TierPhase` gains `layers: Option<Vec<TierLayer>>` (serde default `None`). `builder_features_tier` uses the per-layer `vram_share` and `full_hit_share` for each layer of the layout when `layers` is present (a segment's layout holds only its span, and the outcome must cover exactly that span, else it is an error), else the aggregate for every layer as today. Per-layer values that are all equal give the aggregate's bits.
+
+**Judged prediction.** The routing trace of the frozen exit prompt (pp2048 then greedy tg128, `TETRAEDER_EXIT_ROUTING_OUT`, recorded on the leader as a whole-model streamed run before any judged run, sha256 frozen with the prediction; owner answer 6 of ADR 0091) is replayed for each segment's span and slot pair with `--warm` equal to the protocol's warm count. Decode takes the whole outcome (shares and bytes). Prefill takes its disk bytes from the replay when the trace header matches the judged prompt hash, length and ubatch (today `single_node_runs` replaces only `tier.decode`, because a 32K trace did not describe a 2048-token prefill); its compute keeps the decode share's VRAM and CPU split, since `RunFeatures` has one split for both phases and with op offload both halves of a prefill run on the GPU. `predict --cluster` and `node-predict` take `--tier-replay` per segment.
+
+**Anchors.** An anchor's features come from its own measured routing, not from a replay or a prior: `builder_features_measured` builds the `TierOutcome` of an anchor from its exit JSON (`decode_layers.vram_pair_share` as the share, `full_hit_rate_mean` for the switches only, `ram_hit_rate_mean`, disk bytes per token from `decode_io` and `prefill_io`). `exit_regime` adds the per-layer decode pair share (`decode_layers.vram_pair_share_layers`) through `engine-exit-segment-harness`. No prefill pair share is needed: the engine counter counts distinct experts per step, which equals pairs only for one-token decode steps, and prefill compute keeps the decode split (above). Every builder fit uses it (`score_builder_curve` through `calib::fit`, and the segment anchor calibration Case S runs). An anchor file without `vram_pair_share` (every committed fixture before the 2026-11-12 addendum of ADR 0050, `20261103` among them) keeps `HitModel`, recorded in `tier_source` as `hitmodel (no pair share)`; those ledger rows do not move through this section.
+
+**Without a trace.** The uniform prior (`serve::uniform_tier`) stays the fallback for enumeration, `serve --plan auto` without `--tier-replay`, and dry runs. Every builder prediction carries `routing: "trace" | "uniform" | "measured"` (with the trace's sha256 and the replay version for `trace`). The Case S harness refuses to judge a prediction whose routing is not `trace`, and `predict --cluster --judged` exits non-zero without a trace for every segment. The analytic pick is made before calibration as ADR 0040 says; the judged numbers are the prediction of that pick.
+
+**Routing fidelity gate, judged run.** Before the errors are read, the judged rounds' measured shares are compared with the replay used for the frozen prediction, per segment: decode `vram_share` within 0.02 of `vram_pair_share`, `full_hit_share` within 0.02 of `full_hit_rate_mean`, RAM hit within 0.005 (ADR 0056's line). A miss means **no verdict**: the routing input did not describe the run, which goes back to this ADR like a 15% miss. It never counts as a pass, and the errors are reported beside it. The ADR 0056 gate on anchors stays for fixtures scored from a replay. Risk: no same-prompt replay has yet been compared with its run (`stream-predict-20261124` replayed another prompt's trace), so the 0.02 lines are untested until the confirmation.
+
+### 2. The reader copy rate
+
+`profiler::Device` (CPU) gains `copy_bytes_per_s: Option<f64>`: one thread's copy rate from a direct-I/O bounce buffer into a RAM slot. It is measured, never fitted, like the disk curve: `tetraeder-bench disk-curve` writes it in the same stage (`copy_bytes_per_s`, single thread, 1 MiB chunks into a slot-sized pageable destination, median of 5), and the scorer and `node-predict` read it into the session graph with the queue curve. The Reader path's `B_copy` is that field, else the prior `READER_COPY_PRIOR` = 8 GB/s. The thread-scaled `cpu_rates(1)` is not used for the copy any more. The prior 8 GB/s and the committed fixtures without the field move streamed Reader predictions; the ledger ratchet covers it (section 7).
+
+### 3. Cold start and the hot-set refresh: excluded by a warm protocol, not priced
+
+The model prices steady state. First touch and the refresh are per-process transients that depend on the warm-up, not on the plan; pricing them would make the prediction a prediction of the protocol. So:
+
+- **Engine.** `memory-ram-tier-complement` (E1): when a layer's compute slots plus RAM slots cover every expert, `refresh_hot_set` leaves the RAM tier holding exactly the complement of the hot set. A covering plan is then read-free from the second request.
+- **Protocol** (Case S and the confirmation, through `engine-exit-segment-harness` (E2): `TETRAEDER_EXIT_PREFILL_WARM=n` runs `n` untimed full requests, prefill and decode, in the timed process). Every judged and anchor round runs `n = 1` warm request of the same prompt, then the timed request, in one process; rounds stay separate processes. The timed request recomputes every prompt token: its sequence is cleared first, and prefix reuse and the prompt cache are off, on one node and across segments. The rule holds for whatever harness runs the round, not only `exit_regime`. A covering segment whose timed prefill reads more than 0 bytes (`prefill_io.bytes`) is unclean and rerun in a later round. Non-covering plans (the report-only single-node reference) take the same `n = 1`; the replay's `--warm 1` prices the state it leaves.
+
+### 4. The RAM budget under `EMULATE_RAM_GB`
+
+The planner's RAM budget under the balloon is measured, not nominal. `scripts/exit_run.sh` (and every session script that balloons) waits until `balloon_guard` reports the full target (not 90%), then, with the samplers running and before the engine starts, reads cgroup v2 and writes
+
+```text
+ram_budget = memory.max - memory.current + inactive_file - 1 GiB
+```
+
+(`memory.max`, `memory.current`, and `inactive_file` from `memory.stat`) into the node graph's `cpu0.capacity_bytes` and into `env.json` with its four inputs. The 1 GiB covers the engine's own page tables and slab, allocator growth and the reclaim floor; the planner's 1% margin stays on top. A run whose engine peak exceeds `ram_budget` fails the budget, not the balloon. On a cluster each node writes its own `ram_budget` into its node graph before `cluster profile` reads it, so the merged graph that `candidates --cluster` sees carries every node's measured budget. Without a balloon the budget is the graph's capacity as today. Planning happens after the read, so a pick never sees the nominal budget. The footprint (`footprint`, `BUILDER_IO`, `HOST_RESERVE`) does not change.
+
+### 5. The prefill offload copy per chunk
+
+For a builder placement with op offload and `M >= 32`, the CPU part's `resident_matmul_bytes` per layer is `ceil(outside / ram_slots) * ram_slots` slot rows, `outside = n_expert - vram_slots` (a 2048-token ubatch routes nearly every expert of a layer, so every outside expert goes through some chunk). This applies only in `builder_features_tier` when `ram_slots < outside`; a covering tier (`ram_slots >= outside`) keeps today's `(1 - f) * e` expression and its bits. The copy rate stays the fitted PCIe alpha and beta.
+
+### 6. Fitting and confirmation
+
+- **Chosen on `stream-predict-20261124`.** That session ran no anchors, so nothing was fitted. Its data choose the forms (sections 1, 2 and 5), the prior 8 GB/s, the 1 GiB reserve and the gate lines. The implementation re-prices both arms offline, labelled **in sample, not a verdict**, in `bench/results/stream-predict-20261124/costmodel-v6/README.md`. Done criterion: arm D2 tg, priced on the frozen graph `predictions/d2/hw-D2.toml` (prior rates) with the committed `predictions/d2/replay-D2.json` and the 8 GB/s copy prior, within 0.15 of the measured median (the diagnosis estimates about -0.10). Arm R is report only (measured shares from its exit JSON on `predictions/hw-R.toml`): its remaining error rests on rates no anchor fitted.
+- **Confirmed on `bench-235b-segment-confirm`, before any two-box session.** One RTX 3090 box (24 GB, `cuda: ok`, CPU quota 8 or more, 230 GB disk, ADR 0091's box spec), `EMULATE_RAM_GB=64` with the section 4 budget, Qwen3-235B-A22B Q4_K_M. The segment is fixed now: layers 47 to 93 (`Span(47, 94)`, 47 layers, no head), 32 VRAM and 96 RAM slots, ubatch 2048, the regime of every spanning segment of the step-2 pick (both cover their experts at 32 + 96). If cost model 6 moves the exit's analytic cut or slot pair, the confirmation still runs this segment and its README records the difference; a pick that leaves the covering regime (any segment with `ram_slots < outside`) is not confirmed by it and goes back to this ADR before the rehearsal. Stages, each fixed now:
+  1. `disk-curve` (with `copy_bytes_per_s`); `env.json` with `ram_budget`.
+  2. Whole-model streamed greedy run of the frozen exit prompt (report only): records the routing trace and dumps the hidden rows at layer 47 (`engine-exit-segment-harness`, E3). Both hashed.
+  3. Anchors the exit's way: the segment truncated to the first quarter and half of its span (layers 47 to 58 and 47 to 70), fixed-seed hidden input, no head, the same slots, pp2048 and tg128, two rounds, warm. Fit.
+  4. Replay of the trace for the segment span with `--warm 1`; `predict` of the segment written and its sha256 committed before stage 5.
+  5. Judged: the segment with step 2's hidden rows as input, three rounds, warm, clean by ADR 0068's rules. The section 1 gate first, then `e_pp`, `e_tg` on the medians; pass when both are within 0.15.
+  6. Report only: the segment with fixed-seed input (the routing gap between anchor and real input) and the stage 3 fit redone on real-hidden anchors.
+- **The rule.** 0.15 on both rates, as ADR 0068 and ADR 0091 Case S. A miss or a gate miss stops the Phase 6 rehearsal and the exit and goes back to this ADR with the session's data. The 15% line, the workload and the anchors are not changed after a miss; a change to the model is a new frozen prediction on a new session.
+
+### 7. What stays the same
+
+- **Non-streamed predictions are bit-identical.** "Streamed" means a builder placement whose `TierFeatures` move bytes (decode or prefill disk bytes above 0) or whose RAM tier does not cover the experts outside VRAM. Every other prediction, dense, resident, multi-GPU and covering builder plans with zero disk bytes, keeps its bits: `crates/planner/tests/single_node_identity.rs` compares them by bit pattern. Mechanics: before any model change, one commit splits the committed golden by that classifier (the test reads each plan's tier and slots) into `single_node_predictions.txt` (non-streamed) and `single_node_predictions_streamed.txt`, both still cost model 5, with no line changed. From then on the non-streamed file is never rewritten; only the streamed file is, once, in the commit that sets `MODEL_VERSION` 6, and the PR lists its changed lines.
+- **Phase 5 is unchanged.** The ranks path (`predict_ranks`, cost model 5's decode clocks) is untouched; every multi-GPU ledger row and `crates/planner/tests/costmodel_v2.rs` keep their numbers; the Phase 5 verdict files are not re-derived.
+- **Enumeration is unchanged.** `vram_slot_tiers`, `ram_slot_options`, `feasible_vram_tiers` and the cluster DP do not change (ADR 0040 and 0056: enumeration before scoring). The diagnosis's extra RAM option (the largest count that fits the budget) is not part of this ADR.
+- **`MODEL_VERSION` 6.** `tetraeder-plan ledger --write` re-predicts the committed builder results under the ratchet; a result whose error rises by more than `max(0.02, its repeat spread)` needs `--accept-worse <id>=<reason>`, the reason naming the section that moved it.
+
+### 8. Tests the implementation must pass
+
+From `planner-node-predict-check` (before this node): `a_reference_equals_its_node_run` (diagnosis section 1, at least one reference with a GPU and a disk) and `the_reader_copy_rate_does_not_depend_on_the_thread_quota` (`#[ignore]` until section 2 lands, then on).
+
+Unit and fixture tests:
+- Copy rate: `copy_bytes_per_s` sets the reader term; without it the prior; the `read:nvme0` term does not depend on `cpu0.threads`.
+- Chunked copy: (16, 52) of the 235B layout gives 3 chunks and 156 slot rows per layer; (32, 96) gives today's bits.
+- Per-layer replay: `layers: None` gives cost model 5's bits; equal per-layer values give the aggregate's prediction within 1e-12 relative (the switch sum's order differs); an outcome whose layers do not match the segment's span is an error; `--layers` on the tiny MoE fixture equals the engine's segment run counters (as `replay_fidelity.rs` does for the whole model); `--warm 1` with E1 gives 0 prefill disk bytes for a covering pair on the tiny fixture. The 235B trace is not committed (74 MB), so the same check for (32, 96) on it is a local or box check recorded in the confirmation README, not CI.
+- Anchors: a synthetic builder fixture whose anchor times come from a known graph through the measured-share features is fitted back to that graph's rates within 1e-6; an anchor file without `vram_pair_share` is scored by `HitModel` and says so in `tier_source`.
+- Routing provenance: every builder prediction carries `routing`; `predict --cluster --judged` and `node-predict --judged` exit non-zero without a trace.
+- Budget: `exit_run.sh`'s budget function against a fake cgroup directory (the formula, the wait for the full target, the `env.json` fields); the committed `predictions/hw-D.toml` with `cpu0.capacity_bytes` set to 59.9 GB rejects (16, 56) and accepts (16, 52).
+- Gate: the Case S summary on fixture JSONs gives no verdict for a share 0.03 off and judges a share 0.01 off.
+
+Property tests (rule 5) and fixtures and faults (rule 4), on every simulated fixture with a synthetic trace: predicted decode time non-increasing in per-layer VRAM share (Reader and Service paths; under `ServiceOverlap` only with bytes that fall with the share, as ADR 0056's notes found), in `copy_bytes_per_s` and in RAM slots at fixed VRAM slots; offload copy bytes non-decreasing in chunks; the footprint of every pick within `ram_budget`; `tier = None` and zero bytes bit-identical to cost model 5; the throttled-NVMe and co-tenant faults of ADR 0056 still move or keep the pick as before.
+
+Metrics (rule 6): no runtime component is added. The runtime counterparts exist: the VRAM pair share (`tetraeder.expert.cache.requests`), disk bytes (`tetraeder.moe.read.*`, `tetraeder.io.*`) and the plan residual per segment (`tetraeder.plan.residual`, `TetraederSegmentDrift`). `ram_budget` is recorded in `env.json`, not exported.
+
+## Consequences
+
+- A judged Case S prediction needs one more box stage (the trace record, a few minutes on the 235B) and a replay per segment; predictions without a trace are marked and cannot be judged.
+- Anchors and candidates no longer share a routing assumption: anchors fit physical rates on their own measured shares, and the judged run brings its own routing. Routing locality of fixed-seed anchor input no longer leaks into the rates.
+- Every streamed Reader prediction moves (copy rate), and non-covering offload prefill gets slower (chunks); `serve --plan auto` without a trace moves with them, which can re-pick toward larger RAM tiers.
+- Case S rounds start warm; a cold first request is outside the exit's numbers and is reported only by the stage 2 whole-model run.
+- One more gate before the rehearsal: `bench-235b-segment-confirm`. The exit waits for it.
+- With enumeration unchanged, the report-only single-node reference under the measured 64 GB budget falls to the next RAM option that fits (a quarter of the experts outside VRAM, about 28 slots at 16 VRAM slots), not the largest count that fits.
+- Not changed, worth a later look: `BUILDER_IO` (256 MiB) against the measured 1.6 GB I/O buffer, covered today by `HOST_RESERVE`; whether computing the uncovered prefill pairs on the CPU beats the full offload copy (diagnosis section 4).
+
+## Build order
+
+| # | Tree node | Delivers | Checked by |
+|---|---|---|---|
+| 1 | `planner-node-predict-check` | The two tests of section 8 | CI (the copy-rate test ignored until 4) |
+| 2 | `memory-ram-tier-complement` | E1 and its replay mirror | CI: second prefill and decode read 0 bytes on the tiny fixture, logits bitwise equal; the replay mirrors it (0 prefill bytes for a covering pair on the tiny fixture) |
+| 3 | `engine-exit-segment-harness` | E2 (warm requests, timed prefill bytes), E3 (layer span, hidden in and out), the per-layer pair share and prefill block in the exit JSON | CI: flag test on the tiny fixture; two-span parity within `tol_batch` |
+| 4 | `planner-costmodel-stream-terms` | Sections 1, 2, 4, 5 and 7; replay version 2; `MODEL_VERSION` 6; ledger and golden; the in-sample README | CI: section 8; `cargo test --workspace` on Linux and Windows |
+| 5 | `bench-235b-segment-confirm` | Section 6 | Session README with the gate and `e_pp`, `e_tg` |
+
+Steps 2 and 3 can run in parallel with step 1; step 4 needs 1 and the exit JSON fields of 3; step 5 needs 2 to 4.
