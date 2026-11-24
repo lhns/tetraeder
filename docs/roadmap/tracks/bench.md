@@ -41,7 +41,7 @@ flowchart TB
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
-    bench_235b_segment_confirm[/"⛔ Confirm one exit<br/>segment"/]
+    bench_235b_segment_confirm[/"○ Confirm one exit<br/>segment"/]
     bench_phase6_rehearsal("⛔ First two-box<br/>cluster session")
     bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
     bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
@@ -138,9 +138,9 @@ flowchart TB
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b,bench_regression_gate mixed
     class bench_v4b_verdict dead
     class bench_235b_stream_predict bad
-    class bench_30b_c4_gap next
+    class bench_30b_c4_gap,bench_235b_segment_confirm next
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
-    class bench_235b_segment_confirm,bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit blocked
+    class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit blocked
 ```
 <!-- END GENERATED: track-bench -->
 
@@ -191,7 +191,7 @@ flowchart TB
 | `bench-spec-rerun` | Speculative rerun with a draft pair | session | box-later | parked | unrated |  |  | serving-spec-batching |  |  |  |  |
 | `bench-strata-q36` | Strata against llama-server on Qwen3.6 | experiment | box-later | done | unrated | 2026-11-23 | 2026-11-23 | bench-harness |  |  | Strata c1 1.503x, c4 0.837x | bench/results/strata-q36-20261123/README.md; bench/results/strata-q36-20261123/summary.json |
 | `bench-regression-gate` | Regression gate on final main | session | box | done | mixed | 2026-11-23 | 2026-11-24 | ops-review-group-d |  |  |  | bench/results/regression-gate-20261123/README.md; bench/results/regression-gate-20261123/ab/judged3-summary-q30b.json; bench/results/regression-gate-20261123/ab/judged3-summary-q8b.json; bench/results/regression-gate-20261123/ab/ab-ttft.json |
-| `bench-235b-segment-confirm` | Confirm one exit segment | experiment | box-later | blocked | unrated |  |  | planner-costmodel-stream-terms, memory-ram-tier-complement, engine-exit-segment-harness |  |  |  |  |
+| `bench-235b-segment-confirm` | Confirm one exit segment | experiment | box-later | next | unrated |  |  | planner-costmodel-stream-terms, memory-ram-tier-complement, engine-exit-segment-harness |  |  |  |  |
 | `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | engine-qwen35moe-builder |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box | session | box-later | parked | unrated |  |  | planner-fill-tier, memory-io-service |  |  |  |  |
 | `bench-open-records` | Box checks for open design records | session | box-later | parked | unrated |  |  | memory-adaptive-tier, ops-telemetry, bench-ttft |  |  |  |  |

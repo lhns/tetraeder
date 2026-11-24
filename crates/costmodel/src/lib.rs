@@ -32,8 +32,12 @@ pub mod sim;
 /// every slot on every expert-parallel rank (`RangeCosts::expert_slot_traffic`). Graphs fitted
 /// before predict as in version 3. 5 (ADR 0082): on a graph with `decode_clocks`, a GPU busy under
 /// the duty threshold in a decode step pays `busy_mhz / low_mhz` on its clock-bound terms; graphs
-/// without them predict as in version 4.
-pub const MODEL_VERSION: u32 = 5;
+/// without them predict as in version 4. 6 (ADR 0092): a streamed builder run's reader copy is one
+/// thread's measured rate (`Device::copy_bytes_per_s`, else 8 GB/s) instead of the CPU's byte rate
+/// divided by the thread quota, the prefill offload copy of a RAM tier that does not cover the
+/// experts outside VRAM is priced per chunk of RAM slots, and a replay's per-layer shares price
+/// each layer (planner features); a tier-less or covering run predicts as in version 5.
+pub const MODEL_VERSION: u32 = 6;
 
 use tetraeder_profiler::Device;
 

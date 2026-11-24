@@ -12,8 +12,9 @@ pub mod trace;
 
 /// Version of the replay's counters. Bump it when the outcome for an existing trace and
 /// configuration changes; a committed `tier-replay.json` records it and a bench test replays the
-/// committed file again (ADR 0056).
-pub const REPLAY_VERSION: u32 = 1;
+/// committed file again (ADR 0056). Version 2 (ADR 0092): per-layer counters in every phase, the
+/// `--layers` span and the `--warm` passes.
+pub const REPLAY_VERSION: u32 = 2;
 
 use crate::slots::LayerSlots;
 

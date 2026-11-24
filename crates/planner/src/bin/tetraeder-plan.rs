@@ -140,6 +140,13 @@ enum Command {
         /// `tetraeder-bench replay` output: decode is priced from its `lru` outcome with prefetch.
         #[arg(long)]
         tier_replay: Option<PathBuf>,
+        /// sha256 of the routing trace behind `--tier-replay`, recorded with the prediction.
+        #[arg(long)]
+        trace_sha256: Option<String>,
+        /// Refuse anything but a prediction priced from a routing trace (ADR 0092): a judged
+        /// prediction without `--tier-replay` exits non-zero.
+        #[arg(long)]
+        judged: bool,
         #[arg(long)]
         out: PathBuf,
     },
@@ -328,8 +335,18 @@ fn main() -> Result<()> {
             r#gen,
             pin,
             tier_replay,
+            trace_sha256,
+            judged,
             out,
         } => {
+            let routing = if tier_replay.is_some() {
+                tetraeder_planner::RoutingSource::Trace
+            } else {
+                tetraeder_planner::RoutingSource::Uniform
+            };
+            if judged {
+                routing.check_judged().map_err(anyhow::Error::msg)?;
+            }
             let hw_text = read(&hw)?;
             let graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
             let layout_text = read(&layout)?;
@@ -370,10 +387,25 @@ fn main() -> Result<()> {
             let doc = serde_json::json!({
                 "hw_sha256": multi_cli::sha256_hex(hw_text.as_bytes()),
                 "layout_sha256": multi_cli::sha256_hex(layout_text.as_bytes()),
-                "routing": match &tier_replay {
+                "routing": routing.name(),
+                "routing_note": match &tier_replay {
                     Some(p) => format!("trace replay (decode), uniform prefill: {}", p.display()),
                     None => "uniform".to_string(),
                 },
+                "routing_trace": match &tier_replay {
+                    Some(p) => {
+                        let v: serde_json::Value = serde_json::from_str(&read(p)?)
+                            .with_context(|| format!("parse {}", p.display()))?;
+                        serde_json::json!({
+                            "sha256": trace_sha256,
+                            "fnv1a64": v["trace"]["fnv1a64"],
+                            "replay_version": v["replay_version"],
+                            "scope": v["scope"],
+                        })
+                    }
+                    None => serde_json::Value::Null,
+                },
+                "judged": judged,
                 "workload": {"prompt": prompt, "gen": r#gen},
                 "pinned": pin.is_some(),
                 "pick": pick,

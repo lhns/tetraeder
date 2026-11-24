@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 use tetraeder_memory::io::probe::{DepthPoint, measure_depth};
 
 pub struct Args<'a> {
@@ -62,6 +63,31 @@ impl Drop for Load {
     }
 }
 
+/// One thread's copy rate from a bounce buffer into a slot-sized pageable destination, bytes per
+/// second: the reader's copy after a direct read (ADR 0092). 1 MiB chunks, 64 MiB per run, the
+/// median of five runs.
+pub fn copy_rate() -> f64 {
+    const CHUNK: usize = 1 << 20;
+    const SLOT: usize = 16 << 20;
+    const TOTAL: usize = 64 << 20;
+    let bounce: Vec<u8> = (0..CHUNK).map(|i| (i % 251) as u8).collect();
+    // touched once so the runs do not pay page faults
+    let mut slot = vec![1u8; SLOT];
+    let mut rates: Vec<f64> = (0..5)
+        .map(|_| {
+            let t0 = Instant::now();
+            for i in 0..TOTAL / CHUNK {
+                let at = (i % (SLOT / CHUNK)) * CHUNK;
+                slot[at..at + CHUNK].copy_from_slice(std::hint::black_box(&bounce));
+            }
+            std::hint::black_box(&slot);
+            TOTAL as f64 / t0.elapsed().as_secs_f64().max(1e-9)
+        })
+        .collect();
+    rates.sort_by(f64::total_cmp);
+    rates[rates.len() / 2]
+}
+
 /// Runs the curve and returns the output document.
 pub fn measure(a: &Args) -> Result<Value> {
     if a.depths.is_empty() {
@@ -101,6 +127,7 @@ pub fn measure(a: &Args) -> Result<Value> {
             "p99_ms": p.p99_s * 1e3,
         })).collect::<Vec<_>>(),
         "queue_chunk_bytes": chunk,
+        "copy_bytes_per_s": copy_rate(),
         "queue_curve": points.iter().map(|p| json!({
             "depth": p.depth,
             "bytes_per_s": p.bytes_per_s,

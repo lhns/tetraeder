@@ -50,7 +50,8 @@
 //! ServiceOverlap:  t_tok = max(C_rest + max(C_exp', t_s), D)
 //! ```
 //!
-//! `B_copy` is the CPU's byte rate at one thread (the reader copies serially) and `C_exp'` is
+//! `B_copy` is one reader thread's measured copy rate (`Device::copy_bytes_per_s`, else
+//! [`READER_COPY_PRIOR`]; ADR 0092: it does not depend on the thread quota) and `C_exp'` is
 //! `C_exp` at `threads - 1` (at least 1) when `sync > 0`: the overlapped service runs compute one
 //! thread short. The service formulas are lower bounds: the critical chain or the busy disk,
 //! whichever is longer. Prefill reads its misses synchronously: each ubatch of `M` tokens adds
@@ -390,12 +391,9 @@ fn decode_read_s(
                 .find(|(d, _)| d.kind == DeviceKind::Cpu)
                 .map(|(d, _)| *d)
                 .or_else(|| hw.devices.iter().find(|d| d.kind == DeviceKind::Cpu))
-                .and_then(|d| d.cpu_rates(1))
-                .map(|r| r.1)
-                .ok_or_else(|| PredictError::MissingSpec {
-                    device: "cpu".into(),
-                    what: "copy rate",
-                })?;
+                .and_then(|d| d.copy_bytes_per_s)
+                .filter(|c| *c > 0.0 && c.is_finite())
+                .unwrap_or(READER_COPY_PRIOR);
             let b_eff = 1.0 / (1.0 / b + 1.0 / copy);
             c_rest + c_exp + (sync + prefetch) / b_eff
         }
@@ -411,6 +409,9 @@ fn decode_read_s(
     };
     Ok(t_tok - t0)
 }
+
+/// The reader's copy rate when the CPU has no measured `copy_bytes_per_s` (ADR 0092, 8 GB/s).
+pub const READER_COPY_PRIOR: f64 = 8.0e9;
 
 /// See the module doc for the formulas.
 pub fn predict(
@@ -1263,8 +1264,8 @@ mod tests {
             128,
         )
         .unwrap();
-        // depth 16 reads 5e9 B/s; the CPU copies at its one-thread rate (35e9 / 4 below the curve)
-        let b_eff = 1.0 / (1.0 / 5e9 + 1.0 / 8.75e9);
+        // depth 16 reads 5e9 B/s; the reader copies at the prior (the CPU has no measured rate)
+        let b_eff = 1.0 / (1.0 / 5e9 + 1.0 / READER_COPY_PRIOR);
         close(term(&p.tg_breakdown, "read:nvme0"), (sync + pf) / b_eff);
         close(p.tg_tok_s, 1.0 / (t0 + (sync + pf) / b_eff));
         assert_eq!(p.pp_tok_s, base.pp_tok_s);
@@ -1274,7 +1275,6 @@ mod tests {
     /// read term must be the same on a CPU with 12 and with 61 threads and no thread curve
     /// (`docs/notes/stream-predict-diagnosis.md` section 1; measured 2.8 to 3.3 GB/s on 61).
     #[test]
-    #[ignore = "fails until ADR 0092 (planner-costmodel-stream-terms)"]
     fn the_reader_copy_rate_does_not_depend_on_the_thread_quota() {
         let f = with_tier(tier(ReadPath::Reader, 30e6, 60e6, 0.0));
         let read = |threads: u32| {
@@ -1286,6 +1286,42 @@ mod tests {
             term(&p.tg_breakdown, "read:nvme0")
         };
         close(read(61), read(12));
+    }
+
+    fn with_copy(rate: Option<f64>) -> HardwareGraph {
+        let mut hw = hw_disk();
+        hw.devices
+            .iter_mut()
+            .find(|d| d.id == "cpu0")
+            .unwrap()
+            .copy_bytes_per_s = rate;
+        hw
+    }
+
+    #[test]
+    fn a_measured_copy_rate_sets_the_reader_term() {
+        let (sync, pf) = (30e6, 60e6);
+        let f = with_tier(tier(ReadPath::Reader, sync, pf, 0.0));
+        let p = predict(&with_copy(Some(3e9)), &f, 512, 128).unwrap();
+        let b_eff = 1.0 / (1.0 / 5e9 + 1.0 / 3e9);
+        close(term(&p.tg_breakdown, "read:nvme0"), (sync + pf) / b_eff);
+        // without the field: the prior
+        let q = predict(&with_copy(None), &f, 512, 128).unwrap();
+        let prior = 1.0 / (1.0 / 5e9 + 1.0 / READER_COPY_PRIOR);
+        close(term(&q.tg_breakdown, "read:nvme0"), (sync + pf) / prior);
+    }
+
+    #[test]
+    fn a_faster_copy_is_never_slower_and_only_the_reader_pays_it() {
+        let reader = with_tier(tier(ReadPath::Reader, 30e6, 60e6, 0.0));
+        let service = with_tier(tier(ReadPath::Service, 30e6, 60e6, 0.0));
+        let tg =
+            |f: &RunFeatures, c: f64| predict(&with_copy(Some(c)), f, 512, 128).unwrap().tg_tok_s;
+        let rates = [1e9, 2e9, 4e9, 8e9, 16e9];
+        for w in rates.windows(2) {
+            assert!(tg(&reader, w[1]) > tg(&reader, w[0]));
+            assert_eq!(tg(&service, w[1]), tg(&service, w[0]));
+        }
     }
 
     #[test]

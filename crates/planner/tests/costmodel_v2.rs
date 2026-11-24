@@ -158,7 +158,8 @@ fn predict_reproduces_the_v5_replica_on_s3b() {
         return;
     };
     assert_eq!(v["version"], 5);
-    assert_eq!(tetraeder_costmodel::MODEL_VERSION, 5);
+    // the v5 replica is a ranks graph: versions 6 and on (ADR 0092) leave that path untouched
+    const { assert!(tetraeder_costmodel::MODEL_VERSION >= 5) };
     let hw: HardwareGraph = serde_json::from_value(v["hw"].clone()).unwrap();
     assert!(hw.decode_clocks.is_some());
     let eval = repo().join(v["eval"].as_str().unwrap());

@@ -25,11 +25,12 @@ flowchart TB
     planner_ep_prefill_recheck[/"✔ Recheck expert-<br/>parallel prefill error"/]
     planner_low_ram_modes[/"✔ Experts on GPU and<br/>SSD only"/]
     planner_node_predict_check["✔ Node prediction<br/>equals the cluster<br/>reference"]
+    planner_costmodel_stream_terms["✔ Cost model 6 for<br/>streamed MoE"]
     planner_cost_model_v5_host2[/"○ Cost model 5 second<br/>host"/]
     planner_low_bit_formats["⏸ One and two bit<br/>formats"]
     planner_ep_split["○ Expert-parallel<br/>split on two GPUs"]
     planner_ram_slots_zero["⏸ Plan experts with no<br/>RAM tier"]
-    planner_costmodel_stream_terms["○ Cost model 6 for<br/>streamed MoE"]
+    planner_costmodel_v6_rest["○ Cost model 6<br/>remaining parts"]
     planner_live_replan["⛔ Replan without<br/>draining"]
     planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
     planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
@@ -52,14 +53,17 @@ flowchart TB
     planner_cost_v4 ~~~ planner_ep_prefill_recheck
     planner_cost_v4 ~~~ planner_low_ram_modes
     planner_cost_model_v5 ~~~ planner_node_predict_check
-    planner_ep_prefill_recheck ~~~ planner_cost_model_v5_host2
-    planner_low_ram_modes ~~~ planner_low_bit_formats
-    planner_node_predict_check ~~~ planner_ep_split
+    planner_ep_prefill_recheck ~~~ planner_node_predict_check
+    planner_low_ram_modes ~~~ planner_node_predict_check
+    planner_node_predict_check ~~~ planner_costmodel_stream_terms
+    planner_node_predict_check ~~~ planner_cost_model_v5_host2
+    planner_node_predict_check ~~~ planner_low_bit_formats
+    planner_costmodel_stream_terms ~~~ planner_ep_split
     planner_cost_model_v5_host2 ~~~ planner_ram_slots_zero
-    planner_low_bit_formats ~~~ planner_costmodel_stream_terms
+    planner_low_bit_formats ~~~ planner_costmodel_v6_rest
     planner_ep_split ~~~ planner_live_replan
     planner_ram_slots_zero ~~~ planner_advisor_auto
-    planner_costmodel_stream_terms ~~~ planner_split_layouts
+    planner_costmodel_v6_rest ~~~ planner_split_layouts
     planner_live_replan ~~~ planner_slot_campaign
     planner_advisor_auto ~~~ planner_replan_part_b
     planner_split_layouts ~~~ planner_replan_part_b
@@ -76,9 +80,10 @@ flowchart TB
     planner_cost_v3 --> planner_cost_v4
     planner_cost_v4 --> planner_cost_model_v5
     planner_cost_v4 --> planner_ep_prefill_recheck
+    planner_node_predict_check --> planner_costmodel_stream_terms
     planner_cost_model_v5 --> planner_ep_split
     planner_low_ram_modes --> planner_ram_slots_zero
-    planner_node_predict_check --> planner_costmodel_stream_terms
+    planner_costmodel_stream_terms --> planner_costmodel_v6_rest
     planner_fill_tier --> planner_slot_campaign
     planner_replan --> planner_replan_part_b
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -96,9 +101,9 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3,planner_low_ram_modes,planner_node_predict_check unrated
-    class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5,planner_ep_prefill_recheck succ
+    class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5,planner_ep_prefill_recheck,planner_costmodel_stream_terms succ
     class planner_core vsucc
-    class planner_cost_model_v5_host2,planner_ep_split,planner_costmodel_stream_terms next
+    class planner_cost_model_v5_host2,planner_ep_split,planner_costmodel_v6_rest next
     class planner_low_bit_formats,planner_ram_slots_zero,planner_slot_campaign,planner_replan_part_b parked
     class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
 ```
@@ -131,7 +136,8 @@ flowchart TB
 | `planner-low-ram-modes` | Experts on GPU and SSD only | experiment | local | done | unrated | 2026-11-23 | 2026-11-23 | memory-tiers |  |  |  | crates/planner/tests/low_ram_modes.rs; docs/notes/strata-parity.md |
 | `planner-ram-slots-zero` | Plan experts with no RAM tier | feature | local | parked | unrated |  |  | planner-low-ram-modes |  |  |  | crates/planner/tests/low_ram_modes.rs |
 | `planner-node-predict-check` | Node prediction equals the cluster reference | tooling | ci | done | unrated | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  |  | crates/planner/tests/cluster.rs; crates/costmodel/src/predict.rs; docs/notes/stream-predict-diagnosis.md |
-| `planner-costmodel-stream-terms` | Cost model 6 for streamed MoE | feature | ci | next | unrated |  |  | bench-235b-stream-predict, planner-node-predict-check, cluster-owner-routing-input |  |  |  |  |
+| `planner-costmodel-stream-terms` | Cost model 6 for streamed MoE | feature | ci | done | successful | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict, planner-node-predict-check, cluster-owner-routing-input |  |  | D2 tg -0.10 in sample | bench/results/stream-predict-20261124/costmodel-v6/README.md; docs/adr/0092-costmodel-6-streamed-moe-segments.md |
+| `planner-costmodel-v6-rest` | Cost model 6 remaining parts | feature | ci | next | unrated |  |  | planner-costmodel-stream-terms |  |  |  |  |
 | `planner-slot-campaign` | Check planner's expert slot picks | experiment | box-later | parked | unrated |  |  | planner-fill-tier |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B | feature | local | parked | unrated |  |  | planner-replan |  |  |  |  |
 | `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | experiment | local | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-v4, multi-prefill-no-capture |  |  | ep-4 pp 0.959 | bench/results/v4a-20261121/README.md; bench/results/v2c-20261121/README.md |
@@ -163,7 +169,8 @@ flowchart TB
 | `planner-low-ram-modes` | Experts on GPU and SSD only | CI run 45097627980 on 948b770 passed low_ram_modes (6 tests). Gap found: both modes are refused below the floors, the refusal now names the missing tier, a plan with ram_slots 0 is not planned. |  | On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned. | Simulated fixtures first; a box only if a gap shows. |  |  |  |  |
 | `planner-ram-slots-zero` | Plan experts with no RAM tier |  |  | Enumerate, lower and score a builder plan with ram_slots 0 (experts read from NVMe into VRAM), which the engine already runs and the planner never offers. | Needs recognize, lower and score to carry ram_slots 0; tests on every fixture (rules 4 and 5). |  |  |  |  |
 | `planner-node-predict-check` | Node prediction equals the cluster reference | CI run 45415720514 ubuntu test a_reference_equals_its_node_run ... ok; the_reader_copy_rate_does_not_depend_on_the_thread_quota ignored until ADR 0092 |  | A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix). |  |  |  |  |  |
-| `planner-costmodel-stream-terms` | Cost model 6 for streamed MoE |  |  | ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves. |  |  |  |  |  |
+| `planner-costmodel-stream-terms` | Cost model 6 for streamed MoE | IN_SAMPLE D2 trace v6 - tg 2.3703 tok/s (meas 2.6360, e -0.101) | D2 tg -0.10 in sample | ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves. |  |  |  |  |  |
+| `planner-costmodel-v6-rest` | Cost model 6 remaining parts |  |  | The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test. |  |  |  |  |  |
 | `planner-slot-campaign` | Check planner's expert slot picks |  |  | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. | Parked with Track B (m2-plan B4, m1-open item 6). Done when: scripts/planner_builder_campaign.sh results committed as planner-moe-builder. |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B |  |  | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. | Parked with Track B (m2-plan B4, m1-open item 10). Done when: switch time and refused requests, paired against restarting llama-server. |  |  |  |  |
 | `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | \| M4 \| ep-4 \| 0.959 \| 1.057 \| 1.203 / 1.230 \| | ep-4 pp 0.959 | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. | recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081. |  |  |  |  |

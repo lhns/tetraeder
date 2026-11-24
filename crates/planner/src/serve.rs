@@ -196,6 +196,7 @@ pub fn uniform_tier(layout: &ModelLayout, slots: &[(u32, u32)]) -> Vec<TierOutco
                 prefetch_bytes_per_token: prefetch,
                 disk_bytes_per_token: sync + prefetch,
                 ram_hit_rate_engine_mean: held,
+                layers: None,
             };
             TierOutcome {
                 vram_slots,
@@ -261,7 +262,7 @@ pub fn predict_plan_tier(
                     ReadPath::Reader,
                     (READER_DEPTH, READER_DEPTH),
                     BUILDER_DISK,
-                ),
+                )?,
                 None => {
                     // Uniform routing prior: the hit rate equals the slot share.
                     let hit = f64::from(vram_slots) / f64::from(layout.n_expert.max(1));

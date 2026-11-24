@@ -166,6 +166,19 @@ pub struct Config {
     pub prefetch: bool,
 }
 
+/// What part of the trace a replay covers (replay version 2, ADR 0092).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Scope {
+    /// Replay only this half-open layer span, as the streamer of a segment sees it: steps of
+    /// other layers are skipped and nothing is prefetched into the span from outside it. `None`
+    /// is the whole model.
+    pub layers: Option<(u32, u32)>,
+    /// Replay the trace this many extra times first, from an empty tier, and count only the
+    /// last pass. The hot-set refresh happens in the first pass only, as the engine refreshes
+    /// after the process's first prefill.
+    pub warm: u32,
+}
+
 /// A trace held in memory, so one load serves many configurations.
 pub struct Trace {
     pub header: TraceHeader,
@@ -211,6 +224,22 @@ pub struct PhaseOutcome {
     pub prefetch_issued: u64,
     pub prefetch_used: u64,
     pub prefetch_wasted: u64,
+    /// The same counters per layer of the replayed span (replay version 2).
+    pub layers: Vec<LayerOutcome>,
+}
+
+/// One layer of a [`PhaseOutcome`]: what the planner reads for a segment's own layers.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct LayerOutcome {
+    pub layer: u32,
+    pub pairs: u64,
+    pub vram_share: f64,
+    pub full_hit_share: f64,
+    /// Hits over hits and misses of the layer's RAM lookups, prefetch lookups counted as misses.
+    pub ram_hit_rate: f64,
+    pub sync_miss_bytes_per_token: f64,
+    pub prefetch_bytes_per_token: f64,
+    pub disk_bytes_per_token: f64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -284,6 +313,29 @@ struct Acc {
     wasted: u64,
     layer_hits: Vec<u64>,
     layer_misses: Vec<u64>,
+    layer_pairs: Vec<u64>,
+    layer_vram_pairs: Vec<u64>,
+    layer_layer_steps: Vec<u64>,
+    layer_full_steps: Vec<u64>,
+    layer_sync_bytes: Vec<u64>,
+    layer_prefetch_bytes: Vec<u64>,
+}
+
+impl Acc {
+    fn new(layers: usize) -> Acc {
+        let zeros = || vec![0u64; layers];
+        Acc {
+            layer_hits: zeros(),
+            layer_misses: zeros(),
+            layer_pairs: zeros(),
+            layer_vram_pairs: zeros(),
+            layer_layer_steps: zeros(),
+            layer_full_steps: zeros(),
+            layer_sync_bytes: zeros(),
+            layer_prefetch_bytes: zeros(),
+            ..Acc::default()
+        }
+    }
 }
 
 const PREFILL: usize = 0;
@@ -478,6 +530,9 @@ struct Sim<'a, 't> {
     depth2: bool,
     /// Decode disk bytes so far at the start of every decode step.
     decode_marks: Vec<u64>,
+    /// The replayed layer span.
+    lo: usize,
+    hi: usize,
 }
 
 /// `items` with those `resident` holds first (stable): the engine's `hits_first`.
@@ -487,9 +542,18 @@ fn hits_first(items: &[u32], resident: impl Fn(u32) -> bool) -> Vec<u32> {
 }
 
 impl<'a, 't> Sim<'a, 't> {
-    fn new(trace: &'a Trace, cfg: Config, belady_times: Option<AccessLog>, log: bool) -> Self {
+    fn new(
+        trace: &'a Trace,
+        cfg: Config,
+        belady_times: Option<AccessLog>,
+        log: bool,
+        scope: Scope,
+    ) -> Self {
         let h = &trace.header;
         let layers = h.n_layer as usize;
+        let (lo, hi) = scope.layers.map_or((0, layers), |(a, b)| {
+            ((a as usize).min(layers), (b as usize).min(layers))
+        });
         let ne = h.n_expert as usize;
         let budget = u64::from(cfg.ram_slots) * h.expert_bytes.iter().sum::<u64>();
         let ram = match (cfg.policy, belady_times) {
@@ -514,11 +578,7 @@ impl<'a, 't> Sim<'a, 't> {
                 cfg.ram_slots,
             )),
         };
-        let acc = Acc {
-            layer_hits: vec![0; layers],
-            layer_misses: vec![0; layers],
-            ..Acc::default()
-        };
+        let acc = Acc::new(layers);
         Sim {
             h,
             cfg,
@@ -545,6 +605,22 @@ impl<'a, 't> Sim<'a, 't> {
             timing: None,
             depth2: true,
             decode_marks: Vec::new(),
+            lo,
+            hi,
+        }
+    }
+
+    /// Starts another pass over the trace (a new request): the tiers stay as they are and the
+    /// step bookkeeping starts again; the counted pass also starts its counters from zero.
+    fn next_pass(&mut self, counted: bool) {
+        self.settle();
+        self.cur_step = None;
+        self.phase = PREFILL;
+        self.pins_on = false;
+        if counted {
+            let layers = self.h.n_layer as usize;
+            self.acc = [Acc::new(layers), Acc::new(layers)];
+            self.decode_marks.clear();
         }
     }
 
@@ -649,14 +725,20 @@ impl<'a, 't> Sim<'a, 't> {
                     for (l, old) in evicted {
                         self.note_wasted(l, old);
                     }
-                    self.acc[self.phase].misses += 1;
-                    self.acc[self.phase].sync_bytes += self.expert_bytes(il);
+                    let bytes = self.expert_bytes(il);
+                    let acc = &mut self.acc[self.phase];
+                    acc.misses += 1;
+                    acc.sync_bytes += bytes;
+                    acc.layer_sync_bytes[il] += bytes;
                     self.note_miss(il, e);
                 }
                 Look::Bypass => {
-                    self.acc[self.phase].bypasses += 1;
-                    self.acc[self.phase].misses += 1;
-                    self.acc[self.phase].sync_bytes += self.expert_bytes(il);
+                    let bytes = self.expert_bytes(il);
+                    let acc = &mut self.acc[self.phase];
+                    acc.bypasses += 1;
+                    acc.misses += 1;
+                    acc.sync_bytes += bytes;
+                    acc.layer_sync_bytes[il] += bytes;
                     self.note_miss(il, e);
                 }
             }
@@ -665,7 +747,7 @@ impl<'a, 't> Sim<'a, 't> {
 
     /// `Streamer::start_prefetch` on the shared selection.
     fn start_prefetch(&mut self, il: usize, predicted: &[u16]) {
-        if il >= self.h.n_layer as usize {
+        if il >= self.hi {
             return;
         }
         if matches!(self.ram, Ram::Belady(_)) {
@@ -750,7 +832,9 @@ impl<'a, 't> Sim<'a, 't> {
         if mine == 0 {
             return;
         }
-        self.acc[self.phase].prefetch_bytes += mine * self.expert_bytes(il);
+        let bytes = mine * self.expert_bytes(il);
+        self.acc[self.phase].prefetch_bytes += bytes;
+        self.acc[self.phase].layer_prefetch_bytes[il] += bytes;
         let pins = self.standing(il).to_vec();
         self.set_ram_pins(il, &pins);
     }
@@ -778,7 +862,7 @@ impl<'a, 't> Sim<'a, 't> {
         ) {
             return;
         }
-        for il in 0..self.h.n_layer as usize {
+        for il in self.lo..self.hi {
             let pins = self.standing(il).to_vec();
             self.set_ram_pins(il, &pins);
         }
@@ -793,7 +877,7 @@ impl<'a, 't> Sim<'a, 't> {
             return;
         };
         let k = RamPolicy::Freq { share }.pin_count(self.cfg.ram_slots);
-        for il in 0..self.h.n_layer as usize {
+        for il in self.lo..self.hi {
             self.freq_pins[il] = freq_pins(&self.counts[il], self.vram.layer(il), k);
             let pins = self.standing(il).to_vec();
             self.set_ram_pins(il, &pins);
@@ -832,7 +916,7 @@ impl<'a, 't> Sim<'a, 't> {
             sum += bytes[il];
             self.freq_pins[il].push(e);
         }
-        for il in 0..self.h.n_layer as usize {
+        for il in self.lo..self.hi {
             let pins = self.standing(il).to_vec();
             self.set_ram_pins(il, &pins);
         }
@@ -849,7 +933,7 @@ impl<'a, 't> Sim<'a, 't> {
         self.settle();
         self.ev += 1;
         self.set_event();
-        for il in 0..self.h.n_layer as usize {
+        for il in self.lo..self.hi {
             let active = self.vram.layer(il).active();
             let hot = hot_from_counts(&self.counts[il], active);
             // `lru` pins only part of the hot set; the rest is a warm start.
@@ -920,7 +1004,7 @@ impl<'a, 't> Sim<'a, 't> {
     /// `VramPolicy::Freq`: re-pick the top experts of every layer by routing count; newcomers
     /// are copied into free or unpinned slots, and the bytes counted.
     fn refresh_vram_freq(&mut self) {
-        for il in 0..self.h.n_layer as usize {
+        for il in self.lo..self.hi {
             let active = self.vram.layer(il).active();
             let hot = hot_from_counts(&self.counts[il], active);
             let change = self.vram.layer_mut(il).set_hot_set(&hot);
@@ -945,6 +1029,9 @@ impl<'a, 't> Sim<'a, 't> {
 
     /// One layer step of the run loop.
     fn layer_step(&mut self, s: &LayerStep) {
+        if !(self.lo..self.hi).contains(&(s.layer as usize)) {
+            return;
+        }
         if let Some(t) = self.timing.as_mut() {
             t.layer_begin(s.step, s.layer as usize, s.n_tokens == 1);
         }
@@ -981,7 +1068,7 @@ impl<'a, 't> Sim<'a, 't> {
         self.ev += 1;
         self.set_event();
         self.finish_prefetch(il, false);
-        if il == 0 {
+        if il == self.lo {
             self.acc[self.phase].tokens += u64::from(s.n_tokens);
         }
         // plan_cpu: count the pairs, partition by VRAM residency, look up the resident ones.
@@ -1004,6 +1091,10 @@ impl<'a, 't> Sim<'a, 't> {
         acc.vram_pairs += vram_pairs;
         acc.layer_steps += 1;
         acc.full_steps += u64::from(vram_pairs == s.ids.len() as u64);
+        acc.layer_pairs[il] += s.ids.len() as u64;
+        acc.layer_vram_pairs[il] += vram_pairs;
+        acc.layer_layer_steps[il] += 1;
+        acc.layer_full_steps[il] += u64::from(vram_pairs == s.ids.len() as u64);
         let (compute, rest): (Vec<u32>, Vec<u32>) = distinct
             .into_iter()
             .partition(|&e| self.vram.layer(il).slot_of(e).is_some());
@@ -1100,10 +1191,26 @@ impl<'a, 't> Sim<'a, 't> {
             Ram::Slots(_) => None,
         };
         let adm = self.cfg.vram_policy != VramPolicy::Static;
+        let (lo, hi) = (self.lo, self.hi);
         let phase = |a: &Acc| {
             let tok = a.tokens.max(1) as f64;
             let rate = |h: u64, m: u64| h as f64 / (h + m).max(1) as f64;
-            let layers = a.layer_hits.len().max(1) as f64;
+            let layers = hi.saturating_sub(lo).max(1) as f64;
+            let per_layer: Vec<LayerOutcome> = (lo..hi)
+                .map(|il| LayerOutcome {
+                    layer: il as u32,
+                    pairs: a.layer_pairs[il],
+                    vram_share: a.layer_vram_pairs[il] as f64 / a.layer_pairs[il].max(1) as f64,
+                    full_hit_share: a.layer_full_steps[il] as f64
+                        / a.layer_layer_steps[il].max(1) as f64,
+                    ram_hit_rate: rate(a.layer_hits[il], a.layer_misses[il]),
+                    sync_miss_bytes_per_token: a.layer_sync_bytes[il] as f64 / tok,
+                    prefetch_bytes_per_token: a.layer_prefetch_bytes[il] as f64 / tok,
+                    disk_bytes_per_token: (a.layer_sync_bytes[il] + a.layer_prefetch_bytes[il])
+                        as f64
+                        / tok,
+                })
+                .collect();
             PhaseOutcome {
                 steps: a.steps,
                 tokens: a.tokens,
@@ -1113,11 +1220,8 @@ impl<'a, 't> Sim<'a, 't> {
                 ram_lookups: a.hits + a.misses,
                 ram_hits: a.hits,
                 ram_hit_rate: rate(a.hits, a.misses),
-                ram_hit_rate_engine_mean: a
-                    .layer_hits
-                    .iter()
-                    .zip(&a.layer_misses)
-                    .map(|(&h, &m)| rate(h, m))
+                ram_hit_rate_engine_mean: (lo..hi)
+                    .map(|il| rate(a.layer_hits[il], a.layer_misses[il]))
                     .sum::<f64>()
                     / layers,
                 disk_bytes_per_token: (a.sync_bytes + a.prefetch_bytes) as f64 / tok,
@@ -1128,6 +1232,7 @@ impl<'a, 't> Sim<'a, 't> {
                 prefetch_issued: a.issued,
                 prefetch_used: a.used,
                 prefetch_wasted: a.wasted,
+                layers: per_layer,
             }
         };
         let layer_stats = (0..self.h.n_layer as usize)
@@ -1163,17 +1268,25 @@ fn run(
     log: bool,
     check: bool,
     timing: Option<(&mut dyn Timing, bool)>,
+    scope: Scope,
 ) -> (Outcome, Option<AccessLog>, u64) {
-    let mut sim = Sim::new(trace, cfg, times, log);
+    let mut sim = Sim::new(trace, cfg, times, log, scope);
     sim.check = check;
     if let Some((t, depth2)) = timing {
         sim.timing = Some(t);
         sim.depth2 = depth2;
     }
-    for r in &trace.records {
-        match r {
-            Record::Step(s) => sim.layer_step(s),
-            Record::HotRefresh { .. } => sim.hot_refresh(),
+    for pass in 0..=scope.warm {
+        if pass > 0 {
+            sim.next_pass(pass == scope.warm);
+        }
+        for r in &trace.records {
+            match r {
+                Record::Step(s) => sim.layer_step(s),
+                // the engine refreshes once, after the process's first prefill
+                Record::HotRefresh { .. } if pass == 0 => sim.hot_refresh(),
+                Record::HotRefresh { .. } => {}
+            }
         }
     }
     let violations = sim.violations;
@@ -1185,16 +1298,21 @@ fn run(
 /// prefetch to learn when each expert is looked up (the lookup set of a step does not depend on
 /// the RAM policy).
 pub fn replay(trace: &Trace, cfg: &Config) -> Outcome {
+    replay_scoped(trace, cfg, Scope::default())
+}
+
+/// [`replay`] over a layer span and/or after warm passes (see [`Scope`]).
+pub fn replay_scoped(trace: &Trace, cfg: &Config, scope: Scope) -> Outcome {
     if cfg.policy.is_belady() {
         let probe = Config {
             policy: Policy::Lru,
             prefetch: false,
             ..*cfg
         };
-        let (_, log, _) = run(trace, probe, None, true, false, None);
-        return run(trace, *cfg, log, false, false, None).0;
+        let (_, log, _) = run(trace, probe, None, true, false, None, scope);
+        return run(trace, *cfg, log, false, false, None, scope).0;
     }
-    run(trace, *cfg, None, false, false, None).0
+    run(trace, *cfg, None, false, false, None, scope).0
 }
 
 /// [`replay`] that also reports its calls to `timing`, for the virtual clock. `depth2` false
@@ -1213,15 +1331,24 @@ pub fn replay_timing(
             prefetch: false,
             ..*cfg
         };
-        times = run(trace, probe, None, true, false, None).1;
+        times = run(trace, probe, None, true, false, None, Scope::default()).1;
     }
-    run(trace, *cfg, times, false, false, Some((timing, depth2))).0
+    run(
+        trace,
+        *cfg,
+        times,
+        false,
+        false,
+        Some((timing, depth2)),
+        Scope::default(),
+    )
+    .0
 }
 
 /// [`replay`] for an LRU or frequency policy that also counts violations of the pin invariants:
 /// more pins than active slots, pins the slot table had to drop, a pinned expert evicted.
 pub fn replay_checked(trace: &Trace, cfg: &Config) -> (Outcome, u64) {
-    let (out, _, violations) = run(trace, *cfg, None, false, true, None);
+    let (out, _, violations) = run(trace, *cfg, None, false, true, None, Scope::default());
     (out, violations)
 }
 
@@ -1233,6 +1360,27 @@ pub fn replay_matrix(
     policies: &[Policy],
     vram_policies: &[VramPolicy],
     prefetch: &[bool],
+) -> Vec<Outcome> {
+    replay_matrix_scoped(
+        trace,
+        vram,
+        ram,
+        policies,
+        vram_policies,
+        prefetch,
+        Scope::default(),
+    )
+}
+
+/// [`replay_matrix`] with a [`Scope`].
+pub fn replay_matrix_scoped(
+    trace: &Trace,
+    vram: &[u32],
+    ram: &[u32],
+    policies: &[Policy],
+    vram_policies: &[VramPolicy],
+    prefetch: &[bool],
+    scope: Scope,
 ) -> Vec<Outcome> {
     let mut out = Vec::new();
     for &vram_slots in vram {
@@ -1250,7 +1398,7 @@ pub fn replay_matrix(
                             vram_policy,
                             prefetch: pf,
                         };
-                        out.push(replay(trace, &cfg));
+                        out.push(replay_scoped(trace, &cfg, scope));
                     }
                 }
             }

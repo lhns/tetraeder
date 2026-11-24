@@ -280,3 +280,61 @@ fn decode_windows_split_the_decode_bytes() {
     }
     assert_eq!(replay::decode_windows(&[4, 2, 6], 2), vec![3.0, 6.0]);
 }
+
+/// Replay version 2 (ADR 0092): a row per layer in every phase, `--layers` replays only its span
+/// and `--warm` replays the trace first; the output says which.
+#[test]
+fn replay_v2_has_layer_rows_a_span_and_warm_passes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (trace, whole, span) = (
+        dir.path().join("t.trace"),
+        dir.path().join("whole.json"),
+        dir.path().join("span.json"),
+    );
+    write_trace(&trace);
+    let st = &[VramPolicy::Static][..];
+    replay::run(&trace, &[2], &[4], &[Policy::Lru], st, &whole).unwrap();
+    let read =
+        |p: &Path| -> Value { serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap() };
+    let doc = read(&whole);
+    assert_eq!(doc["scope"]["warm"], 0);
+    assert!(doc["scope"]["layers"].is_null());
+    let o = &doc["outcomes"][0];
+    for phase in ["prefill", "decode"] {
+        let rows = o[phase]["layers"].as_array().unwrap();
+        assert_eq!(rows.len(), 2, "{phase}");
+        assert_eq!(rows[1]["layer"], 1);
+        for k in [
+            "pairs",
+            "vram_share",
+            "full_hit_share",
+            "ram_hit_rate",
+            "sync_miss_bytes_per_token",
+            "prefetch_bytes_per_token",
+            "disk_bytes_per_token",
+        ] {
+            assert!(rows[0][k].is_number(), "{phase}.{k}");
+        }
+    }
+    let extras = replay::Extras {
+        layers: Some((1, 2)),
+        warm: 1,
+        ..replay::Extras::default()
+    };
+    replay::run_with(&trace, &[2], &[4], &[Policy::Lru], st, &span, &extras).unwrap();
+    let doc = read(&span);
+    assert_eq!(doc["scope"]["layers"], serde_json::json!([1, 2]));
+    assert_eq!(doc["scope"]["warm"], 1);
+    let rows = doc["outcomes"][0]["decode"]["layers"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["layer"], 1);
+    // a span past the trace's layers, and an empty one, are errors
+    let bad = replay::Extras {
+        layers: Some((0, 5)),
+        ..replay::Extras::default()
+    };
+    assert!(replay::run_with(&trace, &[2], &[4], &[Policy::Lru], st, &span, &bad).is_err());
+    assert_eq!(replay::parse_span("47..94"), Ok((47, 94)));
+    assert!(replay::parse_span("3..3").is_err());
+    assert!(replay::parse_span("3").is_err());
+}

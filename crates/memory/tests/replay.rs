@@ -7,7 +7,7 @@
 use proptest::prelude::*;
 use tetraeder_memory::replay::prefetch_plan;
 use tetraeder_memory::replay::sim::{
-    Config, Outcome, Policy, Trace, VramPolicy, replay, replay_checked,
+    Config, Outcome, Policy, Scope, Trace, VramPolicy, replay, replay_checked, replay_scoped,
 };
 use tetraeder_memory::replay::trace::{LayerStep, Record, TraceHeader};
 use tetraeder_memory::slots::{LayerSlots, Lookup};
@@ -734,4 +734,111 @@ proptest! {
         prop_assert!(total_hits(&opt) >= total_hits(&glru),
             "ram {}: gbelady {} < glru {}", ram, total_hits(&opt), total_hits(&glru));
     }
+}
+
+// ---- replay version 2 (ADR 0092): per-layer counters, `--layers`, `--warm`
+
+#[test]
+fn per_layer_counters_add_up_to_the_aggregate() {
+    for seed in [3u64, 17] {
+        let t = prefetch_trace(seed, 30);
+        let o = replay(&t, &cfg(2, 6, Policy::Lru, true));
+        for ph in [&o.prefill, &o.decode] {
+            assert_eq!(ph.layers.len(), 4);
+            for (i, l) in ph.layers.iter().enumerate() {
+                assert_eq!(l.layer as usize, i);
+            }
+            let pairs: u64 = ph.layers.iter().map(|l| l.pairs).sum();
+            assert_eq!(pairs, ph.pairs);
+            let disk: f64 = ph.layers.iter().map(|l| l.disk_bytes_per_token).sum();
+            assert!((disk - ph.disk_bytes_per_token).abs() < 1e-9, "{disk}");
+            let sync: f64 = ph.layers.iter().map(|l| l.sync_miss_bytes_per_token).sum();
+            assert!((sync - ph.sync_miss_bytes_per_token).abs() < 1e-9);
+            let mean: f64 = ph.layers.iter().map(|l| l.ram_hit_rate).sum::<f64>() / 4.0;
+            assert!((mean - ph.ram_hit_rate_engine_mean).abs() < 1e-12);
+        }
+    }
+}
+
+#[test]
+fn a_layer_span_replays_its_own_layers() {
+    let t = prefetch_trace(5, 30);
+    let c = cfg(2, 6, Policy::Lru, true);
+    let whole = replay(&t, &c);
+    let span = replay_scoped(
+        &t,
+        &c,
+        Scope {
+            layers: Some((1, 3)),
+            warm: 0,
+        },
+    );
+    for (w, s) in [
+        (&whole.prefill, &span.prefill),
+        (&whole.decode, &span.decode),
+    ] {
+        assert_eq!(s.layers.len(), 2);
+        assert_eq!(
+            s.tokens, w.tokens,
+            "tokens are counted at the span's first layer"
+        );
+        for (i, l) in s.layers.iter().enumerate() {
+            let full = &w.layers[1 + i];
+            assert_eq!(l.layer, 1 + i as u32);
+            // what the VRAM tier holds does not depend on the other layers
+            assert_eq!(l.pairs, full.pairs);
+            assert_eq!(l.vram_share, full.vram_share);
+            assert_eq!(l.full_hit_share, full.full_hit_share);
+        }
+        let pairs: u64 = s.layers.iter().map(|l| l.pairs).sum();
+        assert_eq!(s.pairs, pairs);
+    }
+}
+
+#[test]
+fn the_whole_span_is_the_whole_model() {
+    let t = prefetch_trace(9, 20);
+    let c = cfg(2, 6, Policy::Lru, true);
+    let all = Scope {
+        layers: Some((0, 4)),
+        warm: 0,
+    };
+    assert_eq!(replay_scoped(&t, &c, all), replay(&t, &c));
+}
+
+#[test]
+fn a_warm_request_leaves_a_covering_tier_read_free() {
+    // 2 VRAM + 6 RAM slots hold all 8 experts: after one warm request the counted prefill
+    // reads nothing, where the cold one read 12 experts (the refresh in the first pass only).
+    let c = cfg(2, 6, Policy::Lru, false);
+    let cold = replay(&covering_trace(0, 20), &c);
+    let warm = replay_scoped(
+        &covering_trace(0, 20),
+        &c,
+        Scope {
+            layers: None,
+            warm: 1,
+        },
+    );
+    assert_eq!(prefill_bytes(&cold), 12 * EXPERT_BYTES);
+    assert_eq!(prefill_bytes(&warm), 0);
+    assert_eq!(warm.decode.disk_bytes_per_token, 0.0);
+    // the counters are those of one request
+    assert_eq!(warm.prefill.tokens, cold.prefill.tokens);
+    assert_eq!(warm.decode.tokens, cold.decode.tokens);
+}
+
+#[test]
+fn a_warm_request_does_not_help_a_tier_that_does_not_cover() {
+    // 2 VRAM + 4 RAM slots leave 6 experts for 4 slots: the second prefill re-reads (14 above).
+    let c = cfg(2, 4, Policy::Lru, false);
+    let warm = replay_scoped(
+        &covering_trace(0, 0),
+        &c,
+        Scope {
+            layers: None,
+            warm: 1,
+        },
+    );
+    assert!(prefill_bytes(&warm) > 0);
 }
