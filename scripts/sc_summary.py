@@ -95,6 +95,13 @@ def med(xs: list[float]) -> float | None:
     return statistics.median(xs) if xs else None
 
 
+def numa(j: dict) -> dict:
+    """Share of the engine's thread samples on its busiest NUMA node, prefill and decode window (1 = one node)."""
+    h = j.get("host") or {}
+    return {"numa_top_prefill": (h.get("prefill") or {}).get("top_node_share"),
+            "numa_top_decode": (h.get("decode") or {}).get("top_node_share")}
+
+
 def layer_stats(r: dict) -> dict:
     d = r.get("decode_layers") or {}
     return {
@@ -115,7 +122,7 @@ def rounds(res: str, pattern: str) -> list[dict]:
             continue
         r = run_of(load(f))
         out.append({"file": os.path.relpath(f, res), "pp": r.get("prefill_tok_s"), "tg": r.get("decode_tok_s"),
-                    "bytes": (r.get("prefill_io") or {}).get("bytes"), **layer_stats(r)})
+                    "bytes": (r.get("prefill_io") or {}).get("bytes"), **numa(load(f)), **layer_stats(r)})
     return out
 
 
@@ -138,7 +145,7 @@ def main() -> int:
         r = run_of(load(f))
         row = {"file": os.path.relpath(f, res), "pp": r.get("prefill_tok_s"), "tg": r.get("decode_tok_s"),
                "e_pp": e(pr["pp_tps"], r.get("prefill_tok_s")), "e_tg": e(pr["tg_tps"], r.get("decode_tok_s")),
-               "clean": not why, "unclean_reasons": why, **layer_stats(r)}
+               "clean": not why, "unclean_reasons": why, **numa(load(f)), **layer_stats(r)}
         per.append(row)
         if not why:
             clean.append(row)
@@ -184,6 +191,18 @@ def main() -> int:
     out["fixed_seed_segment"] = seed
     if seed and out.get("median"):
         out["fixed_seed_median"] = {k: med([s[k] for s in seed]) for k in ("pp", "tg", "vram_pair_share", "full_hit_rate_mean", "ram_hit_rate_mean")}
+    extra = rounds(res, "report/extra-r[0-9]*.json")
+    out["extra_rounds"] = extra
+    if extra and out.get("median"):
+        every = [{"pp": c["pp"], "tg": c["tg"]} for c in clean] + [{"pp": x["pp"], "tg": x["tg"]} for x in extra]
+        mp, mt = med([x["pp"] for x in every]), med([x["tg"] for x in every])
+        out["all_rounds_report"] = {
+            "n": len(every), "pp": sorted(x["pp"] for x in every), "tg": sorted(x["tg"] for x in every),
+            "median_pp": mp, "median_tg": mt, "e_pp": e(pr["pp_tps"], mp), "e_tg": e(pr["tg_tps"], mt),
+            "pp_max_over_min": max(x["pp"] for x in every) / min(x["pp"] for x in every),
+            "tg_max_over_min": max(x["tg"] for x in every) / min(x["tg"] for x in every),
+        }
+    out["anchor_repeat"] = rounds(res, "report/anchor-repeat-a[0-9]-r[0-9]*.json")
     real = os.path.join(res, "report", "pred-real-anchors.json")
     if os.path.exists(real) and out.get("median"):
         rp = load(real)["prediction"]
@@ -206,6 +225,7 @@ def main() -> int:
     print(f"prediction (frozen {frozen[:16]}): pp {pr['pp_tps']:.2f} tg {pr['tg_tps']:.3f} tok/s (uncalibrated {pr['uncalibrated_pp_tps']:.2f}, {pr['uncalibrated_tg_tps']:.3f})")
     for r in per:
         print(f"  {r['file']:22} pp {r['pp']:8.2f} tg {r['tg']:7.3f} e_pp {r['e_pp']:+.3f} e_tg {r['e_tg']:+.3f} "
+              f"numa top {r['numa_top_prefill'] or 0:.2f}/{r['numa_top_decode'] or 0:.2f} "
               f"{'clean' if r['clean'] else 'UNCLEAN ' + '; '.join(r['unclean_reasons'])}")
     if out.get("median"):
         m = out["median"]

@@ -307,6 +307,19 @@ st_extra() {
   say "extra done"
 }
 
+# report only: the judged configuration with the whole script pinned (taskset by the caller) to one NUMA node, to test
+# whether the round-to-round spread of the unpinned rounds is thread placement
+st_pinned() {
+  [ -s "$p/FROZEN.sha256" ] || die "no frozen prediction"
+  local r line envs=()
+  say "affinity: $(taskset -cp $$ 2> /dev/null)"
+  while IFS= read -r line; do [ -n "$line" ] && envs+=("$line"); done < <(judged_env)
+  for r in $(seq 1 "${PINNED_ROUNDS:-4}"); do
+    run_one "pinned-r$r" "$out/report/pinned-r$r.json" "${envs[@]}" "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
+  done
+  say "pinned done"
+}
+
 main() {
   say "sc_box start stages='$stages' threads=$threads out=$out model=$model span=$split..$end slots=$vs,$rs"
   gpu_sampler_start
