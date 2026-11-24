@@ -41,6 +41,7 @@ pub mod objective;
 pub mod profile_quality;
 pub mod quality;
 pub mod score;
+pub mod segment;
 pub mod search;
 pub mod serve;
 pub mod timemodel;
@@ -81,6 +82,7 @@ pub use profile_quality::{
 };
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
 pub use score::{RoutingSource, TierLayer, TierOutcome, read_tier_replay};
+pub use segment::{SegmentAnchor, SegmentPrediction, segment_predict};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
 pub use serve::{
     Picked, Proposed, ServeInput, budget_of, candidates, correct_for_drift, fill_knobs, pick,
