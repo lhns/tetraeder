@@ -23,7 +23,7 @@
 
 use std::collections::HashSet;
 use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tetraeder_scheduler::{
     BackendError, BatchBackend, Feed, Outputs, SegmentBackend, SegmentInfo, SeqId, SeqInput,
 };
@@ -420,11 +420,6 @@ impl BatchBackend for PipelineBackend {
             .min()
             .unwrap_or(usize::MAX)
     }
-}
-
-/// How long a step took in each segment, for tests.
-pub fn step_times(p: &PipelineBackend) -> Vec<Option<Duration>> {
-    p.segs.iter().map(|s| s.last_step_time()).collect()
 }
 
 /// The share of the layers of a segment plan (the TOML of `plan::segment_plan`) for a model of

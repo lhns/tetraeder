@@ -14,8 +14,9 @@ flowchart TB
     cluster_planner["✔ Plans and<br/>predictions across<br/>nodes"]
     cluster_mtls["✔ Node certificates<br/>and trust rules"]
     cluster_discovery["✔ Node list, health<br/>and probes"]
+    cluster_pipeline_nodes["✔ Pipeline stages<br/>across machines"]
     cluster_planner_hardening>"⚠ Harden the cluster<br/>planner inputs"]
-    cluster_pipeline_nodes["○ Pipeline stages<br/>across machines"]
+    cluster_pipeline_prefill["○ Prefill pipelined<br/>across stages"]
     cluster_replicas["○ Model replicas<br/>behind one router"]
     cluster_join_leave["⛔ Nodes join and leave<br/>live"]
     cluster_remote_kv["⛔ KV cache on another<br/>machine"]
@@ -26,11 +27,11 @@ flowchart TB
     cluster_transport_wan ~~~ cluster_planner
     cluster_transport ~~~ cluster_mtls
     cluster_planner ~~~ cluster_discovery
-    cluster_planner ~~~ cluster_planner_hardening
     cluster_mtls ~~~ cluster_pipeline_nodes
-    cluster_discovery ~~~ cluster_replicas
+    cluster_discovery ~~~ cluster_planner_hardening
+    cluster_pipeline_nodes ~~~ cluster_pipeline_prefill
     cluster_planner_hardening ~~~ cluster_replicas
-    cluster_pipeline_nodes ~~~ cluster_join_leave
+    cluster_pipeline_prefill ~~~ cluster_join_leave
     cluster_replicas ~~~ cluster_remote_kv
     cluster_join_leave ~~~ cluster_failover
     cluster_remote_kv ~~~ cluster_experts_nodes
@@ -40,9 +41,10 @@ flowchart TB
     cluster_transport --> cluster_mtls
     cluster_planner --> cluster_mtls
     cluster_transport --> cluster_discovery
-    cluster_planner --> cluster_planner_hardening
     cluster_planner --> cluster_pipeline_nodes
     cluster_discovery --> cluster_pipeline_nodes
+    cluster_planner --> cluster_planner_hardening
+    cluster_pipeline_nodes --> cluster_pipeline_prefill
     cluster_discovery --> cluster_replicas
     cluster_replicas --> cluster_join_leave
     cluster_replicas --> cluster_remote_kv
@@ -61,9 +63,9 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery unrated
+    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes unrated
     class cluster_planner_hardening finding
-    class cluster_pipeline_nodes,cluster_replicas next
+    class cluster_pipeline_prefill,cluster_replicas next
     class cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_replica_scaling blocked
     class cluster_experts_nodes parked
 ```
@@ -83,7 +85,8 @@ flowchart TB
 | `cluster-planner-hardening` | Harden the cluster planner inputs | defect | ci | next | unrated |  |  | cluster-planner |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-transport |  |  | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | docs/adr/0091-phase6-multi-node.md; crates/control/tests/sim.rs; crates/control/tests/tls_loopback.rs; crates/transport/tests/hardening.rs |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | blocked | unrated |  |  | cluster-discovery, cluster-replicas |  |  |  |  |
-| `cluster-pipeline-nodes` | Pipeline stages across machines | feature | cluster | next | unrated |  |  | cluster-planner, cluster-discovery |  |  |  |  |
+| `cluster-pipeline-nodes` | Pipeline stages across machines | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-planner, cluster-discovery |  |  | two-node splits match the one-node run at every layer boundary of the 4-layer dense and the tiny MoE with the head on either node, over MemTransport and loopback TLS; two real node processes decode through a PipelineBackend; prefill is not pipelined across segments yet | docs/adr/0091-phase6-multi-node.md; crates/model/tests/segments.rs; crates/tetraeder/tests/pipeline_parity.rs; crates/tetraeder/tests/pipeline_smoke.rs; crates/tetraeder/tests/pipeline_contract.rs; crates/planner/tests/segment_shape.rs |
+| `cluster-pipeline-prefill` | Prefill pipelined across stages | feature | ci | next | unrated |  |  | cluster-pipeline-nodes |  |  |  |  |
 | `cluster-experts-nodes` | Experts on other machines | feature | cluster | parked | unrated |  |  | bench-phase6-exit |  |  |  |  |
 | `cluster-remote-kv` | KV cache on another machine | feature | cluster | blocked | unrated |  |  | cluster-replicas |  |  |  |  |
 | `cluster-replicas` | Model replicas behind one router | feature | cluster | next | unrated |  |  | cluster-discovery |  |  |  |  |
@@ -103,7 +106,8 @@ flowchart TB
 | `cluster-planner-hardening` | Harden the cluster planner inputs |  |  | Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors. | From the read-only review of 81d4ecc4..51738939 (2026-11-24); none reachable without a malformed cluster.toml or layout. The transport findings of the same review went to cluster-discovery. |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | test a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat ... ok (CI run 45305038491, ubuntu and windows, with the membership fault tests and two loopback TLS daemons profiling and probing each other) | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live |  |  | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). | Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. |  |  |  |  |
-| `cluster-pipeline-nodes` | Pipeline stages across machines |  |  | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). | Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order. |  |  |  |  |
+| `cluster-pipeline-nodes` | Pipeline stages across machines | pipeline parity dense4 cut 2 head on_leader nodes a_then_b transport tls max_logit_diff 0e0 bit_equal true (CI run 45321864540, ubuntu and windows, with every other cut, head placement and node order over MemTransport, and a smoke test of two real node processes) | two-node splits match the one-node run at every layer boundary of the 4-layer dense and the tiny MoE with the head on either node, over MemTransport and loopback TLS; two real node processes decode through a PipelineBackend; prefill is not pipelined across segments yet | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). | Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order. Done as built (ADR 0091 History, step 4): scheduler path only, the executor paths refuse a segment, prefill walks the segments one chunk at a time, and the residual metric is wired when serve takes a cluster (step 5). |  |  |  |  |
+| `cluster-pipeline-prefill` | Prefill pipelined across stages |  |  | A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes). | Done when (ADR 0091, build order 4, the part step 4 left), several micro-batches are in flight across the segments of a PipelineBackend, with parity against the sequential walk on CPU nodes in CI and the predicted flow-shop time of predict_cluster checked on a simulated slow link; the executor paths take hidden rows in the same change if the exit needs them. |  |  |  |  |
 | `cluster-experts-nodes` | Experts on other machines |  |  | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). | Parked after the Phase 6 exit (ADR 0091), since neither exit case needs it and over the measured WAN one round trip per MoE layer costs about 5.4 s per token. Done when, later, remote experts match local ones within tol_batch on simulated CPU nodes and the round trip on a box pair is within the probe curve; it gets its own ADR addendum. |  |  |  |  |
 | `cluster-remote-kv` | KV cache on another machine |  |  | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). | Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. |  |  |  |  |
 | `cluster-replicas` | Model replicas behind one router |  |  | Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11). | Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router with prefix affinity before least-outstanding, a remote replica sends events of a few bytes per token, and the router property tests pass; router metrics, panel row and the replica-out alert in the same change. Can run in parallel with the pipeline step; the shared serve wiring lands last. |  |  |  |  |
