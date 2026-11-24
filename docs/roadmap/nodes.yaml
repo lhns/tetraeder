@@ -2596,7 +2596,7 @@ nodes:
   folded: []
   overview: false
   plain: 'Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).'
-  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session.'
+  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session. The segment confirmation gate held (bench-235b-segment-confirm, 2026-11-24: e_pp +0.077, e_tg -0.044, routing gate held), with one condition: prefill rounds of the same configuration span 8.6x on a two-socket host, so placement of threads and memory is settled first; the other prerequisites decide the state.'
 - id: cluster-mtls
   title: Node certificates and trust rules
   track: cluster
@@ -3892,22 +3892,26 @@ nodes:
   title: Confirm one exit segment
   track: bench
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/segment-confirm-20261124/README.md
+  - bench/results/segment-confirm-20261124/verdict.json
+  - bench/results/segment-confirm-20261124/predictions/FROZEN.sha256
+  verdict_quote: 'pass by the rule, with a caveat that limits what it carries. On one RTX 3090 box the frozen prediction of exit segment 47..94 of Qwen3-235B-A22B (32 VRAM + 96 RAM slots, ubatch 2048, pp2048 then tg128, cost model 6) is within 15% on the medians of three clean rounds, e_pp +0.077 (199.35 against 185.16 tok/s) and e_tg -0.044 (13.58 against 14.20 tok/s), and the routing gate held'
+  headline: 'e_pp +0.077 and e_tg -0.044 on three clean rounds, gate held; prefill rounds span 8.6x'
   depends_on:
   - planner-costmodel-stream-terms
   - memory-ram-tier-complement
   - engine-exit-segment-harness
   replaced_by: []
-  lane: box-later
-  start: ''
-  end: ''
+  lane: box
+  start: 2026-11-24
+  end: 2026-11-24
   folded: []
   overview: false
-  plain: One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions.
+  plain: One 3090 box under the 64 GB balloon ran the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated on truncated anchors and predicted before measuring, and landed within 15% on both rates with the routing gate held. The pass rests on the median of three rounds whose prefill ranges from 45 to 336 tok/s (8.6x over eight rounds, all clean by the gates, threads unpinned on a two-socket host; the eight-round median is e_pp -0.17), so thread and memory placement must be settled before the two-box sessions.
+  notes: 'Prediction frozen and committed (4e1ace80, FROZEN de9903b0) before the judged rounds; the replay of the same prompt and span matched the run to 0.003 in VRAM share. Stage 4 used a new tool, tetraeder-plan segment-predict (segment.rs, no test yet), which belongs to planner-costmodel-v6-rest. Anchors with fixed-seed input route very differently from real hidden rows and disagree 5x on prefill per layer (fit band 1.23); the fit on real-hidden anchors has band 0.07 (report only). Pinned to one socket, prefill spread falls to 1.2x but decode drops to 5 to 10 tok/s. Open before the rehearsal: thread and memory placement of the exit, and a prefill noise band in the clean rules (ADR 0092 History, step 5).'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

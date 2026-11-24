@@ -1,0 +1,367 @@
+[17:57:28] sc_box start stages='env build' threads=61 out=/root/tetraeder/bench/results/segment-confirm-20261124 model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[17:57:28] STAGE env
+[17:57:28] env done
+[17:57:28] STAGE build
+patches: already applied
+[17:57:28] build start (cargo jobs 24)
+[18:01:34] main build done
+[18:03:29] build done
+[18:03:29] SC_BOX_DONE rc=0 stages='env build'
+[18:12:56] sc_box start stages='env disk balloon trace anchors predict' threads=8 out=/root/tetraeder/bench/results/sc-rehearsal model=/tmp/tetraeder-exit-l8-e2048-x16-u4-f768-q4km.gguf span=4..8 slots=4,12
+[18:12:56] STAGE env
+[18:12:57] env done
+[18:12:57] STAGE disk
+disk-curve -> /root/tetraeder/bench/results/sc-rehearsal/disk/disk-curve.json
+copy_bytes_per_s 24763811381.509007
+[18:13:21] disk done
+[18:13:21] STAGE balloon
+[18:13:21] no balloon (EMULATE_RAM_GB=0)
+BALLOON_READY
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+[18:13:21] balloon done
+[18:13:21] STAGE trace
+probe-disk: no device (dd rc 0, largest read delta 415977472 B): disk fields null
+[18:13:22] trace-whole start: TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=6 TETRAEDER_EXIT_HIDDEN_OUT=4,/root/tetraeder/runs/sc/hidden.bin TETRAEDER_EXIT_ROUTING_OUT=/root/tetraeder/runs/sc/routing.trace threads 8
+Traceback (most recent call last):
+  File "/root/tetraeder/scripts/engine_sample.py", line 984, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 979, in main
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+  File "/root/tetraeder/scripts/engine_sample.py", line 795, in summarize
+    pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 717, in windows_builder
+    w = run["decode_windows"]
+        ~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'decode_windows'
+[18:13:39] host summary failed for trace-whole
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:13:39] trace-whole done rc=0 in 18 s
+routing 7fc16e2fae32293205820d4ec63c726c185aba2c87e032db4ac9ff6c4a53c98e 6469
+hidden 71d3f2c0b433149d6f51912c2102375c12154e2dbafac8d6d1e8fb1cd6a1e172 655708
+[18:13:39] trace done
+[18:13:39] STAGE anchors
+[18:13:39] a1-r1 start: TETRAEDER_EXIT_LAYERS=4..5 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+Traceback (most recent call last):
+  File "/root/tetraeder/scripts/engine_sample.py", line 984, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 979, in main
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+  File "/root/tetraeder/scripts/engine_sample.py", line 795, in summarize
+    pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 717, in windows_builder
+    w = run["decode_windows"]
+        ~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'decode_windows'
+[18:13:41] host summary failed for a1-r1
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:13:41] a1-r1 done rc=0 in 2 s
+[18:13:41] a2-r1 start: TETRAEDER_EXIT_LAYERS=4..6 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+Traceback (most recent call last):
+  File "/root/tetraeder/scripts/engine_sample.py", line 984, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 979, in main
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+  File "/root/tetraeder/scripts/engine_sample.py", line 795, in summarize
+    pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 717, in windows_builder
+    w = run["decode_windows"]
+        ~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'decode_windows'
+[18:13:44] host summary failed for a2-r1
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:13:44] a2-r1 done rc=0 in 3 s
+[18:13:44] a1-r2 start: TETRAEDER_EXIT_LAYERS=4..5 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+Traceback (most recent call last):
+  File "/root/tetraeder/scripts/engine_sample.py", line 984, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 979, in main
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+  File "/root/tetraeder/scripts/engine_sample.py", line 795, in summarize
+    pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 717, in windows_builder
+    w = run["decode_windows"]
+        ~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'decode_windows'
+[18:13:46] host summary failed for a1-r2
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:13:46] a1-r2 done rc=0 in 2 s
+[18:13:46] a2-r2 start: TETRAEDER_EXIT_LAYERS=4..6 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+Traceback (most recent call last):
+  File "/root/tetraeder/scripts/engine_sample.py", line 984, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 979, in main
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+  File "/root/tetraeder/scripts/engine_sample.py", line 795, in summarize
+    pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/tetraeder/scripts/engine_sample.py", line 717, in windows_builder
+    w = run["decode_windows"]
+        ~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'decode_windows'
+[18:13:48] host summary failed for a2-r2
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:13:49] a2-r2 done rc=0 in 3 s
+[18:13:49] anchors done
+[18:13:49] STAGE predict
+replay: 2 configurations -> /root/tetraeder/bench/results/sc-rehearsal/predictions/replay.json
+segment 4..8 v4 r12 ub64: pp 2076.05 tok/s, tg 361.635 tok/s (uncalibrated 7825.73, 671.158), band 0.297, binding switches -> /root/tetraeder/bench/results/sc-rehearsal/predictions/pred.json
+footprint gpu 712233984 host 2553053184 (budget gpu 25512105663 ram 63360000000); replay prefill disk B/token 0.000, decode disk B/token 0.0, layer rows 4
+sha256sum: env.json: No such file or directory
+cat: /root/tetraeder/bench/results/sc-rehearsal/predictions/FROZEN.sha256: No such file or directory
+box commit unknown
+[18:13:49] predict done: frozen, fetch and commit predictions/ before the judged stage
+[18:13:49] SC_BOX_DONE rc=0 stages='env disk balloon trace anchors predict'
+[18:16:06] sc_box start stages='env disk balloon trace anchors predict' threads=8 out=/root/tetraeder/bench/results/sc-rehearsal model=/tmp/tetraeder-exit-l8-e2048-x16-u4-f768-q4km.gguf span=4..8 slots=4,12
+[18:16:06] STAGE env
+[18:16:06] env done
+[18:16:06] STAGE disk
+disk-curve -> /root/tetraeder/bench/results/sc-rehearsal/disk/disk-curve.json
+copy_bytes_per_s 25048041845.233253
+[18:16:31] disk done
+[18:16:31] STAGE balloon
+[18:16:31] no balloon (EMULATE_RAM_GB=0)
+BALLOON_READY
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+[18:16:31] balloon done
+[18:16:31] STAGE trace
+probe-disk: no device (dd rc 0, largest read delta 415903744 B): disk fields null
+[18:16:31] trace-whole start: TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=6 TETRAEDER_EXIT_HIDDEN_OUT=4,/root/tetraeder/runs/sc/hidden.bin TETRAEDER_EXIT_ROUTING_OUT=/root/tetraeder/runs/sc/routing.trace threads 8
+cotenant ok: host 33.63367471511768 cores busy, container 16.539867204555467, engine -1.055398262485242, outside 17.09380751056221, smt pairs 0
+[18:16:42] trace-whole done rc=0 in 11 s
+routing 7fc16e2fae32293205820d4ec63c726c185aba2c87e032db4ac9ff6c4a53c98e 6469
+hidden 71d3f2c0b433149d6f51912c2102375c12154e2dbafac8d6d1e8fb1cd6a1e172 655708
+[18:16:42] trace done
+[18:16:42] STAGE anchors
+[18:16:42] a1-r1 start: TETRAEDER_EXIT_LAYERS=4..5 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+cotenant ok: host 18.562488710955588 cores busy, container 4.694137087632337, engine 4.3122130410863395, outside 13.86835162332325, smt pairs 0
+[18:16:45] a1-r1 done rc=0 in 3 s
+[18:16:45] a2-r1 start: TETRAEDER_EXIT_LAYERS=4..6 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:16:47] a2-r1 done rc=0 in 2 s
+[18:16:47] a1-r2 start: TETRAEDER_EXIT_LAYERS=4..5 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:16:50] a1-r2 done rc=0 in 3 s
+[18:16:50] a2-r2 start: TETRAEDER_EXIT_LAYERS=4..6 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+cotenant ok: host 23.643484855244925 cores busy, container 7.3707445862429415, engine 6.944636736734873, outside 16.272740269001982, smt pairs 0
+[18:16:52] a2-r2 done rc=0 in 2 s
+[18:16:52] anchors done
+[18:16:52] STAGE predict
+replay: 2 configurations -> /root/tetraeder/bench/results/sc-rehearsal/predictions/replay.json
+segment 4..8 v4 r12 ub64: pp 1898.97 tok/s, tg 308.651 tok/s (uncalibrated 7825.73, 671.158), band 0.747, binding switches -> /root/tetraeder/bench/results/sc-rehearsal/predictions/pred.json
+footprint gpu 712233984 host 2553053184 (budget gpu 25512105663 ram 63360000000); replay prefill disk B/token 0.000, decode disk B/token 0.0, layer rows 4
+fea0d81127ab235a0b37f0003ad991b1f87b0d42cbc8c265400bd3b7fa52f451  SHA256SUMS
+box commit unknown
+[18:16:53] predict done: frozen, fetch and commit predictions/ before the judged stage
+[18:16:53] SC_BOX_DONE rc=0 stages='env disk balloon trace anchors predict'
+[18:17:57] sc_box start stages='judged report' threads=8 out=/root/tetraeder/bench/results/sc-rehearsal model=/tmp/tetraeder-exit-l8-e2048-x16-u4-f768-q4km.gguf span=4..8 slots=4,12
+[18:17:57] STAGE judged
+[18:17:57] freeze gate ok (fea0d81127ab235a0b37f0003ad991b1f87b0d42cbc8c265400bd3b7fa52f451)
+probe-disk: no device (dd rc 0, largest read delta 415903744 B): disk fields null
+[18:17:57] judged-r1 start: TETRAEDER_EXIT_DECODE=16 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=4..8 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=64 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_THREADS=8 TETRAEDER_EXIT_UBATCH=64 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:18:06] judged-r1 done rc=0 in 9 s
+[18:18:06] judged-r2 start: TETRAEDER_EXIT_DECODE=16 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=4..8 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=64 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_THREADS=8 TETRAEDER_EXIT_UBATCH=64 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant ok: host 23.783025950592897 cores busy, container 7.420100781905776, engine 6.332284911241054, outside 16.36292516868712, smt pairs 0
+[18:18:08] judged-r2 done rc=0 in 2 s
+[18:18:08] judged-r3 start: TETRAEDER_EXIT_DECODE=16 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=4..8 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=64 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_THREADS=8 TETRAEDER_EXIT_UBATCH=64 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant ok: host 13.562611168973236 cores busy, container 3.582197092670426, engine 3.5479936727017902, outside 9.98041407630281, smt pairs 0
+[18:18:11] judged-r3 done rc=0 in 3 s
+[18:18:11] judged done
+[18:18:11] STAGE report
+[18:18:11] seed-r1 start: TETRAEDER_EXIT_DECODE=16 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=4..8 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=64 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_THREADS=8 TETRAEDER_EXIT_UBATCH=64 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+cotenant CO-TENANT: host 29.94356388146054 cores busy, container 6.10201726436713, engine 6.037690071179961, outside 23.84154661709341, smt pairs 0 (23.8 cores busy outside the container (limit 19.2 of 128 physical))
+[18:18:13] seed-r1 done rc=0 in 2 s
+[18:18:13] seed-r2 start: TETRAEDER_EXIT_DECODE=16 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=4..8 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=64 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_THREADS=8 TETRAEDER_EXIT_UBATCH=64 TETRAEDER_EXIT_PREFILL_WARM=1 threads 8
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:18:16] seed-r2 done rc=0 in 3 s
+[18:18:16] real-a1-r1 start: TETRAEDER_EXIT_LAYERS=4..5 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[18:18:17] real-a1-r1 done rc=0 in 1 s
+[18:18:17] real-a2-r1 start: TETRAEDER_EXIT_LAYERS=4..6 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant ok: host 17.060896097411142 cores busy, container 3.3462903016502796, engine 3.271078452186497, outside 13.714605795760862, smt pairs 0
+[18:18:20] real-a2-r1 done rc=0 in 3 s
+[18:18:20] real-a1-r2 start: TETRAEDER_EXIT_LAYERS=4..5 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant CO-TENANT: host 31.60394316186375 cores busy, container 3.1886297094217118, engine 3.117655236004511, outside 28.41531345244204, smt pairs 0 (28.4 cores busy outside the container (limit 19.2 of 128 physical))
+[18:18:22] real-a1-r2 done rc=0 in 2 s
+[18:18:22] real-a2-r2 start: TETRAEDER_EXIT_LAYERS=4..6 TETRAEDER_EXIT_SLOTS=4 TETRAEDER_EXIT_RAM_SLOTS=12 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 8
+cotenant ok: host 19.11672225223502 cores busy, container 4.057289379672436, engine 3.964356977108383, outside 15.059432872562585, smt pairs 0
+[18:18:25] real-a2-r2 done rc=0 in 3 s
+segment 4..8 v4 r12 ub64: pp 1972.86 tok/s, tg 285.315 tok/s (uncalibrated 7825.73, 671.158), band 0.144, binding compute:cpu0 -> /root/tetraeder/bench/results/sc-rehearsal/report/pred-real-anchors.json
+[18:18:25] report done
+[18:18:25] SC_BOX_DONE rc=0 stages='judged report'
+[18:19:09] sc_box start stages='env disk balloon trace anchors predict' threads=61 out=/root/tetraeder/bench/results/segment-confirm-20261124 model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[18:19:09] STAGE env
+[18:19:09] env done
+[18:19:09] STAGE disk
+disk-curve -> /root/tetraeder/bench/results/segment-confirm-20261124/disk/disk-curve.json
+copy_bytes_per_s 30136230100.815056
+[18:19:34] disk done
+[18:19:34] STAGE balloon
+[18:19:34] balloon 455334526976 B (memory 519334526976, emulated 64000000000)
+[18:19:34] balloon pid 153967: oom_score_adj -1000 not allowed
+ok
+{"memory_max": 519334526976, "memory_current": 519324102656, "inactive_file": 60513009664, "reserve_bytes": 1073741824, "ram_budget_bytes": 59449692160}
+BALLOON_READY
+  "ram_budget": {
+    "memory_max": 519334526976,
+    "memory_current": 519324102656,
+    "inactive_file": 60513009664,
+    "reserve_bytes": 1073741824,
+    "ram_budget_bytes": 59449692160
+  }
+}
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+[18:23:54] balloon done
+[18:23:54] STAGE trace
+[18:23:55] trace-whole start: TETRAEDER_EXIT_SLOTS=16 TETRAEDER_EXIT_RAM_SLOTS=28 TETRAEDER_EXIT_HIDDEN_OUT=47,/root/tetraeder/runs/sc/hidden.bin TETRAEDER_EXIT_ROUTING_OUT=/root/tetraeder/runs/sc/routing.trace threads 61
+[18:24:38] trace-whole: no result JSON (rc 101); last log lines:
+segment step: Ggml(Alloc { what: "graph tensors", bytes: 0 })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test exit_regime ... FAILED
+
+failures:
+
+failures:
+    exit_regime
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 6 filtered out; finished in 35.20s
+
+error: test failed, to rerun pass `-p tetraeder-model --test exit_regime`
+[18:24:38] trace-whole done rc=101 in 44 s
+[18:24:38] FATAL: the trace run left no trace or hidden rows
+SC_BOX_DONE rc=1
+[18:25:35] sc_box start stages='trace anchors predict' threads=61 out=/root/tetraeder/bench/results/segment-confirm-20261124 model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[18:25:35] STAGE trace
+[18:25:35] trace-whole start: TETRAEDER_EXIT_SLOTS=8 TETRAEDER_EXIT_RAM_SLOTS=28 TETRAEDER_EXIT_HIDDEN_OUT=47,/root/tetraeder/runs/sc/hidden.bin TETRAEDER_EXIT_ROUTING_OUT=/root/tetraeder/runs/sc/routing.trace threads 61
+cotenant ok: host 25.58350045081879 cores busy, container 17.788095157415302, engine 17.703990402274606, outside 7.795405293403487, smt pairs 0
+[18:28:32] trace-whole done rc=0 in 177 s
+routing 1d27eb4f615933095b4fe23ff898d93cb0abe22d635cfd1bdf9175c15c7d8d2e 3384541
+hidden 0bfce50eda66989ae41eb518293ae651755f17700c5e64010adbe9c5072c5a35 35660316
+[18:28:32] trace done
+[18:28:32] STAGE anchors
+[18:28:32] a1-r1 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 26.526676029548383 cores busy, container 20.308394645124945, engine 20.248136066329014, outside 6.218281384423438, smt pairs 0
+[18:28:57] a1-r1 done rc=0 in 25 s
+[18:28:57] a2-r1 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 31.25517284509738 cores busy, container 24.40095501706288, engine 24.32398929110849, outside 6.8542178280345, smt pairs 0
+[18:29:31] a2-r1 done rc=0 in 34 s
+[18:29:31] a1-r2 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 28.123465265475637 cores busy, container 21.69532699036468, engine 21.634555780358518, outside 6.428138275110957, smt pairs 0
+[18:29:56] a1-r2 done rc=0 in 25 s
+[18:29:56] a2-r2 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 28.578112226207708 cores busy, container 25.02187868106236, engine 24.960891508605847, outside 3.5562335451453464, smt pairs 0
+[18:30:30] a2-r2 done rc=0 in 34 s
+[18:30:30] anchors done
+[18:30:30] STAGE predict
+replay: 2 configurations -> /root/tetraeder/bench/results/segment-confirm-20261124/predictions/replay.json
+segment 47..94 v32 r96 ub2048: pp 199.35 tok/s, tg 13.581 tok/s (uncalibrated 516.42, 12.884), band 1.226, binding compute:cpu0 -> /root/tetraeder/bench/results/segment-confirm-20261124/predictions/pred.json
+footprint gpu 22060071936 host 53900476416 (budget gpu 25512105663 ram 58855195179); replay prefill disk B/token 0.000, decode disk B/token 0.0, layer rows 47
+de9903b0ea1c3497fdca7fbddc31e52246e26d3c52d07da6d81251a08dc26920  SHA256SUMS
+box commit unknown
+[18:30:30] predict done: frozen, fetch and commit predictions/ before the judged stage
+[18:30:30] SC_BOX_DONE rc=0 stages='trace anchors predict'
+[18:33:58] sc_box start stages='judged' threads=61 out=/root/tetraeder/bench/results/segment-confirm-20261124 model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[18:33:58] STAGE judged
+[18:33:58] freeze gate ok (de9903b0ea1c3497fdca7fbddc31e52246e26d3c52d07da6d81251a08dc26920)
+[18:33:58] judged-r1 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 38.33231834113179 cores busy, container 32.296484954188514, engine 32.23058974078338, outside 6.035833386943274, smt pairs 1
+[18:35:22] judged-r1 done rc=0 in 84 s
+[18:35:22] judged-r2 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 46.30285531417927 cores busy, container 39.78480994752529, engine 39.7250947741152, outside 6.518045366653979, smt pairs 0
+[18:36:46] judged-r2 done rc=0 in 84 s
+[18:36:46] judged-r3 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 52.15142752109699 cores busy, container 39.2724113403443, engine 39.2132564103665, outside 12.879016180752693, smt pairs 0
+[18:38:47] judged-r3 done rc=0 in 121 s
+[18:38:47] judged done
+[18:38:47] SC_BOX_DONE rc=0 stages='judged'
+[18:40:12] sc_box start stages='report extra' threads=61 out=/root/tetraeder/bench/results/segment-confirm-20261124 model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[18:40:12] STAGE report
+[18:40:12] seed-r1 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 37.69290035057158 cores busy, container 35.250511072300505, engine 35.1731853104583, outside 2.4423892782710723, smt pairs 0
+[18:41:30] seed-r1 done rc=0 in 78 s
+[18:41:30] seed-r2 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 21.38175807072538 cores busy, container 18.392526653657036, engine 18.324380546864344, outside 2.9892314170683427, smt pairs 0
+[18:42:34] seed-r2 done rc=0 in 64 s
+[18:42:34] real-a1-r1 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 23.908395600523804 cores busy, container 20.628675878652036, engine 20.561818124841214, outside 3.2797197218717677, smt pairs 0
+[18:42:54] real-a1-r1 done rc=0 in 20 s
+[18:42:54] real-a2-r1 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 30.634238903293344 cores busy, container 28.023279729730355, engine 27.94964498403419, outside 2.610959173562989, smt pairs 0
+[18:43:29] real-a2-r1 done rc=0 in 35 s
+[18:43:29] real-a1-r2 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 32.621931472001414 cores busy, container 29.55173546756716, engine 29.4871033152476, outside 3.070196004434255, smt pairs 0
+[18:43:48] real-a1-r2 done rc=0 in 19 s
+[18:43:48] real-a2-r2 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 39.97002475979191 cores busy, container 36.122311807335464, engine 36.05454776497906, outside 3.8477129524564475, smt pairs 4
+[18:44:27] real-a2-r2 done rc=0 in 39 s
+segment 47..94 v32 r96 ub2048: pp 327.46 tok/s, tg 17.788 tok/s (uncalibrated 516.42, 12.884), band 0.071, binding compute:cpu0 -> /root/tetraeder/bench/results/segment-confirm-20261124/report/pred-real-anchors.json
+[18:44:27] report done
+[18:44:27] STAGE extra
+[18:44:27] extra-r1 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 40.75690529543926 cores busy, container 37.5979174189199, engine 37.525885364821995, outside 3.1589878765193617, smt pairs 0
+[18:45:42] extra-r1 done rc=0 in 75 s
+[18:45:42] extra-r2 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 34.21337238992968 cores busy, container 33.94964253414012, engine 33.88519287018203, outside 0.2637298557895633, smt pairs 0
+[18:47:04] extra-r2 done rc=0 in 82 s
+[18:47:04] extra-r3 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 42.757283453091475 cores busy, container 32.97413368678391, engine 32.90821625205091, outside 9.783149766307567, smt pairs 1
+[18:48:13] extra-r3 done rc=0 in 69 s
+[18:48:13] extra-r4 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 47.21566916090491 cores busy, container 37.19963221696428, engine 37.13791844438521, outside 10.016036943940627, smt pairs 0
+[18:50:05] extra-r4 done rc=0 in 112 s
+[18:50:06] extra-r5 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 31.293155938923086 cores busy, container 28.63826001507101, engine 28.567096551210277, outside 2.6548959238520773, smt pairs 0
+[18:51:16] extra-r5 done rc=0 in 71 s
+[18:51:16] anchor-repeat-a1-r1 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 32.9636439034397 cores busy, container 28.902206730595257, engine 28.83951556667029, outside 4.061437172844446, smt pairs 0
+[18:51:38] anchor-repeat-a1-r1 done rc=0 in 22 s
+[18:51:38] anchor-repeat-a2-r1 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 28.282754193955512 cores busy, container 24.852067715004125, engine 24.79041981556395, outside 3.4306864789513867, smt pairs 0
+[18:52:12] anchor-repeat-a2-r1 done rc=0 in 34 s
+[18:52:12] anchor-repeat-a1-r2 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 19.110491666111812 cores busy, container 18.653420785172802, engine 18.585933841266808, outside 0.4570708809390105, smt pairs 0
+[18:52:30] anchor-repeat-a1-r2 done rc=0 in 18 s
+[18:52:30] anchor-repeat-a2-r2 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 threads 61
+cotenant ok: host 31.160215818302632 cores busy, container 28.41330263929197, engine 28.35270790406543, outside 2.7469131790106616, smt pairs 0
+[18:53:09] anchor-repeat-a2-r2 done rc=0 in 39 s
+[18:53:09] extra done
+[18:53:09] SC_BOX_DONE rc=0 stages='report extra'
+[18:54:14] sc_box start stages='pinned' threads=61 out=/root/tetraeder/bench/results/segment-confirm-20261124 model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[18:54:14] STAGE pinned
+[18:54:14] affinity: pid 540135's current affinity list: 0-63
+[18:54:15] pinned-r1 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 50.49722373199145 cores busy, container 39.73124638152071, engine 39.67398342215902, outside 10.765977350470735, smt pairs 0
+[18:55:45] pinned-r1 done rc=0 in 91 s
+[18:55:45] pinned-r2 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 68.04708338808763 cores busy, container 50.707515221842, engine 50.65120658003325, outside 17.339568166245627, smt pairs 0
+[18:57:32] pinned-r2 done rc=0 in 107 s
+[18:57:32] pinned-r3 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 47.81821893854486 cores busy, container 42.112168211548884, engine 42.0488412229695, outside 5.706050726995976, smt pairs 0
+[18:59:03] pinned-r3 done rc=0 in 91 s
+[18:59:03] pinned-r4 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=61 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 61
+cotenant ok: host 47.11177772253925 cores busy, container 44.69944473702066, engine 44.638956437363525, outside 2.4123329855185887, smt pairs 0
+[19:00:40] pinned-r4 done rc=0 in 97 s
+[19:00:40] pinned done
+[19:00:40] SC_BOX_DONE rc=0 stages='pinned'
+[18:13:21] no balloon (EMULATE_RAM_GB=0)
+[18:16:31] no balloon (EMULATE_RAM_GB=0)
+[18:19:34] balloon 455334526976 B (memory 519334526976, emulated 64000000000)
+[18:19:34] balloon pid 153967: oom_score_adj -1000 not allowed
+ok
+{"memory_max": 519334526976, "memory_current": 519324102656, "inactive_file": 60513009664, "reserve_bytes": 1073741824, "ram_budget_bytes": 59449692160}
+balloon holds 455334526976 B
