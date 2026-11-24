@@ -129,6 +129,14 @@ enum Cmd {
         /// outcome.
         #[arg(long)]
         decode_window: Option<u32>,
+        /// Replay only this half-open layer span, `a..b`, as the streamer of a segment sees it
+        /// (replay version 2, ADR 0092); the outcomes carry per-layer counters either way.
+        #[arg(long)]
+        layers: Option<String>,
+        /// Replay the trace this many times before the counted one, from an empty tier, with the
+        /// hot-set refresh in the first pass only.
+        #[arg(long, default_value_t = 0)]
+        warm: u32,
     },
     /// A disk's read rate by queue depth through the I/O service (ADR 0056): random aligned
     /// chunks of one file, direct I/O, `workers = depth`; per depth bytes per second and p50 and
@@ -323,6 +331,8 @@ fn real_main() -> Result<u8> {
             out,
             timed,
             decode_window,
+            layers,
+            warm,
         } => {
             let policies = policies
                 .iter()
@@ -334,9 +344,16 @@ fn real_main() -> Result<u8> {
                 .map(|p| tetraeder_memory::replay::sim::VramPolicy::parse(p))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(anyhow::Error::msg)?;
+            let layers = layers
+                .as_deref()
+                .map(replay::parse_span)
+                .transpose()
+                .map_err(anyhow::Error::msg)?;
             let extras = replay::Extras {
                 time_model: timed.as_deref(),
                 decode_window,
+                layers,
+                warm,
             };
             let n = replay::run_with(
                 &trace,

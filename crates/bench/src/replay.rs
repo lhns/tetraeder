@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use serde_json::json;
 use std::path::Path;
 use tetraeder_memory::replay::REPLAY_VERSION;
-use tetraeder_memory::replay::sim::{Config, Policy, Trace, VramPolicy, replay_matrix};
+use tetraeder_memory::replay::sim::{
+    Config, Policy, Scope, Trace, VramPolicy, replay_matrix_scoped,
+};
 use tetraeder_memory::replay::timed::{TimeModel, replay_timed};
 use tetraeder_memory::replay::trace::Record;
 
@@ -55,6 +57,21 @@ pub struct Extras<'a> {
     /// tokens (the last window may be shorter), to compare with the exit JSON's windows (ADR 0050
     /// (c) addendum 2026-11-14).
     pub decode_window: Option<u32>,
+    /// Replay only this half-open layer span (`--layers a..b`, replay version 2).
+    pub layers: Option<(u32, u32)>,
+    /// Replay the trace this many times before the counted one (`--warm n`).
+    pub warm: u32,
+}
+
+/// Parses `a..b` of `--layers`: a non-empty half-open span.
+pub fn parse_span(s: &str) -> Result<(u32, u32), String> {
+    let bad = || format!("--layers {s}: expected a..b with a < b");
+    let (a, b) = s.split_once("..").ok_or_else(bad)?;
+    let (a, b) = (
+        a.trim().parse::<u32>().map_err(|_| bad())?,
+        b.trim().parse::<u32>().map_err(|_| bad())?,
+    );
+    if a < b { Ok((a, b)) } else { Err(bad()) }
 }
 
 /// Disk bytes per token of each `window` decode steps.
@@ -91,7 +108,22 @@ pub fn run_with(
     } else {
         &[false]
     };
-    let outcomes = replay_matrix(&trace, vram, ram, policies, vram_policies, modes);
+    let scope = Scope {
+        layers: extras.layers,
+        warm: extras.warm,
+    };
+    if let Some((a, b)) = scope.layers
+        && b > trace.header.n_layer
+    {
+        anyhow::bail!(
+            "--layers {a}..{b}: the trace has {} layers",
+            trace.header.n_layer
+        );
+    }
+    if time_model.is_some() && (scope.layers.is_some() || scope.warm > 0) {
+        anyhow::bail!("--timed does not combine with --layers or --warm");
+    }
+    let outcomes = replay_matrix_scoped(&trace, vram, ram, policies, vram_policies, modes, scope);
     let timed = match time_model {
         None => None,
         Some(p) => {
@@ -149,6 +181,10 @@ pub fn run_with(
             "header": header,
             "records": trace.records.len(),
             "has_predictions": has_predictions,
+        },
+        "scope": {
+            "layers": extras.layers.map(|(a, b)| [a, b]),
+            "warm": extras.warm,
         },
         "grid": {
             "vram_slots": vram,
