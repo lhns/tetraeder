@@ -75,7 +75,8 @@ pub fn rejected_total(reason: &str) -> u64 {
 }
 
 /// A refused handshake. `reason` is one of `untrusted`, `unknown_node`, `no_identity`,
-/// `wrong_peer`, `duplicate`, `bad_hello`, `handshake`.
+/// `wrong_peer`, `bad_hello`, `handshake`, `limit` (too many handshakes or connections).
+/// `duplicate` is no longer produced: a new connection replaces the old one.
 pub fn rejected(reason: &'static str) {
     *REJECTED
         .lock()

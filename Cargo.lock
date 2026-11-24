@@ -2207,7 +2207,15 @@ dependencies = [
 name = "tetraeder-control"
 version = "0.0.0"
 dependencies = [
+ "opentelemetry",
+ "proptest",
+ "serde",
+ "serde_json",
  "tetraeder-plan",
+ "tetraeder-profiler",
+ "tetraeder-transport",
+ "toml",
+ "tracing",
 ]
 
 [[package]]

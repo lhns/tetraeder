@@ -13,3 +13,29 @@ groups:
         annotations:
           summary: "A node refused a connection ({{ $labels.reason }})"
           description: "Handshakes were refused in the last 10 minutes. untrusted or unknown_node: a peer's certificate is not pinned in cluster.toml or its id is not listed; wrong_peer: a dial reached another node; duplicate: a second connection for one purpose."
+
+      # Step 3 (membership): a configured node has not been up for a minute. The head's monitor
+      # sets tetraeder_cluster_node_up for every node of cluster.toml (0 while joining, down or
+      # draining), so a node that never came up counts too.
+      - alert: TetraederNodeDown
+        expr: min by (node) (tetraeder_cluster_node_up) < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.node }} is not up"
+          description: "The head has not had a heartbeat answer from {{ $labels.node }} for a minute. Look at the node's daemon (tetraeder node), its certificate in cluster.toml and the link."
+
+      # Step 3: the heartbeat round trip is far above what the probe measured, so the predictions
+      # that price this link no longer hold. The baseline is set by `tetraeder cluster watch
+      # --probe probe.json` (twice the one-way time of the smallest probed frame).
+      - alert: TetraederLinkSlow
+        expr: |
+          histogram_quantile(0.5, sum by (le, node) (rate(tetraeder_cluster_heartbeat_rtt_seconds_bucket[10m])))
+            > 2 * max by (node) (tetraeder_cluster_heartbeat_baseline_seconds)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The link to {{ $labels.node }} is slower than probed"
+          description: "Median heartbeat round trip above twice the probed small-frame round trip for 10 minutes. Probe the links again and replan if it persists."

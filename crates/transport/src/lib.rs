@@ -22,6 +22,7 @@ pub mod tls_transport;
 pub use identity::{Anchors, Identity, node_id_of};
 pub use mem::{LinkFault, MemTransport, Switchboard};
 pub use metrics::LinkMetrics;
+pub use rustls::pki_types::CertificateDer;
 pub use tls_transport::{SocketBuffers, TlsTransport, effective_buffers};
 
 /// Node id, the `tetraeder-node:<id>` SAN of its certificate.
@@ -56,6 +57,11 @@ pub enum Purpose {
     },
     /// Leader to leader: prefix snapshot fetch.
     Prefix,
+    /// Link probe: bulk frames answered by empty ones, on a connection of their own so a
+    /// 64 MiB frame never delays a heartbeat (ADR 0091 step 3).
+    Probe {
+        session: u32,
+    },
 }
 
 impl Purpose {
@@ -67,6 +73,20 @@ impl Purpose {
             Self::Replica { .. } => "request",
             Self::Segment { .. } => "hidden",
             Self::Prefix => "kv",
+            Self::Probe { .. } => "probe",
+        }
+    }
+
+    /// Largest frame a reader of this purpose accepts (`frame::read_frame_max`): a control or
+    /// request connection never carries bulk, so a corrupt or hostile length cannot ask for
+    /// a gigabyte there.
+    pub fn max_frame(&self) -> u64 {
+        match self {
+            Self::Control => 1 << 20,
+            Self::Replica { .. } => 16 << 20,
+            // 64 MiB of payload and the header.
+            Self::Probe { .. } => (64 << 20) + (1 << 20),
+            Self::Segment { .. } | Self::Prefix => frame::MAX_FRAME,
         }
     }
 }

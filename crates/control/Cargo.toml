@@ -13,3 +13,13 @@ workspace = true
 
 [dependencies]
 tetraeder-plan = { path = "../plan" }
+tetraeder-profiler = { path = "../profiler" }
+tetraeder-transport = { path = "../transport" }
+opentelemetry = "0.33.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+
+[dev-dependencies]
+proptest = "1"

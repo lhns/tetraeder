@@ -2618,21 +2618,44 @@ nodes:
   overview: false
   plain: 'Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).'
   notes: 'Done when (ADR 0091), the certificate tooling of the owner''s choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test).'
-- id: cluster-discovery
-  title: Node list, health and probes
+- id: cluster-planner-hardening
+  title: Harden the cluster planner inputs
   track: cluster
-  kind: feature
+  kind: defect
   state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
+  - cluster-planner
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors.
+  notes: 'From the read-only review of 81d4ecc4..51738939 (2026-11-24); none reachable without a malformed cluster.toml or layout. The transport findings of the same review went to cluster-discovery.'
+- id: cluster-discovery
+  title: Node list, health and probes
+  track: cluster
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/control/tests/sim.rs
+  - crates/control/tests/tls_loopback.rs
+  - crates/transport/tests/hardening.rs
+  verdict_quote: 'test a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat ... ok (CI run 45305038491, ubuntu and windows, with the membership fault tests and two loopback TLS daemons profiling and probing each other)'
+  headline: 'node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in'
+  depends_on:
   - cluster-transport
   replaced_by: []
   lane: cluster
-  start: ''
-  end: ''
+  start: 2026-11-24
+  end: 2026-11-24
   folded: []
   overview: false
   plain: 'Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091).'
@@ -2661,7 +2684,7 @@ nodes:
   title: Pipeline stages across machines
   track: cluster
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -2720,7 +2743,7 @@ nodes:
   title: Model replicas behind one router
   track: cluster
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
