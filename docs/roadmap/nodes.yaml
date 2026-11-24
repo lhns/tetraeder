@@ -2588,6 +2588,7 @@ nodes:
   - cluster-owner-phase6-design
   - bench-235b-stream-predict
   - bench-235b-segment-confirm
+  - cluster-integration
   replaced_by: []
   lane: cluster
   start: ''
@@ -2619,6 +2620,26 @@ nodes:
   overview: false
   plain: 'Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).'
   notes: 'Done when (ADR 0091), the certificate tooling of the owner''s choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test).'
+- id: cluster-integration
+  title: Cluster serving end to end
+  track: cluster
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-replicas
+  - cluster-pipeline-nodes
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The step 5 gaps - serve --cluster and its head run in a test, a head without a replica of its own, replicas.toml derived from the cluster plan, a pipeline replica across nodes run through the daemons end to end, the real scheduler prefix store served and installed over the transport, NodeChange replanning and a planned drain of a segmented replica.
+  notes: 'cluster-remote-kv and cluster-join-leave were marked done on CI-scoped terms (fake prefix stores; a whole-replica restart instead of a planned drain); this node carries what the rehearsal needs.'
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster

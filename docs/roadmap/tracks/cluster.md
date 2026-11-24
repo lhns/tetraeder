@@ -19,6 +19,7 @@ flowchart TB
     cluster_join_leave["✔ Nodes join and leave<br/>live"]
     cluster_remote_kv["✔ KV cache on another<br/>machine"]
     cluster_failover["✔ Keep serving when a<br/>node dies"]
+    cluster_integration["○ Cluster serving end<br/>to end"]
     cluster_planner_hardening>"⚠ Harden the cluster<br/>planner inputs"]
     cluster_pipeline_prefill["○ Prefill pipelined<br/>across stages"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
@@ -32,11 +33,11 @@ flowchart TB
     cluster_pipeline_nodes ~~~ cluster_join_leave
     cluster_replicas ~~~ cluster_remote_kv
     cluster_join_leave ~~~ cluster_failover
+    cluster_remote_kv ~~~ cluster_integration
     cluster_remote_kv ~~~ cluster_planner_hardening
-    cluster_remote_kv ~~~ cluster_pipeline_prefill
-    cluster_failover ~~~ cluster_experts_nodes
+    cluster_failover ~~~ cluster_pipeline_prefill
+    cluster_integration ~~~ cluster_experts_nodes
     cluster_planner_hardening ~~~ cluster_replica_scaling
-    cluster_pipeline_prefill ~~~ cluster_replica_scaling
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
     cluster_transport --> cluster_mtls
@@ -48,6 +49,8 @@ flowchart TB
     cluster_replicas --> cluster_join_leave
     cluster_replicas --> cluster_remote_kv
     cluster_join_leave --> cluster_failover
+    cluster_replicas --> cluster_integration
+    cluster_pipeline_nodes --> cluster_integration
     cluster_planner --> cluster_planner_hardening
     cluster_pipeline_nodes --> cluster_pipeline_prefill
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -65,8 +68,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_join_leave,cluster_remote_kv,cluster_failover unrated
+    class cluster_integration,cluster_pipeline_prefill next
     class cluster_planner_hardening finding
-    class cluster_pipeline_prefill next
     class cluster_experts_nodes parked
     class cluster_replica_scaling blocked
 ```
@@ -83,6 +86,7 @@ flowchart TB
 | `cluster-owner-phase6-design` | Owner accepts the Phase 6 design | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 | cluster-owner-transport |  |  | ADR 0091 accepted | docs/adr/0091-phase6-multi-node.md |
 | `cluster-planner` | Plans and predictions across nodes | feature | ci | done | unrated | 2026-11-23 | 2026-11-23 | cluster-owner-transport |  |  | planner first prediction for the 235B, decode 3.62 tok/s on the WAN pair and 5.43 on the same host, one node 0.49 (uniform routing prior) | docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster.rs; crates/plan/tests/cluster.rs; crates/costmodel/src/cluster/tests.rs; crates/planner/tests/single_node_identity.rs |
 | `cluster-mtls` | Node certificates and trust rules | feature | cluster | done | unrated | 2026-11-23 | 2026-11-24 | cluster-transport, cluster-planner, cluster-owner-phase6-design |  |  | done in steps 1 and 2 | docs/adr/0091-phase6-multi-node.md; crates/transport/src/tls_transport.rs |
+| `cluster-integration` | Cluster serving end to end | feature | ci | next | unrated |  |  | cluster-replicas, cluster-pipeline-nodes |  |  |  |  |
 | `cluster-planner-hardening` | Harden the cluster planner inputs | defect | ci | next | unrated |  |  | cluster-planner |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-transport |  |  | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | docs/adr/0091-phase6-multi-node.md; crates/control/tests/sim.rs; crates/control/tests/tls_loopback.rs; crates/transport/tests/hardening.rs |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-discovery, cluster-replicas |  |  | a node whose replica answers one probe step joins the router, a node that goes down or a broken connection takes it out, and a restored node or a restarted engine rejoins without manual action, on simulated nodes and two real node processes; the drain and restart of a pipeline over nodes is not built | docs/adr/0091-phase6-multi-node.md; crates/control/tests/case_f.rs; crates/control/tests/router_props.rs; crates/control/tests/replica_daemon.rs; crates/tetraeder/tests/replica_smoke.rs |
@@ -105,6 +109,7 @@ flowchart TB
 | `cluster-owner-phase6-design` | Owner accepts the Phase 6 design | Vast WAN pair, pinned self-signed certificates, 64 GB emulated by the balloon, mDNS out of M3, no HA gateway, remote experts after the exit (owner 2026-11-23) | ADR 0091 accepted | The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts). | Gates the certificate tooling and the box sessions only; the simulated steps (transport, planner) start before it. |  |  |  |  |
 | `cluster-planner` | Plans and predictions across nodes | test the_235b_spans_both_nodes_on_every_two_node_fixture ... ok (CI run 45178068154, ubuntu-24.04) | planner first prediction for the 235B, decode 3.62 tok/s on the WAN pair and 5.43 on the same host, one node 0.49 (uniform routing prior) | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). | Done when (ADR 0091, build order 2), plan, segment and prediction property tests pass on every simulated cluster fixture, and one-node plans predict bit-identically to today. CI only, crates profiler, plan, costmodel and planner; runs in parallel with the transport step. |  |  |  |  |
 | `cluster-mtls` | Node certificates and trust rules | Delivered by steps 1 and 2 - tetraeder cluster cert, pinned self-signed anchors through one verifier, forbid node in the validator (CI runs 45179950926 and 45178068154) | done in steps 1 and 2 | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). | Done when (ADR 0091), the certificate tooling of the owner's choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test). |  |  |  |  |
+| `cluster-integration` | Cluster serving end to end |  |  | The step 5 gaps - serve --cluster and its head run in a test, a head without a replica of its own, replicas.toml derived from the cluster plan, a pipeline replica across nodes run through the daemons end to end, the real scheduler prefix store served and installed over the transport, NodeChange replanning and a planned drain of a segmented replica. | cluster-remote-kv and cluster-join-leave were marked done on CI-scoped terms (fake prefix stores; a whole-replica restart instead of a planned drain); this node carries what the rehearsal needs. |  |  |  |  |
 | `cluster-planner-hardening` | Harden the cluster planner inputs |  |  | Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors. | From the read-only review of 81d4ecc4..51738939 (2026-11-24); none reachable without a malformed cluster.toml or layout. The transport findings of the same review went to cluster-discovery. |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | test a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat ... ok (CI run 45305038491, ubuntu and windows, with the membership fault tests and two loopback TLS daemons profiling and probing each other) | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live | case_f mode=Blackhole requests=185 in_flight_errors=3 max_error_s=1.030 bound_s=2.0 moved=2 ok_after_bound=18 rejoin_s=0.739 (CI run 45424566387, ubuntu and windows) | a node whose replica answers one probe step joins the router, a node that goes down or a broken connection takes it out, and a restored node or a restarted engine rejoins without manual action, on simulated nodes and two real node processes; the drain and restart of a pipeline over nodes is not built | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). | Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. Done as built (ADR 0091 History, step 5) for replicas of one node; a change to a replica across nodes is a restart of the whole replica on the next join, not a planned drain. |  |  |  |  |

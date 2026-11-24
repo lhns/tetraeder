@@ -348,6 +348,7 @@ flowchart TB
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
+| Cluster serving end to end | ○ next | The step 5 gaps - serve --cluster and its head run in a test, a head without a replica of its own, replicas.toml derived from the cluster plan, a pipeline replica across nodes run through the daemons end to end, the real scheduler prefix store served and installed over the transport, NodeChange replanning and a planned drain of a segmented replica. |
 | Harden the cluster planner inputs | ⚠ open | Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors. |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Prefill pipelined across stages | ○ next | A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes). |
@@ -368,6 +369,7 @@ flowchart TB
 
 **ci**
 
+- `cluster-integration`: Cluster serving end to end
 - `cluster-planner-hardening`: Harden the cluster planner inputs
 - `cluster-pipeline-prefill`: Prefill pipelined across stages
 - `planner-costmodel-v6-rest`: Cost model 6 remaining parts
@@ -866,5 +868,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 17 nodes (13 done, 2 next, 1 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 18 nodes (13 done, 3 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
