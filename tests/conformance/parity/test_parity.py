@@ -115,7 +115,6 @@ def pool(llama_bin, tetraeder_bin, tmp_path_factory):
 
 
 COMPARES_OUTPUT = ("text", "logprobs", "stream")
-GENERATION_ENDPOINTS = ("/v1/chat/completions", "/v1/completions", "/v1/messages", "/completion")
 
 
 def pinned(case: dict) -> bool:
@@ -138,7 +137,7 @@ def send(base_url: str, case: dict, body: dict | None = None, no_cache_prompt: b
     # tetraeder requires `model` (a row of its own, case model-optional); every other case names it
     if isinstance(body, dict) and body.keys() & {"messages", "prompt", "input"} and not case.get("no_model"):
         body = {"model": "tiny", **body}
-    if no_cache_prompt and isinstance(body, dict) and case["endpoint"].split(" ", 1)[1] in GENERATION_ENDPOINTS:
+    if no_cache_prompt and isinstance(body, dict) and body.keys() & {"messages", "prompt", "input"}:
         body = {"cache_prompt": False, **body}
     kw = {"json": body} if body is not None else {}
     with httpx.Client(timeout=TIMEOUT) as c:

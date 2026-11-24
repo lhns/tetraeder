@@ -112,12 +112,19 @@ def env_extra(name: str) -> list:
 # after prompt-cache reuse, in llama-server too, so token- and logprob-comparing cases must not depend on which
 # cases ran before them. Both servers keep no prompt cache between requests; llama-server's per-request
 # `cache_prompt: false` is added by test_parity.send.
-PIN_LLAMA = ["--cache-ram", "0"]
-PIN_TETRAEDER = ["--no-prefix-reuse", "--cache-ram", "0"]
+PIN_LLAMA = [["--cache-ram", "0"]]
+PIN_TETRAEDER = [["--no-prefix-reuse"], ["--cache-ram", "0"]]
+
+
+def with_pin(extra, pin_flags, pin: bool) -> list:
+    """`extra` plus the pin flags a diagnostic run (PARITY_*_EXTRA) does not already give: both servers refuse a flag twice."""
+    given = {a for a in extra if a.startswith("-")}
+    add = [a for flag in pin_flags if pin and flag[0] not in given for a in flag]
+    return [*extra, *add]
 
 
 def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX, pin=False) -> Running:
-    extra = [*extra, *(PIN_LLAMA if pin else []), *env_extra("PARITY_LLAMA_EXTRA")]
+    extra = with_pin([*extra, *env_extra("PARITY_LLAMA_EXTRA")], PIN_LLAMA, pin)
     port = free_port()
     argv = [
         str(binary), "-m", str(FIXTURES / MODEL_FILE[model]), "--host", "127.0.0.1", "--port", str(port),
@@ -128,7 +135,7 @@ def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX, pin=Fals
 
 
 def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX, pin=False) -> Running:
-    extra = [*extra, *(PIN_TETRAEDER if pin else []), *env_extra("PARITY_TETRAEDER_EXTRA")]
+    extra = with_pin([*extra, *env_extra("PARITY_TETRAEDER_EXTRA")], PIN_TETRAEDER, pin)
     port = free_port()
     argv = [
         str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", ENGINE_FLAG.get(engine, engine),
