@@ -120,6 +120,7 @@ pub fn builder_features(
         vram: hit,
         full_hit: hit,
         layers: None,
+        ram_slots: 0,
     };
     builder_features_with(layout, vram_slots, &shares, knobs, None)
 }
@@ -132,7 +133,9 @@ pub fn builder_features(
 /// ADR 0092: with per-layer decode counters (`tier.decode.layers`, one row per layer of
 /// `layout`, in order) each layer takes its own VRAM share and full-hit share, which is how a
 /// segment's span is priced from a replay of that span; rows that do not match the layout are an
-/// error. Without them the aggregate applies to every layer as in cost model 5.
+/// error. Without them the aggregate applies to every layer as in cost model 5. When the RAM
+/// tier does not cover the experts outside VRAM, the offload copy of a prefill ubatch moves the
+/// RAM-slot tensor once per chunk of `ram_slots` experts (`ceil(outside / ram_slots)` chunks).
 pub fn builder_features_tier(
     layout: &ModelLayout,
     vram_slots: u32,
@@ -156,6 +159,7 @@ pub fn builder_features_tier(
         vram: tier.decode.vram_share,
         full_hit: tier.decode.full_hit(),
         layers,
+        ram_slots: tier.ram_slots,
     };
     Ok(builder_features_with(
         layout,
@@ -229,6 +233,8 @@ struct Shares<'a> {
     full_hit: f64,
     /// Per-layer decode shares, one row per layer of the layout; they replace the aggregates.
     layers: Option<&'a [TierLayer]>,
+    /// RAM slots per layer; 0 when unknown (no chunking is priced).
+    ram_slots: u32,
 }
 
 fn builder_features_with(
@@ -261,6 +267,11 @@ fn builder_features_with(
         p.params_per_token += active / bpp;
         p.ops_per_token += ops;
     };
+    // ADR 0092 section 5: a ubatch routes nearly every expert of a layer, so every expert outside
+    // VRAM crosses the link through some chunk of `ram_slots` rows (a covering tier: one pass).
+    let outside = layout.n_expert.saturating_sub(vram_slots);
+    let chunk_rows = (shares.ram_slots > 0 && shares.ram_slots < outside)
+        .then(|| f64::from(outside.div_ceil(shares.ram_slots) * shares.ram_slots));
     let mut any_cpu = shares.layers.is_none() && hit < 1.0;
     for (i, lb) in layout.layers.iter().enumerate() {
         let hit = shares
@@ -275,9 +286,13 @@ fn builder_features_with(
         gpu.attn_flops_per_ctx_token += attn_layer;
         let e = lb.expert_bytes as f64;
         add(&mut gpu, f * e, hit * r * e, hit * OPS_EXPERT_LAYER);
+        let cpu_resident = match chunk_rows {
+            Some(rows) => rows * (e / n_expert),
+            None => (1.0 - f) * e,
+        };
         add(
             &mut cpu,
-            (1.0 - f) * e,
+            cpu_resident,
             (1.0 - hit) * r * e,
             (1.0 - hit) * OPS_EXPERT_LAYER,
         );
