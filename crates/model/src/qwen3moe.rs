@@ -19,7 +19,9 @@
 //! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
-use crate::attn::{AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention, copy_rows};
+use crate::attn::{
+    AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv_layers, attention, copy_rows,
+};
 use crate::convert::{ConvertError, ConvertOptions, ConvertStats};
 use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
@@ -27,6 +29,7 @@ use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use crate::qwen3moe_shard::{self, Sharded};
 use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans, write_direct};
+use crate::segment::SegmentSpec;
 use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
@@ -287,6 +290,9 @@ pub struct LoadOptions {
     /// Run only the first N layers plus the head (calibration anchors, ADR 0069): the logits are
     /// meaningless, the timing is real. Only for [`Qwen3Moe::load_sharded`].
     pub layer_limit: Option<u32>,
+    /// Load and run only this share of the model (ADR 0091, step 4). Scheduler path
+    /// ([`Qwen3Moe::load`]) only. `None` is the whole model.
+    pub segment: Option<SegmentSpec>,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -322,6 +328,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("ram_hugepages", &self.ram_hugepages)
             .field("ram_policy", &self.ram_policy)
             .field("layer_limit", &self.layer_limit)
+            .field("segment", &self.segment)
             .finish_non_exhaustive()
     }
 }
@@ -363,6 +370,7 @@ impl LoadOptions {
             ram_hugepages: false,
             ram_policy: tetraeder_memory::RamPolicy::Lru,
             layer_limit: None,
+            segment: None,
         }
     }
 }
@@ -409,11 +417,30 @@ impl Layer {
 }
 
 struct Weights {
-    tok_embd: OwnedTensor,
-    out_norm: OwnedTensor,
-    /// `None` when the output projection is tied to the token embedding.
+    /// The embedding, held by a segment with `embed` or with a tied head.
+    tok_embd: Option<OwnedTensor>,
+    /// The output norm, held by a segment with `head`.
+    out_norm: Option<OwnedTensor>,
+    /// `None` when the output projection is tied to the token embedding (or no head here).
     output: Option<OwnedTensor>,
+    /// The layers of the segment, from layer `first`.
     layers: Vec<Layer>,
+    first: usize,
+}
+
+impl Weights {
+    fn layer(&self, il: usize) -> &Layer {
+        &self.layers[il - self.first]
+    }
+
+    /// A weight of the main context: a kept graph holding it keeps the context alive.
+    fn anchor(&self) -> &OwnedTensor {
+        self.tok_embd
+            .as_ref()
+            .or(self.out_norm.as_ref())
+            .or(self.layers.first().map(|l| &l.ffn_norm))
+            .expect("a segment holds a weight")
+    }
 }
 
 /// Activations that cross segment boundaries, one slot per layer parity.
@@ -457,6 +484,8 @@ struct State {
     mask: OwnedTensor,
     /// Indices of the tokens whose logits are returned.
     outputs: OwnedTensor,
+    /// The hidden rows a segment without the embedding takes, `[n_embd, n]` F32.
+    hidden: Option<OwnedTensor>,
     slots: [Slot; 2],
     /// The last layer's slot, sized by `n_out`, when fewer rows than tokens have outputs: that
     /// layer's router and expert FFN run on the output rows only, as in the whole-step graph.
@@ -522,6 +551,8 @@ pub struct Qwen3Moe {
     steps: Vec<CachedStep>,
     pool: KvPool,
     n_seq_max: usize,
+    /// The share of the model this builder holds.
+    segment: SegmentSpec,
     reuse_step_graph: bool,
     step_graphs_built: u64,
     segments_run: u64,
@@ -609,6 +640,13 @@ impl Qwen3Moe {
         if h.n_head % h.n_head_kv != 0 || h.n_expert_used > h.n_expert || h.n_rot != h.head_dim {
             return Err(ModelError::Invalid("unsupported hyperparameters".into()));
         }
+        let segment = match &opts.segment {
+            Some(s) => {
+                s.validate(h.n_layer)?;
+                s.clone()
+            }
+            None => SegmentSpec::whole(h.n_layer),
+        };
         let expert_slots =
             resolve_tier(&file, "expert", opts.expert_slots, opts.expert_slot_bytes)?;
         let ram_slots = resolve_tier(&file, "ram", opts.ram_slots, opts.ram_slot_bytes)?;
@@ -674,18 +712,29 @@ impl Qwen3Moe {
         } else {
             None
         };
-        let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
+        let (weights, weights_bytes) = load_weights(&file, &primary, slots, &segment)?;
         if opts.n_seq_max == 0 {
             return Err(ModelError::Invalid("n_seq_max must be at least 1".into()));
         }
         let n_seq_max = opts.n_seq_max;
         let kv_rows = pad(opts.n_ctx.max(1), KV_PAD);
-        let (kv, kv_bytes) = alloc_kv(&h.attn(), kv_rows, &primary, opts.kv, opts.kv_rotation)?;
+        let (kv, kv_bytes) = alloc_kv_layers(
+            &h.attn(),
+            segment.layers.clone(),
+            h.n_head_kv,
+            kv_rows,
+            &primary,
+            opts.kv,
+            opts.kv_rotation,
+        )?;
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
+        // A segment without layers (embedding or head only) holds no experts to stream.
         let streamer = slots
+            .filter(|_| !weights.layers.is_empty())
             .map(|n| {
                 let tensors: Vec<_> = weights.layers.iter().map(Layer::exps_owned).collect();
                 let cfg = StreamerConfig {
+                    first: segment.layers.start as usize,
                     slots: n,
                     ram_slots: ram_slots.map(|r| r.max(1)),
                     io: opts.io,
@@ -750,6 +799,7 @@ impl Qwen3Moe {
             steps: Vec::new(),
             pool: KvPool::new(Box::new(Chunked::new(kv_rows))),
             n_seq_max,
+            segment,
             reuse_step_graph: opts.reuse_step_graph,
             step_graphs_built: 0,
             segments_run: 0,
@@ -805,6 +855,11 @@ impl Qwen3Moe {
     ) -> Result<Qwen3Moe> {
         let file = ModelFile::open(path.as_ref())?;
         let h = file.hparams.clone();
+        if opts.segment.is_some() {
+            return Err(ModelError::Invalid(
+                "a segment runs on the scheduler path, not on the executor".into(),
+            ));
+        }
         qwen3moe_shard::check_options(opts, &h)?;
         if h.n_head % h.n_head_kv != 0 || h.n_expert_used > h.n_expert || h.n_rot != h.head_dim {
             return Err(ModelError::Invalid("unsupported hyperparameters".into()));
@@ -830,10 +885,11 @@ impl Qwen3Moe {
         let sched = Sched::new(&backends, SEGMENT_NODES, false)?;
         let ph = Rc::new(Context::new(2, 0)?);
         let weights = Weights {
-            tok_embd: ph.new_persistent(Type::F32, &[1]),
-            out_norm: ph.new_persistent(Type::F32, &[1]),
+            tok_embd: Some(ph.new_persistent(Type::F32, &[1])),
+            out_norm: Some(ph.new_persistent(Type::F32, &[1])),
             output: None,
             layers: Vec::new(),
+            first: 0,
         };
         let kv = Kv {
             k: Vec::new(),
@@ -860,6 +916,7 @@ impl Qwen3Moe {
             steps: Vec::new(),
             pool: KvPool::new(Box::new(Chunked::new(kv_rows))),
             n_seq_max: opts.n_seq_max,
+            segment: SegmentSpec::whole(h.n_layer),
             reuse_step_graph: opts.reuse_step_graph,
             step_graphs_built: 0,
             segments_run: 0,
@@ -1035,8 +1092,8 @@ impl Qwen3Moe {
         let Some(streamer) = &mut self.streamer else {
             return Ok(());
         };
-        let layers = &self.weights.layers;
-        streamer.refresh_hot_set(&self.file, |il| layers[il].exps())?;
+        let w = &self.weights;
+        streamer.refresh_hot_set(&self.file, |il| w.layer(il).exps())?;
         if let Some(log) = &mut self.routing {
             log.push(RoutingStep::refresh_marker());
         }
@@ -1491,6 +1548,32 @@ impl Qwen3Moe {
         self.decode_group(inputs, out, prefill)
     }
 
+    /// The segment spec this model runs (the whole model when it was loaded without one).
+    pub fn segment(&self) -> &SegmentSpec {
+        &self.segment
+    }
+
+    /// Floats per output row: `n_vocab` with the head, else `n_embd` (hidden rows).
+    pub fn out_width(&self) -> usize {
+        let h = &self.file.hparams;
+        self.segment
+            .out_width(h.n_embd as usize, h.n_vocab as usize)
+    }
+
+    /// [`Qwen3Moe::decode`] for a segment (ADR 0091). Without the embedding `hidden` holds the
+    /// input rows of every token of every input, `n_embd` F32 each, in input order (the tokens
+    /// still say how many); with it `hidden` is `None`. Without the head the output is the
+    /// hidden rows of every token, whatever `all_logits` says, and the ranges count those rows.
+    pub fn decode_hidden(
+        &mut self,
+        inputs: &[SeqEval<'_>],
+        hidden: Option<&[f32]>,
+        out: &mut Vec<f32>,
+    ) -> Result<Vec<Range<usize>>> {
+        let prefill = inputs.iter().map(|i| i.tokens.len()).sum::<usize>() > 1;
+        self.decode_group_hidden(inputs, hidden, out, prefill)
+    }
+
     /// [`Qwen3Moe::decode`] that says whether the call holds a prompt chunk. Only such a call
     /// builds the CPU hot set from its routing (ADR 0035); a group of decoders with more than
     /// one token in all is not a prefill. `decode` takes more than one token as a prefill.
@@ -1500,19 +1583,55 @@ impl Qwen3Moe {
         out: &mut Vec<f32>,
         prefill: bool,
     ) -> Result<Vec<Range<usize>>> {
+        self.decode_group_hidden(inputs, None, out, prefill)
+    }
+
+    /// [`Qwen3Moe::decode_group`] for a segment, as [`Qwen3Moe::decode_hidden`].
+    pub fn decode_group_hidden(
+        &mut self,
+        inputs: &[SeqEval<'_>],
+        hidden: Option<&[f32]>,
+        out: &mut Vec<f32>,
+        prefill: bool,
+    ) -> Result<Vec<Range<usize>>> {
         self.call_prefill = prefill;
         let t0 = Instant::now();
         if inputs.is_empty() {
             return Err(ModelError::Invalid("no sequences".into()));
         }
         let n_vocab = self.file.hparams.n_vocab;
+        let n_embd = self.file.hparams.n_embd as usize;
+        let n_in: usize = inputs.iter().map(|i| i.tokens.len()).sum();
+        match (self.segment.embed, hidden) {
+            (true, Some(_)) => {
+                return Err(ModelError::Invalid(
+                    "a segment with the embedding takes tokens, not hidden rows".into(),
+                ));
+            }
+            (false, None) => {
+                return Err(ModelError::Invalid(
+                    "a segment without the embedding needs hidden rows".into(),
+                ));
+            }
+            (false, Some(h)) if h.len() != n_in * n_embd => {
+                return Err(ModelError::Invalid(format!(
+                    "{} hidden floats for {n_in} tokens of {n_embd}",
+                    h.len()
+                )));
+            }
+            _ => {}
+        }
         let mut step = Vec::with_capacity(inputs.len());
         for inp in inputs {
             self.check_seq(inp.seq)?;
             if inp.tokens.is_empty() {
                 return Err(ModelError::Invalid("no tokens".into()));
             }
-            if let Some(&t) = inp.tokens.iter().find(|&&t| t < 0 || t as u32 >= n_vocab) {
+            if let Some(&t) = inp
+                .tokens
+                .iter()
+                .find(|&&t| t < 0 || (self.segment.embed && t as u32 >= n_vocab))
+            {
                 return Err(ModelError::Invalid(format!(
                     "token {t} outside the vocabulary"
                 )));
@@ -1520,7 +1639,8 @@ impl Qwen3Moe {
             step.push(StepInput {
                 seq: inp.seq,
                 n_tokens: inp.tokens.len(),
-                all_logits: inp.all_logits,
+                // Every row is wanted when the next segment takes the hidden rows.
+                all_logits: inp.all_logits || !self.segment.head,
             });
         }
         for s in &step {
@@ -1543,7 +1663,7 @@ impl Qwen3Moe {
             .iter()
             .flat_map(|i| i.tokens.iter().copied())
             .collect();
-        self.run(&tokens, &step, &plans, out, t0)?;
+        self.run(&tokens, hidden, &step, &plans, out, t0)?;
         let mut row = 0;
         Ok(step
             .iter()
@@ -1574,7 +1694,13 @@ impl Qwen3Moe {
             self.sched_alt = Some(Sched::new(backends, *nodes, *offload)?);
         }
         let host = self.overlap.then_some(&self.cpu);
-        let state = alloc_state(&self.file.hparams, key, &self.primary, host)?;
+        let state = alloc_state(
+            &self.file.hparams,
+            key,
+            &self.primary,
+            host,
+            !self.segment.embed,
+        )?;
         Ok(CachedStep {
             step: None,
             alt,
@@ -1598,6 +1724,7 @@ impl Qwen3Moe {
     fn run(
         &mut self,
         tokens: &[i32],
+        hidden: Option<&[f32]>,
         inputs: &[StepInput],
         plans: &[StepPlan],
         logits: &mut Vec<f32>,
@@ -1609,7 +1736,7 @@ impl Qwen3Moe {
         let plan = &plans[0];
         let key = (tokens.len(), plan.n_kv, plan.outputs.len());
         let mut entry = self.take_step_state(key)?;
-        let r = self.run_in(&mut entry, tokens, inputs, plan, logits, t0);
+        let r = self.run_in(&mut entry, tokens, hidden, inputs, plan, logits, t0);
         self.steps.insert(0, entry);
         self.steps.truncate(self.step_cache_len());
         r
@@ -1637,10 +1764,12 @@ impl Qwen3Moe {
         self.finish_step(inputs, t0, prof, 1)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_in(
         &mut self,
         entry: &mut CachedStep,
         tokens: &[i32],
+        hidden: Option<&[f32]>,
         inputs: &[StepInput],
         plan: &StepPlan,
         logits: &mut Vec<f32>,
@@ -1652,6 +1781,9 @@ impl Qwen3Moe {
         let n_out = plan.outputs.len();
         let st = &entry.state;
         st.tokens.get().set_i32(tokens)?;
+        if let (Some(t), Some(rows)) = (&st.hidden, hidden) {
+            t.get().set_f32(rows)?;
+        }
         st.pos.get().set_i32(&plan.pos)?;
         st.rows.get().set_i32(&plan.rows)?;
         // `[n_kv, n]` as libllama builds it at the pin (no row padding since GGML_KQ_MASK_PAD
@@ -1687,13 +1819,9 @@ impl Qwen3Moe {
                 entry.step = None;
                 let ctx = Rc::new(Context::new(step_nodes(&h), step_nodes(&h))?);
                 let (graph, out, routed) =
-                    build_step(&h, &self.weights, &self.kv, st, &ctx, record);
-                let mut deps = vec![
-                    &self.weights.tok_embd,
-                    &self.kv.k[0],
-                    &self.kv.v[0],
-                    &st.tokens,
-                ];
+                    build_step(&h, &self.weights, &self.kv, st, &ctx, record, &self.segment);
+                let mut deps = vec![self.weights.anchor(), &st.tokens];
+                deps.extend(self.kv.k.first().into_iter().chain(self.kv.v.first()));
                 deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
                 let routed = routed
                     .into_iter()
@@ -1734,7 +1862,7 @@ impl Qwen3Moe {
                     });
                 }
             }
-            for _ in 0..h.n_layer {
+            for _ in 0..self.segment.n_layers() {
                 self.metrics.layer_step(true);
             }
             lap(&mut prof.readback, t);
@@ -1744,6 +1872,12 @@ impl Qwen3Moe {
         let graphs_before = self.group_graphs_run;
         let nu = h.n_expert_used as usize;
         let n_layer = h.n_layer as usize;
+        // The segment's layers: its graphs are `first..=end` (the first holds the embedding or
+        // the hidden input, the last the head or the hidden output).
+        let (first, end) = (
+            self.segment.layers.start as usize,
+            self.segment.layers.end as usize,
+        );
         // The pair groups of the previous layer step that run inside this segment.
         let mut pending: Vec<PendingGroup> = Vec::new();
         // The predictions of the experts of a layer (ADR 0038): the next layer's from the
@@ -1760,7 +1894,7 @@ impl Qwen3Moe {
             Some(small) if !offload => small,
             _ => &mut self.sched,
         };
-        for seg in 0..=n_layer {
+        for seg in first..=end {
             let groups = std::mem::take(&mut pending);
             let cpu_seg = groups.iter().any(|g| matches!(g.src, ExpertSrc::Ram));
             {
@@ -1773,7 +1907,7 @@ impl Qwen3Moe {
                         match g.src {
                             ExpertSrc::Copied => GroupSpec::Copied(n),
                             src => {
-                                let lw = &self.weights.layers[seg - 1];
+                                let lw = self.weights.layer(seg - 1);
                                 let exps = group_exps(src, lw, self.streamer.as_ref(), seg - 1);
                                 GroupSpec::Exps(exps, n)
                             }
@@ -1790,6 +1924,7 @@ impl Qwen3Moe {
                     self.predict_depth,
                     self.routing.is_some(),
                     &specs,
+                    &self.segment,
                 );
                 let t = lap(&mut prof.build, t);
                 sched.alloc_graph(&graph)?;
@@ -1819,13 +1954,13 @@ impl Qwen3Moe {
                 }
                 lap(&mut prof.compute, t);
             }
-            if seg == n_layer {
+            if seg == end {
                 continue;
             }
             let t = Instant::now();
-            let slot = st.slot(seg, n_layer);
+            let slot = st.slot(seg, end);
             // The last layer's slot holds the output rows only (`State::last`).
-            let rows_out = st.last.is_some() && seg + 1 == n_layer;
+            let rows_out = st.last.is_some() && seg + 1 == end;
             let chosen = slot.ids.get().get_i32()?;
             let streamer = self
                 .streamer
@@ -1849,10 +1984,10 @@ impl Qwen3Moe {
                 streamer.score_prediction(seg, 2, &out_rows(p), &chosen, nu);
             }
             // The predicted experts of the next layers, read back with this layer's routing.
-            if self.predict_depth >= 1 && seg + 1 < n_layer {
+            if self.predict_depth >= 1 && seg + 1 < end {
                 predicted = Some(slot.pred.get().get_i32()?);
             }
-            if self.predict_depth >= 2 && seg + 2 < n_layer {
+            if self.predict_depth >= 2 && seg + 2 < end {
                 predicted2[seg + 2] = Some(slot.pred2.get().get_i32()?);
             }
             if let Some(log) = &mut self.routing {
@@ -1884,7 +2019,7 @@ impl Qwen3Moe {
                 streamer.finish_prefetch(seg)?;
                 set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
             }
-            let layer = &self.weights.layers[seg];
+            let layer = self.weights.layer(seg);
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots
                 // on the CPU, in chunks of the RAM slot count (ADR 0035).
@@ -2056,7 +2191,8 @@ impl Qwen3Moe {
             }
         }
         // Segment graphs plus the standalone group graphs of this step (ADR 0035).
-        let graphs = h.n_layer + 1 + (self.group_graphs_run - graphs_before) as u32;
+        let graphs =
+            self.segment.n_layers() as u32 + 1 + (self.group_graphs_run - graphs_before) as u32;
         prof.graphs += self.group_graphs_run - graphs_before;
         // The rest of this step's time is the streamer's.
         let timed = |p: &StepProfile| p.inputs + p.build + p.alloc + p.compute + p.readback;
@@ -2499,9 +2635,10 @@ fn load_weights(
     file: &ModelFile,
     backend: &Backend,
     slots: Option<usize>,
+    seg: &SegmentSpec,
 ) -> Result<(Weights, usize)> {
     let h = &file.hparams;
-    let n_tensors = 3 + h.n_layer as usize * 12;
+    let n_tensors = 3 + seg.n_layers() * 12;
     let ctx = Rc::new(Context::new(n_tensors + 4, 0)?);
     let mut loaded: Vec<(OwnedTensor, usize, u64, u64)> = Vec::new();
     let mut make = |name: &str| -> Result<OwnedTensor> {
@@ -2522,15 +2659,18 @@ fn load_weights(
         }
         Ok(t)
     };
-    let tok_embd = make(names::TOK_EMBD)?;
-    let out_norm = make(names::OUTPUT_NORM)?;
-    let output = if h.tied_output {
+    // A tied head reads the embedding, so a head segment holds it too.
+    let tok_embd = (seg.embed || (seg.head && h.tied_output))
+        .then(|| make(names::TOK_EMBD))
+        .transpose()?;
+    let out_norm = seg.head.then(|| make(names::OUTPUT_NORM)).transpose()?;
+    let output = if h.tied_output || !seg.head {
         None
     } else {
         Some(make(names::OUTPUT)?)
     };
     let mut layers = Vec::new();
-    for il in 0..h.n_layer {
+    for il in seg.layers.clone() {
         let mut l = |w: &str| make(&names::layer(il, w));
         layers.push(Layer {
             attn: AttnWeights {
@@ -2577,6 +2717,7 @@ fn load_weights(
         out_norm,
         output,
         layers,
+        first: seg.layers.start as usize,
     };
     Ok((weights, buffer_size))
 }
@@ -2615,6 +2756,7 @@ fn alloc_state(
     (n, n_kv, n_out): (usize, usize, usize),
     backend: &Backend,
     host: Option<&Backend>,
+    hidden: bool,
 ) -> Result<State> {
     let ctx = Rc::new(Context::new(48, 0)?);
     let (ne, nu, nt) = (h.n_embd as i64, h.n_expert_used as i64, n as i64);
@@ -2645,6 +2787,7 @@ fn alloc_state(
         rows: ctx.new_persistent(Type::I32, &[nt]),
         mask: ctx.new_persistent(Type::F16, &[n_kv as i64, nt]),
         outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
+        hidden: hidden.then(|| ctx.new_persistent(Type::F32, &[ne, nt])),
         slots: [slot(0, nt), slot(1, nt)],
         last: (n_out < n).then(|| slot(2, n_out as i64)),
         host: None,
@@ -2680,15 +2823,16 @@ fn build_segment<'a>(
     predict_depth: usize,
     record: bool,
     groups: &[GroupSpec<'a>],
+    spec: &SegmentSpec,
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
-    let n_layer = h.n_layer as usize;
+    let (first, end) = (spec.layers.start as usize, spec.layers.end as usize);
 
     let mut inputs = Vec::new();
-    let x = if seg == 0 {
-        ctx.get_rows(w.tok_embd.get(), st.tokens.get())
+    let x = if seg == first {
+        input_rows(w, st, spec, ctx)
     } else {
-        let s = st.slot(seg - 1, n_layer);
+        let s = st.slot(seg - 1, end);
         let moe = if !groups.is_empty() {
             // The earlier groups are in `acc`; these complete it, then the same weighting
             // and sum as a single pass (ADR 0034).
@@ -2704,27 +2848,27 @@ fn build_segment<'a>(
             let done = ctx.reshape(acc, &s.acc.get().ne()[..3]);
             sum_experts(h, ctx, ctx.mul(done, s.w.get()))
         } else {
-            moe_ffn(h, ctx, &w.layers[seg - 1], s)
+            moe_ffn(h, ctx, w.layer(seg - 1), s)
         };
         ctx.add(moe, s.resid.get())
     };
 
-    if seg == n_layer {
-        let logits = head(h, ctx, w, st, x);
-        g.expand(logits);
-        return (g, Some(logits), inputs);
+    if seg == end {
+        let out = output_rows(h, ctx, w, st, spec, x);
+        g.expand(out);
+        return (g, Some(out), inputs);
     }
 
-    let s = st.slot(seg, n_layer);
+    let s = st.slot(seg, end);
     let full = attention_block(h, ctx, &mut g, w, kv, st, seg, x);
     // The whole-step graph's rule: the last layer continues on the output rows only.
-    let select = st.last.is_some() && seg + 1 == n_layer;
+    let select = st.last.is_some() && seg + 1 == end;
     let ffn_inp = if select {
         ctx.get_rows(full, st.outputs.get())
     } else {
         full
     };
-    let (xn, weights, ids) = router(h, ctx, &w.layers[seg], ffn_inp);
+    let (xn, weights, ids) = router(h, ctx, w.layer(seg), ffn_inp);
     g.expand(ctx.cpy(ffn_inp, s.resid.get()));
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
@@ -2733,17 +2877,17 @@ fn build_segment<'a>(
         // The log keeps every row's routing: a second router on all rows, after the real one,
         // feeds the full-size slot of this parity; the host reads it for the log only.
         let f = &st.slots[seg % 2];
-        let (_, lw, li) = router(h, ctx, &w.layers[seg], full);
+        let (_, lw, li) = router(h, ctx, w.layer(seg), full);
         g.expand(lw);
         g.expand(ctx.cpy(lw, f.w.get()));
         g.expand(ctx.cpy(li, f.ids.get()));
     }
-    if predict_depth >= 1 && seg + 1 < n_layer {
+    if predict_depth >= 1 && seg + 1 < end {
         // After the real router so its nodes stay consecutive for the CUDA topk-moe fusion.
         let normed = ctx.rms_norm(ffn_inp, h.rms_eps);
-        add_prediction(h, ctx, &mut g, &w.layers[seg + 1], normed, s.pred.get());
-        if predict_depth >= 2 && seg + 2 < n_layer {
-            add_prediction(h, ctx, &mut g, &w.layers[seg + 2], normed, s.pred2.get());
+        add_prediction(h, ctx, &mut g, w.layer(seg + 1), normed, s.pred.get());
+        if predict_depth >= 2 && seg + 2 < end {
+            add_prediction(h, ctx, &mut g, w.layer(seg + 2), normed, s.pred2.get());
         }
     }
     (g, None, inputs)
@@ -2781,23 +2925,24 @@ fn build_step<'a>(
     st: &'a State,
     ctx: &'a Context,
     record: bool,
+    spec: &SegmentSpec,
 ) -> (Graph<'a>, Tensor<'a>, Vec<(Tensor<'a>, Tensor<'a>)>) {
     let mut g = ctx.new_graph(step_nodes(h));
-    let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
+    let mut x = input_rows(w, st, spec, ctx);
     let mut routed = Vec::new();
-    let n_layer = h.n_layer as usize;
-    for il in 0..n_layer {
+    let end = spec.layers.end as usize;
+    for il in spec.layers.start as usize..end {
         let full = attention_block(h, ctx, &mut g, w, kv, st, il, x);
         // libllama selects the output rows after the last layer's attention (`inp_out_ids`), so
         // that layer's router and expert FFN run on the output rows only. CUDA's matmul kernel
         // depends on the row count, so running all rows differs in the last bits.
-        let select = il + 1 == n_layer && st.n_out < st.n_tokens;
+        let select = il + 1 == end && st.n_out < st.n_tokens;
         let ffn_inp = if select {
             ctx.get_rows(full, st.outputs.get())
         } else {
             full
         };
-        let (xn, weights, ids) = router(h, ctx, &w.layers[il], ffn_inp);
+        let (xn, weights, ids) = router(h, ctx, w.layer(il), ffn_inp);
         // The router's nodes enter the graph before the expert FFN, consecutive as in libllama's
         // `build_moe_ffn` and in the segments, so CUDA's topk-moe fusion fires the same way.
         g.expand(weights);
@@ -2805,7 +2950,7 @@ fn build_step<'a>(
             // The log keeps every row's routing: when rows were selected, a second router on all
             // rows, after the real one, feeds the log only.
             let (li, lw) = if select {
-                let (_, lw, li) = router(h, ctx, &w.layers[il], full);
+                let (_, lw, li) = router(h, ctx, w.layer(il), full);
                 g.expand(lw); // the router's nodes stay consecutive, as above
                 (li, lw)
             } else {
@@ -2816,12 +2961,42 @@ fn build_step<'a>(
             g.expand(r.1);
             routed.push(r);
         }
-        let experts = weighted_experts(h, ctx, &w.layers[il], xn, ids, weights);
+        let experts = weighted_experts(h, ctx, w.layer(il), xn, ids, weights);
         x = ctx.add(sum_experts(h, ctx, experts), ffn_inp);
     }
-    let logits = head(h, ctx, w, st, x);
-    g.expand(logits);
-    (g, logits, routed)
+    let out = output_rows(h, ctx, w, st, spec, x);
+    g.expand(out);
+    (g, out, routed)
+}
+
+/// The first graph's input: the embedded tokens, or the hidden rows of the previous segment.
+fn input_rows<'a>(
+    w: &'a Weights,
+    st: &'a State,
+    spec: &SegmentSpec,
+    ctx: &'a Context,
+) -> Tensor<'a> {
+    match (&w.tok_embd, &st.hidden) {
+        (Some(t), _) if spec.embed => ctx.get_rows(t.get(), st.tokens.get()),
+        (_, Some(hidden)) => hidden.get(),
+        _ => unreachable!("a segment without the embedding has a hidden input"),
+    }
+}
+
+/// The last graph's output: the logits of the output rows with the head, else every hidden row.
+fn output_rows<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    w: &'a Weights,
+    st: &'a State,
+    spec: &SegmentSpec,
+    x: Tensor<'a>,
+) -> Tensor<'a> {
+    if spec.head {
+        head(h, ctx, w, st, x)
+    } else {
+        x.set_output()
+    }
 }
 
 /// Output norm and projection; only the positions in `st.outputs` unless every token has one or
@@ -2833,13 +3008,21 @@ fn head<'a>(
     st: &'a State,
     x: Tensor<'a>,
 ) -> Tensor<'a> {
-    let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), w.out_norm.get());
+    let norm = w
+        .out_norm
+        .as_ref()
+        .expect("a head segment holds the output norm");
+    let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), norm.get());
     // The whole-step graph already selected the rows in the last layer; `outputs` indexes the
     // original token rows, so gathering again would read out of range.
     if st.n_out < st.n_tokens && x.ne()[1] as usize == st.n_tokens {
         cur = ctx.get_rows(cur, st.outputs.get());
     }
-    let head = w.output.as_ref().unwrap_or(&w.tok_embd);
+    let head = w
+        .output
+        .as_ref()
+        .or(w.tok_embd.as_ref())
+        .expect("a head segment holds the projection");
     ctx.mul_mat(head.get(), cur).set_output()
 }
 
@@ -2855,7 +3038,7 @@ fn attention_block<'a>(
     il: usize,
     x: Tensor<'a>,
 ) -> Tensor<'a> {
-    let lw = &w.layers[il];
+    let lw = w.layer(il);
     let step = AttnStep {
         pos: st.pos.get(),
         rows: st.rows.get(),
@@ -2863,7 +3046,7 @@ fn attention_block<'a>(
         n_tokens: st.n_tokens,
         n_kv: st.n_kv,
     };
-    attention(&h.attn(), ctx, g, &lw.attn, kv, il, &step, x)
+    attention(&h.attn(), ctx, g, &lw.attn, kv, il - w.first, &step, x)
 }
 
 /// The FFN norm and the router (softmax, top-k, normalized weights) of one layer for the
@@ -3219,7 +3402,18 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, 0, record, &[]);
+            let (g, _, _) = build_segment(
+                h,
+                &m.weights,
+                &m.kv,
+                st,
+                &ctx,
+                seg,
+                0,
+                record,
+                &[],
+                &m.segment,
+            );
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router, and
                 // with output rows selected the last layer's also the log's router.
@@ -3240,12 +3434,22 @@ mod graph_order {
         let h = m.file.hparams.clone();
         let n_layer = h.n_layer as usize;
         for (n, n_out) in [(1, 1), (5, 5), (5, 1)] {
-            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None, false).unwrap();
             for seg in 0..=n_layer {
                 let build = |depth: usize| {
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-                    let (g, _, _) =
-                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, depth, false, &[]);
+                    let (g, _, _) = build_segment(
+                        &h,
+                        &m.weights,
+                        &m.kv,
+                        &st,
+                        &ctx,
+                        seg,
+                        depth,
+                        false,
+                        &[],
+                        &m.segment,
+                    );
                     ops(&g, |_| false)
                 };
                 let plain = build(0);
@@ -3268,7 +3472,7 @@ mod graph_order {
         let m = model();
         let h = m.file.hparams.clone();
         for n in [1, 5, 33] {
-            let st = alloc_state(&h, (n, pad(n, KV_PAD), 1), &m.primary, None).unwrap();
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), 1), &m.primary, None, false).unwrap();
             assert_eq!(st.mask.get().ne(), [pad(n, KV_PAD) as i64, n as i64, 1, 1]);
         }
         // Decode after a prefill still matches a single evaluation of the whole sequence.
@@ -3292,12 +3496,12 @@ mod graph_order {
         let m = model();
         let h = m.file.hparams.clone();
         for (n, n_out) in [(1, 1), (5, 5), (5, 1)] {
-            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None, false).unwrap();
             for record in [false, true] {
                 let segments = segment_ops(&m, &st, record);
                 let what = format!("step n={n} record={record}");
                 let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
-                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, record);
+                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, record, &m.segment);
                 let (n_layer, n_used) = (h.n_layer as usize, h.n_expert_used as usize);
                 // With output rows selected, a recording step has one more router, for the log.
                 let extra = usize::from(record && n_out < n);
@@ -3317,9 +3521,9 @@ mod graph_order {
         let h = m.file.hparams.clone();
         let n_layer = h.n_layer as usize;
         for (n, n_out) in [(1, 1), (5, 5), (5, 1), (5, 2)] {
-            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None, false).unwrap();
             let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
-            let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, false);
+            let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, false, &m.segment);
             let ids: Vec<[i64; 4]> = (0..g.n_nodes())
                 .map(|i| g.node(i))
                 .filter(|t| t.op_name() == "MUL_MAT_ID")
@@ -3350,11 +3554,22 @@ mod graph_order {
         let h = m.file.hparams.clone();
         let n_layer = h.n_layer as usize;
         for (n, n_out) in [(1, 1), (5, 5), (5, 1), (5, 2)] {
-            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None, false).unwrap();
             let (mut rows, mut gets) = (Vec::new(), 0);
             for seg in 0..=n_layer {
                 let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-                let (g, _, _) = build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, 0, false, &[]);
+                let (g, _, _) = build_segment(
+                    &h,
+                    &m.weights,
+                    &m.kv,
+                    &st,
+                    &ctx,
+                    seg,
+                    0,
+                    false,
+                    &[],
+                    &m.segment,
+                );
                 for i in 0..g.n_nodes() {
                     let t = g.node(i);
                     match t.op_name().as_str() {

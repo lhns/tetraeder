@@ -671,6 +671,17 @@ fn build_engine(
 pub type Loader = Box<dyn FnOnce() -> Result<Loaded, String> + Send>;
 
 pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
+    loader_with(a, tel, None)
+}
+
+/// [`loader`] for a worker that runs only `segment` of the layers (ADR 0091, step 4): the own
+/// builders on one device, hidden rows in and out at the cuts. `--plan` is not read here; the
+/// caller turned the segment plan into `segment`.
+pub fn loader_with(
+    a: &ServeArgs,
+    tel: Arc<Telemetry>,
+    segment: Option<tetraeder_model::SegmentSpec>,
+) -> anyhow::Result<Loader> {
     let path = a.model.clone().context("-m is required")?;
     let dense = a.engine == EngineKind::Dense;
     let moe = match a.engine {
@@ -687,11 +698,20 @@ pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
         resolve_overlap(a.ram_slots.is_some(), a.miss, a.io_service, a.overlap)
             .map_err(anyhow::Error::msg)?;
     }
-    let exec = exec_plan(a)?;
+    anyhow::ensure!(
+        segment.is_none() || moe || dense,
+        "a segment runs on the own builders: use --engine dense or moe (libllama cannot cut its layers)"
+    );
+    let exec = if segment.is_some() {
+        None
+    } else {
+        exec_plan(a)?
+    };
     a.check_libllama_flags(moe || dense, moe)?;
     let kv = resolve_kv(a, a.kv_choice(moe || dense)?, &path, moe, dense)?;
     let mut a = a.clone_load_args();
     a.kv = kv;
+    a.segment = segment;
     Ok(Box::new(move || {
         if let (true, Some(topo)) = (moe, &exec) {
             let chunk = tetraeder_scheduler::MOE_CHUNK;
@@ -826,6 +846,8 @@ struct LoadArgs {
     kv: KvFormat,
     /// `--cpu-moe` and `--n-cpu-moe`, appended to the placement's overrides.
     cpu_moe: Vec<BufferOverride>,
+    /// Run only this share of the layers (a worker of a segment plan).
+    segment: Option<tetraeder_model::SegmentSpec>,
 }
 
 /// The KV format of `--kv` for the engine that will run. `auto` asks the planner against the
@@ -922,6 +944,7 @@ impl LoadArgs {
         o.n_ctx_pool = self.ctx as usize;
         o.n_seq_max = self.parallel.max(1);
         o.kv = self.kv;
+        o.segment.clone_from(&self.segment);
         o.telemetry = Some(telemetry);
         Ok(o)
     }
@@ -934,6 +957,7 @@ impl LoadArgs {
         o.n_ctx = self.ctx as usize;
         o.n_seq_max = self.llama.n_seq_max as usize;
         o.kv = self.kv;
+        o.segment.clone_from(&self.segment);
         o.expert_slots = self.expert_slots;
         o.ram_slots = self.ram_slots;
         o.miss = self.miss;
@@ -1061,6 +1085,7 @@ impl ServeArgs {
             overlap: self.overlap,
             kv: KvFormat::default(),
             cpu_moe: tetraeder_engine::cpu_moe_overrides(self.cpu_moe, self.n_cpu_moe),
+            segment: None,
         }
     }
 

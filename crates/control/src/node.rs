@@ -24,6 +24,9 @@ use std::time::{Duration, Instant};
 use tetraeder_transport::frame::{self, Frame};
 use tetraeder_transport::{Conn, NodeId, Purpose, Transport};
 
+/// How long a first call waits for a worker that `Assign` has not started yet.
+const FIRST_START_WAIT: Duration = Duration::from_secs(30);
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -545,6 +548,19 @@ fn relay_segment(s: &Arc<Shared>, mut conn: Conn, key: (u32, u32)) {
         let Ok(bytes) = frame::encode_raw(&f.header, &f.payload) else {
             break;
         };
+        // `Assign` returns before the supervisor has started the worker: a first call that
+        // arrives in that moment waits for the worker (a restart is not waited for: the
+        // leader must see that failure at once).
+        let t0 = Instant::now();
+        while lock(&w.stdin).is_none()
+            && w.restarts.load(Ordering::SeqCst) == 0
+            && !w.gave_up.load(Ordering::SeqCst)
+            && !w.stop.load(Ordering::SeqCst)
+            && !s.stop.load(Ordering::SeqCst)
+            && t0.elapsed() < FIRST_START_WAIT
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
         let mut stdin = lock(&w.stdin);
         let Some(si) = stdin.as_mut() else { break };
         if si.write_all(&bytes).and_then(|()| si.flush()).is_err() {

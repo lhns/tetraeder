@@ -278,6 +278,9 @@ mod tests {
         m.layer_part("read_wait", Duration::from_millis(1));
         m.spec_step("ngram", 4, 3);
         m.plan_residual(0, 0.08);
+        m.plan_residual_segment(1, 0.12);
+        m.plan_predicted_segment(1, 0.02);
+        m.segment_step(1, 0.021);
         m.plan_regret("p1", 0.04);
         m.plan_predicted_step(0, 0.012);
         m.plan_decode_clock("gpu0", 1.695e9);
@@ -338,6 +341,7 @@ mod tests {
             "tetraeder.spec.drafted",
             "tetraeder.spec.accepted",
             "tetraeder.plan.residual",
+            "tetraeder.segment.duration",
             "tetraeder.plan.regret",
             "tetraeder.plan.predicted_step",
             "tetraeder.bottleneck.share",

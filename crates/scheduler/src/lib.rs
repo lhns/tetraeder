@@ -13,7 +13,8 @@ mod scheduler;
 mod slot_file;
 
 pub use backend::{
-    BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId, SeqInput,
+    BackendError, BatchBackend, Feed, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SegmentBackend,
+    SegmentInfo, SeqId, SeqInput, StepOut,
 };
 pub use dense_backend::DenseBackend;
 pub use load::{

@@ -11,6 +11,8 @@ pub mod attr {
     pub const CACHE: &str = "tetraeder.token.cache";
     pub const PHASE: &str = "tetraeder.phase";
     pub const STAGE: &str = "tetraeder.stage";
+    /// A segment of a replica across nodes (ADR 0091): its index in the pipeline.
+    pub const SEGMENT: &str = "tetraeder.segment";
     pub const GRAPHS: &str = "tetraeder.graphs";
     pub const DEVICE: &str = "tetraeder.device";
     pub const TIER: &str = "tetraeder.memory.tier";
@@ -195,6 +197,7 @@ pub struct Metrics {
     plan_residual: Histogram<f64>,
     plan_regret: Gauge<f64>,
     plan_predicted_step: Gauge<f64>,
+    segment_duration: Histogram<f64>,
     plan_decode_clock: Gauge<f64>,
     bottleneck_share: Gauge<f64>,
     bottleneck_fault: Counter<u64>,
@@ -530,6 +533,16 @@ impl Metrics {
                 .f64_gauge("tetraeder.plan.predicted_step")
                 .with_unit("s")
                 .with_description("Step time the planner predicted for the running plan")
+                .build(),
+            segment_duration: meter
+                .f64_histogram("tetraeder.segment.duration")
+                .with_unit("s")
+                .with_description(
+                    "Time a segment of a replica across nodes spent on a step, apart from the hops",
+                )
+                .with_boundaries(vec![
+                    0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0,
+                ])
                 .build(),
             plan_decode_clock: meter
                 .f64_gauge("tetraeder.plan.decode_clock")
@@ -985,6 +998,27 @@ impl Metrics {
     pub fn plan_predicted_step(&self, stage: u16, seconds: f64) {
         self.plan_predicted_step
             .record(seconds, &[KeyValue::new(attr::STAGE, i64::from(stage))]);
+    }
+
+    /// Relative decode step time error of a segment of a replica across nodes (ADR 0091, step
+    /// 4): `|measured - predicted| / predicted`, measured as the segment's own compute time.
+    pub fn plan_residual_segment(&self, segment: u32, residual: f64) {
+        self.plan_residual.record(
+            residual,
+            &[KeyValue::new(attr::SEGMENT, i64::from(segment))],
+        );
+    }
+
+    /// The decode step time the planner predicted for a segment.
+    pub fn plan_predicted_segment(&self, segment: u32, seconds: f64) {
+        self.plan_predicted_step
+            .record(seconds, &[KeyValue::new(attr::SEGMENT, i64::from(segment))]);
+    }
+
+    /// Time a segment spent on one step, apart from the hops.
+    pub fn segment_step(&self, segment: u32, seconds: f64) {
+        self.segment_duration
+            .record(seconds, &[KeyValue::new(attr::SEGMENT, i64::from(segment))]);
     }
 
     /// The decode clock the cost model assumed for `device` of the running plan (ADR 0082), in Hz.

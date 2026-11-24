@@ -91,6 +91,7 @@ impl Purpose {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Peer {
     pub id: NodeId,
     /// Address to dial: `host:port` (on Vast the public IP and the mapped port).

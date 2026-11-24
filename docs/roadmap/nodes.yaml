@@ -2680,23 +2680,48 @@ nodes:
   title: Pipeline stages across machines
   track: cluster
   kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/model/tests/segments.rs
+  - crates/tetraeder/tests/pipeline_parity.rs
+  - crates/tetraeder/tests/pipeline_smoke.rs
+  - crates/tetraeder/tests/pipeline_contract.rs
+  - crates/planner/tests/segment_shape.rs
+  verdict_quote: 'pipeline parity dense4 cut 2 head on_leader nodes a_then_b transport tls max_logit_diff 0e0 bit_equal true (CI run 45321864540, ubuntu and windows, with every other cut, head placement and node order over MemTransport, and a smoke test of two real node processes)'
+  headline: 'two-node splits match the one-node run at every layer boundary of the 4-layer dense and the tiny MoE with the head on either node, over MemTransport and loopback TLS; two real node processes decode through a PipelineBackend; prefill is not pipelined across segments yet'
+  depends_on:
+  - cluster-planner
+  - cluster-discovery
+  replaced_by: []
+  lane: cluster
+  start: 2026-11-24
+  end: 2026-11-24
+  folded:
+  - No ggml_backend_tensor_copy_async binding yet; pipeline peer copies need it (m2-plan, E1 note)
+  overview: true
+  plain: A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
+  notes: 'Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order. Done as built (ADR 0091 History, step 4): scheduler path only, the executor paths refuse a segment, prefill walks the segments one chunk at a time, and the residual metric is wired when serve takes a cluster (step 5).'
+- id: cluster-pipeline-prefill
+  title: Prefill pipelined across stages
+  track: cluster
+  kind: feature
   state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
-  - cluster-planner
-  - cluster-discovery
+  - cluster-pipeline-nodes
   replaced_by: []
-  lane: cluster
+  lane: ci
   start: ''
   end: ''
-  folded:
-  - No ggml_backend_tensor_copy_async binding yet; pipeline peer copies need it (m2-plan, E1 note)
-  overview: true
-  plain: A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
-  notes: 'Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order.'
+  folded: []
+  overview: false
+  plain: A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes).
+  notes: 'Done when (ADR 0091, build order 4, the part step 4 left), several micro-batches are in flight across the segments of a PipelineBackend, with parity against the sequential walk on CPU nodes in CI and the predicted flow-shop time of predict_cluster checked on a simulated slow link; the executor paths take hidden rows in the same change if the exit needs them.'
 - id: cluster-experts-nodes
   title: Experts on other machines
   track: cluster

@@ -286,6 +286,69 @@ fn only_the_head_may_open_control_and_a_worker_node_may_only_probe() {
     );
 }
 
+/// A launcher whose worker takes a moment to start, as a model that loads.
+struct SlowLauncher(EchoLauncher, Duration);
+
+impl tetraeder_control::node::Launcher for SlowLauncher {
+    fn launch(
+        &self,
+        a: &tetraeder_control::node::Assignment,
+    ) -> std::io::Result<tetraeder_control::node::WorkerIo> {
+        std::thread::sleep(self.1);
+        self.0.launch(a)
+    }
+}
+
+// hardware: none
+#[test]
+fn a_first_call_right_after_assign_waits_for_the_worker_to_start() {
+    let board = MemTransport::switchboard();
+    let cfg = config(DOWN_MS, &["a", "b"], &[1, 2]);
+    let t: Arc<dyn Transport> = Arc::new(board.node(&id("b")));
+    let dial = Arc::clone(&t);
+    let _d = Daemon::start(
+        t,
+        NodeOptions {
+            cfg: cfg.clone(),
+            launcher: Arc::new(SlowLauncher(
+                EchoLauncher::default(),
+                Duration::from_millis(300),
+            )),
+            profile: Arc::new(|| Ok(node_graph_json())),
+            dial: Arc::new(move |_| Ok(Arc::clone(&dial))),
+            restart: RestartPolicy {
+                backoff_base: Duration::from_millis(20),
+                max_restarts: 3,
+                window: Duration::from_secs(60),
+            },
+        },
+    );
+    let head = board.node(&id("a"));
+    let peer = cfg.peer(&id("b")).unwrap();
+    let assign = NodeRequest::Assign {
+        replica: 0,
+        segment: 0,
+        plan: "plan".into(),
+        model_sha256: "00".into(),
+    };
+    client::request(&head, &peer, &assign, &[]).unwrap();
+    // No retry: the first frame goes in before the worker exists and is answered once it does.
+    let mut c = head
+        .connect(
+            &peer,
+            Purpose::Segment {
+                replica: 0,
+                segment: 0,
+            },
+        )
+        .unwrap();
+    frame::write_frame(&mut c.tx, &serde_json::json!({ "n": 1 }), b"rows").unwrap();
+    let f = frame::read_frame(&mut c.rx)
+        .expect("a reply, not a closed link")
+        .expect("a frame");
+    assert_eq!(f.payload, b"rows");
+}
+
 // hardware: none
 #[test]
 fn assigned_workers_are_relayed_restarted_and_given_up_at_the_cap() {

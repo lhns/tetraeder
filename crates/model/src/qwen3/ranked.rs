@@ -334,6 +334,7 @@ impl Ranked {
                     rd.states.push(alloc_state(
                         (n, n_kv, n_out, [n_kv, pad(n, MASK_ROW_PAD)]),
                         &rd.backend,
+                        None,
                     )?);
                 }
             }

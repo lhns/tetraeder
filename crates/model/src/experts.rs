@@ -184,7 +184,9 @@ impl RoutingStep {
 /// the scheduler computes on them there.
 struct RamTier {
     cache: SlotCache,
+    /// The tensors of the layers `first..`, in order.
     tensors: Vec<[OwnedTensor; 3]>,
+    first: usize,
     slots: usize,
     /// Size of the slot buffer.
     bytes: usize,
@@ -194,7 +196,7 @@ struct RamTier {
 
 impl RamTier {
     fn exps(&self, il: usize) -> [Tensor<'_>; 3] {
-        let [g, u, d] = &self.tensors[il];
+        let [g, u, d] = &self.tensors[il - self.first];
         [g.get(), u.get(), d.get()]
     }
 }
@@ -323,8 +325,11 @@ pub(crate) struct Streamer {
     admit: Option<AdmitPolicy>,
     /// The admissions' copies, with the policy.
     uploader: Option<Uploader>,
-    /// The compute slot tensors (gate, up, down) per layer, which admissions write.
+    /// The compute slot tensors (gate, up, down) per layer from `first`, which admissions write.
     compute_tensors: Vec<[OwnedTensor; 3]>,
+    /// The first layer of a segment (ADR 0091): the streamer's tables cover every layer, the
+    /// tensors only the layers of the segment.
+    first: usize,
     /// RAM-tier policy (ADR 0050 (c)); `Lru` without a RAM tier.
     ram_policy: RamPolicy,
     /// Frequency pins per layer, most routed first (`RamPolicy::Freq`).
@@ -337,6 +342,8 @@ pub(crate) struct Streamer {
 }
 
 pub(crate) struct StreamerConfig {
+    /// The layer of `slot_tensors[0]`.
+    pub first: usize,
     pub slots: usize,
     pub ram_slots: Option<usize>,
     pub io: IoOptions,
@@ -376,8 +383,11 @@ impl Streamer {
     ) -> Result<Streamer> {
         let h = &file.hparams;
         let layers = h.n_layer as usize;
-        let mut sizes = Vec::with_capacity(layers);
-        for (il, t) in slot_tensors.iter().enumerate() {
+        let first = cfg.first;
+        // Indexed by layer; the layers outside a segment stay 0.
+        let mut sizes = vec![[0usize; 3]; layers];
+        for (i, t) in slot_tensors.iter().enumerate() {
+            let il = first + i;
             let slabs = file.expert_slabs(il as u32, 0)?;
             for (tensor, part) in t.iter().zip(&slabs.parts) {
                 if tensor.get().nb()[2] as u64 != part.len {
@@ -386,17 +396,18 @@ impl Streamer {
                     )));
                 }
             }
-            sizes.push(slabs.parts.map(|p| p.len as usize));
+            sizes[il] = slabs.parts.map(|p| p.len as usize);
         }
         let n_expert = h.n_expert;
         let ram = cfg
             .ram_slots
             .map(|n| -> Result<RamTier> {
-                let ctx = Rc::new(Context::new(3 * layers + 1, 0)?);
+                let ctx = Rc::new(Context::new(3 * slot_tensors.len() + 1, 0)?);
                 let tensors = slot_tensors
                     .iter()
                     .enumerate()
-                    .map(|(il, t)| {
+                    .map(|(i, t)| {
+                        let il = first + i;
                         t.each_ref().map(|src| {
                             let src = src.get();
                             let ne = src.ne();
@@ -414,6 +425,7 @@ impl Streamer {
                 Ok(RamTier {
                     cache: SlotCache::new(Tier::Ram, h.n_layer, n_expert, n as u32),
                     tensors,
+                    first,
                     slots: n,
                     bytes,
                     hugepages,
@@ -520,6 +532,7 @@ impl Streamer {
             admit,
             uploader,
             compute_tensors: slot_tensors.to_vec(),
+            first,
             ram_policy,
             freq_pins: vec![Vec::new(); layers],
             pins_on: false,
@@ -834,7 +847,7 @@ impl Streamer {
             return Ok(());
         }
         // Field borrows, so the slot tables stay writable while the tensors are read.
-        let [dg, du, dd] = &ram.tensors[il];
+        let [dg, du, dd] = &ram.tensors[il - ram.first];
         let dst = [dg.get(), du.get(), dd.get()];
         let sizes = self.sizes[il];
         let total: usize = sizes.iter().sum();
@@ -1219,7 +1232,7 @@ impl Streamer {
             }
         }
         if !misses.is_empty() {
-            let [dg, du, dd] = &ram.tensors[il];
+            let [dg, du, dd] = &ram.tensors[il - ram.first];
             let dst = [dg.get(), du.get(), dd.get()];
             self.io.batches += 1;
             for &i in &misses {
@@ -1555,7 +1568,7 @@ impl Streamer {
         if let Some(up) = &mut self.uploader {
             self.io.admit_wait += up.settle()?;
         }
-        for il in 0..self.counts.len() {
+        for il in self.first..self.first + self.compute_tensors.len() {
             let active = self.compute.layer(il).active();
             let hot = hot_from_counts(&self.counts[il], active);
             let change = self.compute.layer_mut(il).set_hot_set(&hot);
@@ -1614,7 +1627,14 @@ impl Streamer {
             if let Some(cpu) = pause.take() {
                 cpu.pause_cpu_pool();
             }
-            let waited = match up.copy(il, &src, rslot, &self.compute_tensors[il], cslot, &sizes) {
+            let waited = match up.copy(
+                il,
+                &src,
+                rslot,
+                &self.compute_tensors[il - self.first],
+                cslot,
+                &sizes,
+            ) {
                 Ok(w) => w,
                 Err(err) => {
                     self.compute.layer_mut(il).clear();

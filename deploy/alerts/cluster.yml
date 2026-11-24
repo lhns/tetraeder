@@ -39,3 +39,18 @@ groups:
         annotations:
           summary: "The link to {{ $labels.node }} is slower than probed"
           description: "Median heartbeat round trip above twice the probed small-frame round trip for 10 minutes. Probe the links again and replan if it persists."
+
+      # Step 4 (pipeline): a segment of a replica across nodes runs at a speed the plan did not
+      # predict. The head records the residual of the segment's own compute time against the
+      # planner's decode step time for each segment (tetraeder.plan.residual, attribute segment);
+      # 0.15 is the exit-test line (ADR 0091). The hops are priced by the link probe and watched
+      # by TetraederLinkSlow.
+      - alert: TetraederSegmentDrift
+        expr: |
+          histogram_quantile(0.5, sum by (le, tetraeder_segment) (rate(tetraeder_plan_residual_ratio_bucket{tetraeder_segment!=""}[10m]))) > 0.15
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Segment {{ $labels.tetraeder_segment }} is off its predicted step time"
+          description: "The median residual of the segment's decode step is above 0.15 for 30 minutes, so the prediction that picked this cut no longer holds. Recalibrate the node (tetraeder cluster probe, the segment's anchors) and replan."

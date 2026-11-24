@@ -363,3 +363,14 @@ pub fn enumerate_cluster(hw: &HardwareGraph, layout: &ModelLayout, hints: &Hints
 ## As built in step 3 (`cluster-discovery`)
 
 `ClusterConfig`, `Membership`, the monitor, the daemon and the probe client are in `crates/control` (`cluster`, `membership`, `monitor`, `node`, `client`, `proto`); the differences from the sketches above are listed in the History of ADR 0091 (2026-11-24, step 3): `node_down_after_ms`, `Membership` takes a `Duration` clock and a `Hello` event, `NodeRequest::ProbePeer` and `NodeReply::Curve`, `Alive.draining`, `Purpose::Probe { session }` and `Purpose::max_frame`, `frame::read_frame_max`, a new connection for a `(peer, purpose)` replaces the old one, CLI `cluster profile|probe|watch`, `node --drain --id <node>` run with the head's key, and `node` takes `--cluster --key --cert` (the id is the certificate's).
+
+## As built in step 4 (`cluster-pipeline-nodes`)
+
+The differences from the sketches above are listed in the History of ADR 0091 (2026-11-24, step 4). In short:
+
+- `tetraeder_model::SegmentSpec { layers, embed, head }`, set through `DenseOptions::segment` and `LoadOptions::segment`; `Qwen3::decode_hidden` and `Qwen3Moe::decode_hidden` (and `decode_group_hidden`) take the hidden rows of the previous segment and return hidden rows without the head; `out_width()` is the floats per output row.
+- `tetraeder_plan::segment_shape(plan, n_layer)` reads `(layers, embed, head)` of a sub-plan; the worker uses it (`TETRAEDER_SEGMENT_PLAN` or `worker --plan FILE`).
+- `tetraeder_scheduler::{SegmentBackend, SegmentInfo, Feed, StepOut}` and `BatchBackend::as_segment`; `StepOut::Hidden` holds an `Outputs` of row width `n_embd`, not `{ data, spans }`.
+- Wire: `Info.segment: Option<SegmentInfo>` and `Reply.step_s: Option<f64>`, both left out of the header when `None`; the tokens stay in the `decode` header and the hidden rows are the payload.
+- `tetraeder::pipeline::{PipelineBackend, segment_assignments, start_remote_segments, segment_spec_of, n_layer_of}`.
+- Telemetry: `Metrics::{plan_residual_segment, plan_predicted_segment, segment_step}`, histogram `tetraeder.segment.duration`.

@@ -260,3 +260,42 @@ pub fn segment_plan(plan: &Plan, replica: usize, seg: &Segment) -> Plan {
         replicas: vec![Replica { stages }],
     }
 }
+
+/// What a segment's worker holds, read from the sub-plan [`segment_plan`] cut (ADR 0091).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentShape {
+    /// Layers computed; `[L, L)` for a head-only segment.
+    pub layers: Span,
+    pub embed: bool,
+    pub head: bool,
+}
+
+/// The shape of the one replica of a sub-plan of a model with `n_layer` layers. The embedding
+/// belongs to a first stage that starts at layer 0 and the head to a last stage that ends at
+/// `n_layer`; a rule without a layer filter also matches them in the stages between, so the
+/// layer bounds decide first and the rules second (`segment_plan` removes the head rule of a
+/// segment whose head went elsewhere).
+pub fn segment_shape(plan: &Plan, n_layer: u32) -> Result<SegmentShape, String> {
+    let [rep] = plan.replicas.as_slice() else {
+        return Err(format!(
+            "a segment plan has one replica, not {}",
+            plan.replicas.len()
+        ));
+    };
+    let (Some(first), Some(last)) = (rep.stages.first(), rep.stages.last()) else {
+        return Err("a segment plan has no stages".to_string());
+    };
+    let holds = |st: &Stage, u: UnitId| st.assign.iter().any(|a| a.units.matches(u));
+    let shape = SegmentShape {
+        layers: Span(first.layers.0, last.layers.1),
+        embed: first.layers.0 == 0 && holds(first, UnitId::Embed),
+        head: last.layers.1 == n_layer && holds(last, UnitId::Head),
+    };
+    if shape.layers.1 > n_layer || shape.layers.0 > shape.layers.1 {
+        return Err(format!(
+            "layers {}..{} outside the model's {n_layer}",
+            shape.layers.0, shape.layers.1
+        ));
+    }
+    Ok(shape)
+}

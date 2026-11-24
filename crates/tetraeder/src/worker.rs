@@ -3,10 +3,13 @@
 //! frames are described in `remote_backend`. Stdout carries frames only, so nothing else may
 //! print there; diagnostics go to stderr.
 
-use crate::serve::{ServeArgs, loader};
+use crate::serve::{ServeArgs, loader_with};
+use anyhow::Context;
 use clap::Args;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tetraeder::worker_loop::{Fault, Flow, parse_fault, serve_loop};
+use tetraeder_model::SegmentSpec;
 use tetraeder_scheduler::BatchBackend;
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
@@ -33,6 +36,34 @@ pub struct WorkerArgs {
     pub fake_fail_every: Option<u32>,
 }
 
+/// The file of the segment plan a node's daemon writes for an `Assign` (ADR 0091, step 4): the
+/// single-node plan `plan::segment_plan` cut, read here for its layer span.
+pub const SEGMENT_PLAN_ENV: &str = "TETRAEDER_SEGMENT_PLAN";
+
+/// The share of the layers `--plan FILE` or [`SEGMENT_PLAN_ENV`] gives this worker; `None` when
+/// neither is set (the whole model). The embedding and the head are not read from the rules
+/// (a catch-all rule matches both in any stage); `plan::segment_shape` decides from the layer
+/// bounds.
+pub fn segment_spec(a: &ServeArgs) -> anyhow::Result<Option<SegmentSpec>> {
+    let path = match a.plan.as_deref() {
+        Some("auto") => {
+            anyhow::bail!("worker: --plan auto is the replanner's; give a segment plan file")
+        }
+        Some(p) => PathBuf::from(p),
+        None => match std::env::var_os(SEGMENT_PLAN_ENV) {
+            Some(p) => PathBuf::from(p),
+            None => return Ok(None),
+        },
+    };
+    let text = std::fs::read_to_string(&path)
+        .with_context(|| format!("cannot read the segment plan {}", path.display()))?;
+    let model = a.model.as_ref().context("-m is required")?;
+    let n_layer = tetraeder::pipeline::n_layer_of(model).map_err(anyhow::Error::msg)?;
+    let spec = tetraeder::pipeline::segment_spec_of(&text, n_layer)
+        .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+    Ok(Some(spec))
+}
+
 /// The arguments of the child for the command line of `serve --worker`: `serve` becomes
 /// `worker`, `--worker` is dropped.
 pub fn child_args(argv: impl Iterator<Item = String>) -> anyhow::Result<Vec<std::ffi::OsString>> {
@@ -48,10 +79,7 @@ pub fn child_args(argv: impl Iterator<Item = String>) -> anyhow::Result<Vec<std:
 }
 
 pub fn run(a: &WorkerArgs) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        a.serve.plan.is_none(),
-        "worker: --plan needs the multi-device executor, which is not wired in yet"
-    );
+    let segment = segment_spec(&a.serve)?;
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
     let mut backend: Box<dyn BatchBackend> = if a.serve.fake {
@@ -61,7 +89,7 @@ pub fn run(a: &WorkerArgs) -> anyhow::Result<()> {
                 .with_fail_every(a.fake_fail_every),
         )
     } else {
-        let load = loader(&a.serve, Arc::clone(&telemetry))?;
+        let load = loader_with(&a.serve, Arc::clone(&telemetry), segment)?;
         load().map_err(anyhow::Error::msg)?.backend
     };
     let stdin = std::io::stdin();
