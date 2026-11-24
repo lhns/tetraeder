@@ -4,6 +4,7 @@
 //! detokenizes from [`Vocab`] bytes, parses tool calls and builds constraints; the engine
 //! samples, applies the constraint mask and reports per-request stats.
 
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -11,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 pub type TokenId = u32;
 
 /// One served model.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub id: String,
     /// Maximum prompt plus generated tokens.
@@ -126,7 +127,7 @@ impl Vocab {
 }
 
 /// Sampling parameters. `None` means the engine's default.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SamplingParams {
     pub max_tokens: u32,
     pub temperature: Option<f32>,
@@ -137,7 +138,7 @@ pub struct SamplingParams {
 }
 
 /// One stage of llama.cpp's sampler chain, as the `samplers` request field names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SamplerKind {
     Penalties,
     Dry,
@@ -200,7 +201,7 @@ impl SamplerKind {
 
 /// Sampling fields beyond temperature, top-p, top-k and seed (llama-server's group A). `None`
 /// means the engine's default; values are already range-checked by the gateway.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SamplingExtras {
     pub min_p: Option<f32>,
     pub typical_p: Option<f32>,
@@ -219,6 +220,7 @@ pub struct SamplingExtras {
     pub dry_sequence_breakers: Option<Vec<String>>,
     /// (token id, bias); `-inf` bans the token. Ids outside the vocabulary are dropped by the
     /// engine, as llama-server does.
+    #[serde(with = "bias_serde")]
     pub logit_bias: Vec<(i32, f32)>,
     pub ignore_eos: Option<bool>,
     pub mirostat: Option<i32>,
@@ -245,7 +247,7 @@ pub struct SamplingExtras {
 }
 
 /// What a request's grammar is written in.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GrammarSource {
     /// GBNF, root rule `root`.
     Gbnf(String),
@@ -254,7 +256,7 @@ pub enum GrammarSource {
 }
 
 /// What the sampler saw for one sampled token (see [`SamplingExtras::logprobs`]).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TokenProbs {
     pub token: TokenId,
     /// Natural log of the token's probability under the softmax of the raw logits.
@@ -282,6 +284,12 @@ impl TokenMask {
 /// The engine calls `mask` before each sampling step and `commit` with the sampled token.
 /// An error ends generation with [`GenEvent::Error`].
 pub trait TokenConstraint: Send {
+    /// The grammar this constraint was built from (Lark text), so a replica on another node can
+    /// rebuild it (ADR 0091): `TokenConstraint` is a trait object and cannot cross the wire.
+    /// `None`: the constraint cannot be rebuilt elsewhere.
+    fn source(&self) -> Option<String> {
+        None
+    }
     /// Allowed tokens for the next step; `None` means unconstrained.
     fn mask(&mut self) -> Result<Option<TokenMask>, String>;
     fn commit(&mut self, token: TokenId) -> Result<(), String>;
@@ -296,7 +304,7 @@ pub struct GenerateRequest {
     pub cancel: CancellationToken,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FinishReason {
     /// An end-of-generation token was sampled (not sent as a `Token` event).
     EndOfGeneration,
@@ -306,7 +314,7 @@ pub enum FinishReason {
 }
 
 /// What one request cost the engine. Fields the engine cannot measure stay `None`.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EngineStats {
     pub prompt_tokens: u32,
     /// Prompt tokens served from a prefix cache.
@@ -327,7 +335,7 @@ pub struct EngineStats {
 
 /// Host-side time split of one request's decode (A6000 gap diagnosis, docs/m1-open.md item 4).
 /// Seconds summed over the decode steps (every step after the one that ends the prefill).
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DecodeProfile {
     /// The step that evaluates the prompt suffix and samples the first token.
     pub prefill_s: f64,
@@ -347,7 +355,7 @@ pub struct DecodeProfile {
     pub backend: Vec<(String, f64)>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GenEvent {
     Token(TokenId),
     /// The probabilities of a sampled token, sent before its `Token` (also for the
@@ -363,7 +371,7 @@ pub enum GenEvent {
     ContextExceeded(String),
 }
 
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error, Serialize, Deserialize)]
 pub enum EngineError {
     #[error("model not found: {0}")]
     ModelNotFound(String),
@@ -459,5 +467,54 @@ pub trait Engine: Send + Sync + 'static {
         Err(EngineError::Invalid(
             "grammar is not supported by this engine".into(),
         ))
+    }
+}
+
+/// JSON has no infinity: a logit bias of `-inf` (ban the token) travels as a string.
+mod bias_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    enum Val {
+        N(f32),
+        S(String),
+    }
+
+    pub fn serialize<S: Serializer>(v: &[(i32, f32)], s: S) -> Result<S::Ok, S::Error> {
+        let w: Vec<(i32, Val)> = v
+            .iter()
+            .map(|&(t, b)| {
+                let val = if b.is_finite() {
+                    Val::N(b)
+                } else if b.is_nan() {
+                    Val::S("nan".into())
+                } else if b < 0.0 {
+                    Val::S("-inf".into())
+                } else {
+                    Val::S("inf".into())
+                };
+                (t, val)
+            })
+            .collect();
+        w.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(i32, f32)>, D::Error> {
+        let w: Vec<(i32, Val)> = Vec::deserialize(d)?;
+        w.into_iter()
+            .map(|(t, v)| {
+                let b = match v {
+                    Val::N(b) => b,
+                    Val::S(x) => match x.as_str() {
+                        "-inf" => f32::NEG_INFINITY,
+                        "inf" => f32::INFINITY,
+                        "nan" => f32::NAN,
+                        o => return Err(serde::de::Error::custom(format!("bad bias `{o}`"))),
+                    },
+                };
+                Ok((t, b))
+            })
+            .collect()
     }
 }

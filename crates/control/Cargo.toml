@@ -15,6 +15,10 @@ workspace = true
 tetraeder-plan = { path = "../plan" }
 tetraeder-profiler = { path = "../profiler" }
 tetraeder-transport = { path = "../transport" }
+tetraeder-costmodel = { path = "../costmodel" }
+tetraeder-gateway = { path = "../gateway" }
+tokio = { version = "1.54.1", features = ["sync", "rt"] }
+tokio-util = "0.7.20"
 opentelemetry = "0.33.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -374,3 +374,14 @@ The differences from the sketches above are listed in the History of ADR 0091 (2
 - Wire: `Info.segment: Option<SegmentInfo>` and `Reply.step_s: Option<f64>`, both left out of the header when `None`; the tokens stay in the `decode` header and the hidden rows are the payload.
 - `tetraeder::pipeline::{PipelineBackend, segment_assignments, start_remote_segments, segment_spec_of, n_layer_of}`.
 - Telemetry: `Metrics::{plan_residual_segment, plan_predicted_segment, segment_step}`, histogram `tetraeder.segment.duration`.
+
+## As built in step 5 (`cluster-replicas`)
+
+The differences from the sketches above are listed in the History of ADR 0091 (2026-11-24, step 5). In short:
+
+- `tetraeder_control::router::Router` is a pure state machine with the wait queue and the in-flight table: `submit`, `done`, `cancel`, `requeue(req, take_down)`, `set_up`, `prefix_saved`, `prefix_evicted`, `holds`; it returns `Action::{Dispatch, Fail}`. `Router::new(caps, min_prefix)`; there is no `route`, `submit` routes.
+- `tetraeder_control::replica`: `ReplicaRequest`, `ReplicaEvent`, `WireGenerate`, `ConstraintSpec::Lark`, `ReplicaServer` (serves any gateway `Engine` over frames), `RemoteEngine` (the gateway `Engine`; `connect`, `probe`, `generate_with`). `tetraeder_control::head::{ClusterEngine, ClusterHead, ReplicaTarget, StartSpec, SegmentAssign, FetchPolicy}`. `tetraeder_control::kv::{PrefixKey, PrefixStore, fetch_beats_recompute, serve_prefix, fetch_prefix}`.
+- Wire: `NodeRequest::StartReplica { replica, plan, model_sha256, segments, predicted_s }` and `NodeReply::Started`; `Assign` and `StartReplica` repeated with the same arguments change nothing; `node::REPLICA_SEGMENT` (`u32::MAX`) is the segment number of a replica engine and is refused in `Assign` and `Segment`.
+- Gateway: `TokenConstraint::source()` and `ConstraintFactory::from_lark`; `Serialize` and `Deserialize` on the request and event types (`SamplingParams`, `SamplingExtras`, `GenEvent`, `EngineStats`, `ModelInfo`, `EngineError`, ...).
+- CLI: `tetraeder replica` (flags of `serve`, started by the daemon with `node --replica-arg ...`), `serve --cluster cluster.toml --replicas replicas.toml [--key --cert]`.
+- `tetraeder::pipeline::replica_pipeline` builds the `PipelineBackend` of a replica with `with_metrics` and `set_predicted` wired.

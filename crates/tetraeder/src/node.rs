@@ -84,6 +84,9 @@ pub struct NodeArgs {
     /// An argument for every `tetraeder worker` child (the engine flags), repeatable.
     #[arg(long = "worker-arg")]
     pub worker_arg: Vec<OsString>,
+    /// An argument for every `tetraeder replica` child (the engine flags), repeatable.
+    #[arg(long = "replica-arg")]
+    pub replica_arg: Vec<OsString>,
 }
 
 pub fn parse_buffers(s: &str) -> Result<SocketBuffers, String> {
@@ -104,6 +107,9 @@ struct ChildLauncher {
     models_dir: PathBuf,
     state_dir: PathBuf,
     args: Vec<OsString>,
+    replica_args: Vec<OsString>,
+    /// `--cluster`, `--key` and `--cert` of this node, handed to a replica that spans nodes.
+    identity: Vec<OsString>,
 }
 
 impl Launcher for ChildLauncher {
@@ -118,24 +124,51 @@ impl Launcher for ChildLauncher {
         let model = self
             .models_dir
             .join(format!("{}.gguf", a.model_sha256.to_ascii_lowercase()));
-        if !model.is_file() {
+        // A replica of the scripted engine (`--replica-arg --fake`) needs no model file.
+        let fake = a.is_replica() && self.replica_args.iter().any(|x| x == "--fake");
+        if !model.is_file() && !fake {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!("no model {}", model.display()),
             ));
         }
         std::fs::create_dir_all(&self.state_dir)?;
-        let plan = self.state_dir.join(format!(
-            "replica-{}-segment-{}.plan.toml",
-            a.replica, a.segment
-        ));
-        std::fs::write(&plan, &a.plan)?;
-        let mut child = Command::new(&self.exe)
-            .arg("worker")
-            .arg("--model")
-            .arg(&model)
-            .args(&self.args)
-            .env("TETRAEDER_SEGMENT_PLAN", &plan)
+        let mut cmd = Command::new(&self.exe);
+        if a.is_replica() {
+            let plan = self
+                .state_dir
+                .join(format!("replica-{}.plan.toml", a.replica));
+            std::fs::write(&plan, &a.plan)?;
+            cmd.arg("replica");
+            if model.is_file() {
+                cmd.arg("--model").arg(&model);
+            }
+            cmd.args(&self.replica_args)
+                .args(&self.identity)
+                .env(crate::replica::REPLICA_ENV, a.replica.to_string())
+                .env(crate::replica::SEGMENTS_ENV, a.segments.join(","))
+                .env(
+                    crate::replica::PREDICTED_ENV,
+                    a.predicted_s
+                        .iter()
+                        .map(f64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+                .env("TETRAEDER_REPLICA_PLAN", &plan);
+        } else {
+            let plan = self.state_dir.join(format!(
+                "replica-{}-segment-{}.plan.toml",
+                a.replica, a.segment
+            ));
+            std::fs::write(&plan, &a.plan)?;
+            cmd.arg("worker")
+                .arg("--model")
+                .arg(&model)
+                .args(&self.args)
+                .env("TETRAEDER_SEGMENT_PLAN", &plan);
+        }
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -249,6 +282,15 @@ pub fn run(a: &NodeArgs) -> Result<()> {
         models_dir: a.models_dir.clone(),
         state_dir: a.state_dir.clone(),
         args: a.worker_arg.clone(),
+        replica_args: a.replica_arg.clone(),
+        identity: vec![
+            "--cluster".into(),
+            a.cluster.cluster.clone().into(),
+            "--key".into(),
+            a.cluster.key.clone().into(),
+            "--cert".into(),
+            a.cluster.cert.clone().into(),
+        ],
     });
     let _daemon = Daemon::start(
         transport,

@@ -24,9 +24,25 @@ pub enum NodeRequest {
         plan: String,
         model_sha256: String,
     },
+    /// A replica engine is released with `segment` `u32::MAX`.
     Release {
         replica: u32,
         segment: u32,
+    },
+    /// Start the replica engine (`tetraeder replica`) this node leads; `plan` is the replica's
+    /// plan TOML (empty for a whole model on one node) and `segments` the nodes of its
+    /// segments, in order, when it spans nodes (the head assigned them already). Starting an
+    /// engine that already runs with the same arguments changes nothing; `Assign` always starts
+    /// the worker afresh.
+    StartReplica {
+        replica: u32,
+        plan: String,
+        model_sha256: String,
+        #[serde(default)]
+        segments: Vec<String>,
+        /// The planner's decode step time of each segment, seconds (the residual's baseline).
+        #[serde(default)]
+        predicted_s: Vec<f64>,
     },
     /// The payload is `bytes` long; the reply is empty (link probe).
     Probe {
@@ -61,6 +77,7 @@ pub enum NodeReply {
     /// The hardware graph is the payload.
     Profile,
     Assigned,
+    Started,
     Released,
     Probe,
     /// One-way seconds by frame bytes, the empty round trip, and the socket buffers of the

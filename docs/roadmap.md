@@ -136,6 +136,7 @@ flowchart TB
         serving_parity_sampling["serving · ✔ Sampler<br/>parity with llama-<br/>server"]
         cluster_transport["cluster · ✔ Transport<br/>between machines"]
         cluster_pipeline_nodes["cluster · ✔ Pipeline<br/>stages across machines"]
+        cluster_failover["cluster · ✔ Keep<br/>serving when a node<br/>dies"]
     end
     subgraph bd_2["Next"]
         bench_30b_c4_gap[/"bench · ○ 30B<br/>concurrency-4 gap"/]
@@ -143,7 +144,6 @@ flowchart TB
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
-        cluster_failover["cluster · ⛔ Keep<br/>serving when a node<br/>dies"]
         engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
         bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
         bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
@@ -192,15 +192,15 @@ flowchart TB
     bench_d2a_30b ~~~ serving_parity_sampling
     bench_d2a_30b ~~~ cluster_transport
     bench_ab30b ~~~ cluster_pipeline_nodes
-    serving_parity_sampling ~~~ cluster_pipeline_nodes
-    cluster_transport ~~~ cluster_pipeline_nodes
+    serving_parity_sampling ~~~ cluster_failover
+    cluster_transport ~~~ cluster_failover
     cluster_pipeline_nodes ~~~ bench_30b_c4_gap
-    cluster_pipeline_nodes ~~~ planner_cost_model_v5_host2
-    cluster_pipeline_nodes ~~~ engine_dense_amx
-    bench_30b_c4_gap ~~~ cluster_failover
+    cluster_failover ~~~ planner_cost_model_v5_host2
+    cluster_failover ~~~ engine_dense_amx
+    bench_30b_c4_gap ~~~ engine_backend_parity
     planner_cost_model_v5_host2 ~~~ engine_backend_parity
     engine_dense_amx ~~~ engine_backend_parity
-    cluster_failover ~~~ bench_phase8_exit
+    engine_backend_parity ~~~ bench_phase8_exit
     engine_backend_parity ~~~ bench_phase9_exit
     engine_backend_parity ~~~ bench_phase6_exit
     bench_phase8_exit ~~~ cluster_experts_nodes
@@ -251,14 +251,14 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching,cluster_transport,cluster_pipeline_nodes unrated
+    class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching,cluster_transport,cluster_pipeline_nodes,cluster_failover unrated
     class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict,bench_ab30b,serving_parity_sampling,planner_ep_prefill_recheck succ
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
     class bench_30b_c4_gap,planner_cost_model_v5_host2,engine_dense_amx next
     class cluster_experts_nodes,engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
-    class cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
+    class bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
 ```
 <!-- END GENERATED: overview -->
 
@@ -349,13 +349,10 @@ flowchart TB
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
 | Harden the cluster planner inputs | ⚠ open | Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors. |
-| Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Prefill pipelined across stages | ○ next | A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
-| KV cache on another machine | ⛔ blocked | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
-| Model replicas behind one router | ○ next | Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11). |
-| Keep serving when a node dies | ⛔ blocked | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
+| Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
 <!-- END GENERATED: plain-words -->
 
@@ -381,10 +378,6 @@ flowchart TB
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-235b-segment-confirm`: Confirm one exit segment
-
-**cluster**
-
-- `cluster-replicas`: Model replicas behind one router
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -424,7 +417,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 123 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 127 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -827,9 +820,13 @@ Generated on 2026-11-24.
 - `bench-235b-stream-predict`: Predict the 235B on one box (✔ done · bad). Before any cluster code, the planner predicted the single-node 235B in two regimes (all experts in RAM with 32 VRAM slots; a 64 GB budget with experts streamed from NVMe), and one A40 box measured both. Neither is within 15% (prefill over-predicted by 34 to 132%, decode under-predicted by 33 to 95%), so the cost-model fix of ADR 0091 comes before the Phase 6 exit. The planner's own pick for 64 GB was not measured (OOM-killed, the harness gave the process under 64 GB); a pinned neighbour of it ran. The predictions are uncalibrated, so part of the error is a prior the exit anchors fit.
 - `bench-regression-gate`: Regression gate on final main (✔ done · mixed). One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).
 - `cluster-discovery`: Node list, health and probes (✔ done · unrated). Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091).
+- `cluster-failover`: Keep serving when a node dies (✔ done · unrated). When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19).
+- `cluster-join-leave`: Nodes join and leave live (✔ done · unrated). A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7).
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
 - `cluster-owner-routing-input`: Routing trace as prediction input (✔ done · n/a). The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
+- `cluster-remote-kv`: KV cache on another machine (✔ done · unrated). A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).
+- `cluster-replicas`: Model replicas behind one router (✔ done · unrated). Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11).
 - `engine-exit-segment-harness`: Exit segment harness (✔ done · unrated). The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and runs warm requests before a timed one that recomputes every token and reports its disk bytes (a covering plan that reads any is flagged unclean).
 - `memory-ram-tier-complement`: Read-free covering expert tiers (✔ fixed). When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
 - `planner-costmodel-stream-terms`: Cost model 6 for streamed MoE (✔ done · successful). ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves.
@@ -869,5 +866,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 17 nodes (9 done, 3 next, 4 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 17 nodes (13 done, 2 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

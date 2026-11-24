@@ -10,8 +10,11 @@
 //!
 //! Who may open what: `Control` only from the head; a `Probe` connection is privileged (profile,
 //! assign, link probes) only from the head with session 0, other nodes may only send probe
-//! frames; `Segment` only from a configured node and only for an assigned segment; the replica
-//! purposes belong to step 5 and are closed.
+//! frames; `Segment` only from a configured node and only for an assigned segment; `Replica`
+//! only from the head and only for a replica started with `StartReplica` (the daemon then puts
+//! `Attach` and `Detach` frames around the connection into the engine's stdin, so an engine that
+//! outlives a head connection cancels what that connection started); `Prefix` only from a
+//! configured node and only when a prefix handler is set (the replica's cache is served by it).
 
 use crate::cluster::ClusterConfig;
 use crate::proto::{self, NodeReply, NodeRequest};
@@ -23,6 +26,9 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use tetraeder_transport::frame::{self, Frame};
 use tetraeder_transport::{Conn, NodeId, Purpose, Transport};
+
+/// The segment number a replica engine is kept under (a worker's is its segment index).
+pub const REPLICA_SEGMENT: u32 = u32::MAX;
 
 /// How long a first call waits for a worker that `Assign` has not started yet.
 const FIRST_START_WAIT: Duration = Duration::from_secs(30);
@@ -38,7 +44,21 @@ pub struct Assignment {
     pub segment: u32,
     pub plan: String,
     pub model_sha256: String,
+    /// For a replica engine, the nodes of its segments (empty: the whole model, here).
+    pub segments: Vec<String>,
+    /// For a replica engine, the planner's decode step time per segment, seconds.
+    pub predicted_s: Vec<f64>,
 }
+
+impl Assignment {
+    /// A replica engine (`tetraeder replica`) rather than a segment's worker.
+    pub fn is_replica(&self) -> bool {
+        self.segment == REPLICA_SEGMENT
+    }
+}
+
+/// Serves one inbound `Prefix` connection (see `kv::serve_prefix`).
+pub type PrefixHandler = Arc<dyn Fn(Conn) + Send + Sync>;
 
 /// A running worker: frames in on `stdin`, out on `stdout`; `kill` ends it and must be safe to
 /// call twice. The worker is dead when `stdout` ends.
@@ -124,6 +144,7 @@ struct Shared {
     next_id: AtomicU64,
     conns: Mutex<HashMap<u64, Arc<dyn Fn() + Send + Sync>>>,
     workers: Mutex<HashMap<(u32, u32), Arc<Worker>>>,
+    prefix: Mutex<Option<PrefixHandler>>,
     threads: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -145,6 +166,7 @@ impl Daemon {
             next_id: AtomicU64::new(0),
             conns: Mutex::new(HashMap::new()),
             workers: Mutex::new(HashMap::new()),
+            prefix: Mutex::new(None),
             threads: Mutex::new(Vec::new()),
         });
         let s = Arc::clone(&shared);
@@ -168,6 +190,11 @@ impl Daemon {
         lock(&self.shared.workers)
             .get(&(replica, segment))
             .map(|w| w.restarts.load(Ordering::SeqCst))
+    }
+
+    /// Serves `Prefix` connections from other nodes with `h`; without it they are refused.
+    pub fn set_prefix_handler(&self, h: PrefixHandler) {
+        *lock(&self.shared.prefix) = Some(h);
     }
 
     pub fn is_draining(&self) -> bool {
@@ -239,7 +266,22 @@ fn handle_conn(s: &Arc<Shared>, conn: Conn) {
     match conn.purpose.clone() {
         Purpose::Control if head => serve_requests(s, conn, true, true),
         Purpose::Probe { session } => serve_requests(s, conn, head && session == 0, false),
-        Purpose::Segment { replica, segment } => relay_segment(s, conn, (replica, segment)),
+        Purpose::Segment { replica, segment } if segment != REPLICA_SEGMENT => {
+            relay_segment(s, conn, (replica, segment));
+        }
+        Purpose::Replica { replica } if head => {
+            relay_segment(s, conn, (replica, REPLICA_SEGMENT));
+        }
+        Purpose::Prefix if s.opts.cfg.node(&conn.peer).is_some() => {
+            let h = lock(&s.prefix).clone();
+            match h {
+                Some(h) => h(conn),
+                None => {
+                    tracing::warn!(peer = %conn.peer, "prefix connection without a handler; closed");
+                    close();
+                }
+            }
+        }
         other => {
             tracing::warn!(peer = %conn.peer, purpose = other.label(), "connection not allowed; closed");
             close();
@@ -339,6 +381,9 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
             if s.draining.load(Ordering::SeqCst) {
                 return error("the node is draining");
             }
+            if *segment == REPLICA_SEGMENT {
+                return error("that segment number is reserved for the replica engine");
+            }
             assign(
                 s,
                 Assignment {
@@ -346,9 +391,36 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
                     segment: *segment,
                     plan: plan.clone(),
                     model_sha256: model_sha256.clone(),
+                    segments: Vec::new(),
+                    predicted_s: Vec::new(),
                 },
+                false,
             );
             reply(NodeReply::Assigned)
+        }
+        NodeRequest::StartReplica {
+            replica,
+            plan,
+            model_sha256,
+            segments,
+            predicted_s,
+        } => {
+            if s.draining.load(Ordering::SeqCst) {
+                return error("the node is draining");
+            }
+            assign(
+                s,
+                Assignment {
+                    replica: *replica,
+                    segment: REPLICA_SEGMENT,
+                    plan: plan.clone(),
+                    model_sha256: model_sha256.clone(),
+                    segments: segments.clone(),
+                    predicted_s: predicted_s.clone(),
+                },
+                true,
+            );
+            reply(NodeReply::Started)
         }
         NodeRequest::Release { replica, segment } => {
             if let Some(w) = lock(&s.workers).remove(&(*replica, *segment)) {
@@ -428,8 +500,23 @@ fn probe_peer(
     })
 }
 
-fn assign(s: &Arc<Shared>, a: Assignment) {
+/// `keep_same`: an assignment equal to the running one (not given up) changes nothing, so the
+/// head can repeat `StartReplica` on every reconnect without restarting a healthy engine. An
+/// `Assign` always restarts its worker: the leader that connects next must meet empty KV.
+fn assign(s: &Arc<Shared>, a: Assignment, keep_same: bool) {
     let key = (a.replica, a.segment);
+    if keep_same
+        && lock(&s.workers).get(&key).is_some_and(|w| {
+            !w.gave_up.load(Ordering::SeqCst)
+                && !w.stop.load(Ordering::SeqCst)
+                && w.assign.plan == a.plan
+                && w.assign.model_sha256 == a.model_sha256
+                && w.assign.segments == a.segments
+                && w.assign.predicted_s == a.predicted_s
+        })
+    {
+        return;
+    }
     let w = Arc::new(Worker {
         assign: a,
         stop: AtomicBool::new(false),
@@ -532,6 +619,7 @@ fn relay_segment(s: &Arc<Shared>, mut conn: Conn, key: (u32, u32)) {
         return;
     };
     let generation = s.next_id.fetch_add(1, Ordering::SeqCst);
+    let replica = key.1 == REPLICA_SEGMENT;
     let rx = &mut conn.rx;
     {
         let mut sink = lock(&w.sink);
@@ -543,6 +631,9 @@ fn relay_segment(s: &Arc<Shared>, mut conn: Conn, key: (u32, u32)) {
             tx: std::mem::replace(&mut conn.tx, Box::new(io::sink())),
             close: Arc::clone(&conn.close),
         });
+    }
+    if replica {
+        mark(&w, true, generation, s);
     }
     while let Ok(Some(f)) = proto::recv(rx, &conn.purpose) {
         let Ok(bytes) = frame::encode_raw(&f.header, &f.payload) else {
@@ -567,9 +658,39 @@ fn relay_segment(s: &Arc<Shared>, mut conn: Conn, key: (u32, u32)) {
             break;
         }
     }
+    if replica {
+        mark(&w, false, generation, s);
+    }
     let mut sink = lock(&w.sink);
     if sink.as_ref().is_some_and(|x| x.generation == generation) {
         *sink = None;
     }
     (conn.close)();
+}
+
+/// Writes `Attach` or `Detach` of a head connection into the replica engine's stdin. An attach
+/// waits for the engine's first start, as a first call does.
+fn mark(w: &Arc<Worker>, attach: bool, session: u64, s: &Arc<Shared>) {
+    let msg = if attach {
+        crate::replica::ReplicaRequest::Attach { session }
+    } else {
+        crate::replica::ReplicaRequest::Detach { session }
+    };
+    let Ok(bytes) = frame::encode(&msg, &[]) else {
+        return;
+    };
+    let t0 = Instant::now();
+    while attach
+        && lock(&w.stdin).is_none()
+        && w.restarts.load(Ordering::SeqCst) == 0
+        && !w.gave_up.load(Ordering::SeqCst)
+        && !w.stop.load(Ordering::SeqCst)
+        && !s.stop.load(Ordering::SeqCst)
+        && t0.elapsed() < FIRST_START_WAIT
+    {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if let Some(si) = lock(&w.stdin).as_mut() {
+        let _ = si.write_all(&bytes).and_then(|()| si.flush());
+    }
 }
