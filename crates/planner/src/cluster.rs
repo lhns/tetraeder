@@ -823,11 +823,7 @@ pub fn single_node_runs(
         Some(p) => vec![p],
         None => feasible_vram_tiers(&budget, &sub, w, &mut dropped)
             .into_iter()
-            .flat_map(|v| {
-                ram_slot_options(&sub, v)
-                    .into_iter()
-                    .map(move |r| (v, r))
-            })
+            .flat_map(|v| ram_slot_options(&sub, v).into_iter().map(move |r| (v, r)))
             .collect(),
     };
     let mut out = Vec::new();

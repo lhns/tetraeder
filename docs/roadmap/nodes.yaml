@@ -2560,7 +2560,7 @@ nodes:
   - bench/results/stream-predict-20261124/errors.json
   - bench/results/stream-predict-20261124/predictions/FROZEN.sha256
   - bench/results/stream-predict-20261124/predictions/d2/FROZEN.sha256
-  verdict_quote: 'clean measurement, bad outcome. On one box the planner''s frozen prediction of the single-node Qwen3-235B-A22B is outside 15% in both regimes, for pp2048 and tg128: arm R (all experts in RAM, 32 VRAM slots) e_pp +0.350, e_tg -0.448'
+  verdict_quote: 'clean measurement, bad outcome. On one box the planner''s frozen, uncalibrated prediction of the single-node Qwen3-235B-A22B is outside 15% in both regimes, for pp2048 and tg128: arm R (all experts in RAM, 32 VRAM slots) e_pp +0.350, e_tg -0.448'
   headline: 'e_pp +0.35 and e_tg -0.45 with every expert in RAM; +1.32 and -0.95 streamed from NVMe'
   depends_on: []
   replaced_by: []
@@ -2569,8 +2569,8 @@ nodes:
   end: 2026-11-24
   folded: []
   overview: false
-  plain: 'Before any cluster code, the planner predicted the single-node 235B in two regimes (all experts in RAM with 32 VRAM slots; a 64 GB budget with experts streamed from NVMe), and one A40 box measured both. Neither is within 15% (prefill over-predicted by 34 to 132%, decode under-predicted by 33 to 95%), so the cost-model fix of ADR 0091 comes before the Phase 6 exit. The first pick for 64 GB was OOM-killed on the box; its re-priced version ran.'
-  notes: 'Predictions frozen and committed before each arm (fc2807b1, 29663e1e), medians of three rounds. Measured against the frozen breakdowns - decode disk time is priced at 0.56 GB/s with no overlap where the builder read 3.3 GB/s hidden behind compute (bytes within 8% with the trace prior, about 6x too high with the uniform prior), the 2048-token prefill reads the whole file through a 52-slot RAM tier (137.8 GB), CPU expert compute is priced 2.0x too slow (1.55x with the trace prior), and the planner host footprint is under what the process needs (the 60 GB tier pick was OOM-killed under 64 GB). The recorded routing trace can price decode (node-predict --tier-replay, one replay per slot pair) and helps but does not reach 0.15. Next - a cost-model fix with its own ADR and a rerun of these two arms (same README spec) before the Phase 6 exit session.'
+  plain: 'Before any cluster code, the planner predicted the single-node 235B in two regimes (all experts in RAM with 32 VRAM slots; a 64 GB budget with experts streamed from NVMe), and one A40 box measured both. Neither is within 15% (prefill over-predicted by 34 to 132%, decode under-predicted by 33 to 95%), so the cost-model fix of ADR 0091 comes before the Phase 6 exit. The planner''s own pick for 64 GB was not measured (OOM-killed, the harness gave the process under 64 GB); a pinned neighbour of it ran. The predictions are uncalibrated, so part of the error is a prior the exit anchors fit.'
+  notes: 'Predictions frozen and committed before each arm (fc2807b1, 29663e1e), medians of three rounds. Measured against the frozen breakdowns - decode disk time is priced at 0.56 GB/s with no overlap where the builder read 3.3 GB/s hidden behind compute (bytes within 8% with the trace prior, about 6x too high with the uniform prior), the 2048-token prefill reads the whole file through a 52-slot RAM tier (137.8 GB), and CPU expert compute is priced 2.0x too slow (1.55x with the trace prior; this one is a prior the anchor calibration fits, the others are structure). The recorded routing trace can price decode (node-predict --tier-replay, one replay per slot pair) and helps but does not reach 0.15. Next - a cost-model fix with its own ADR and a rerun of these two arms (same README spec) before the Phase 6 exit session.'
 - id: bench-phase6-rehearsal
   title: First two-box cluster session
   track: bench

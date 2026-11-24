@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Session stream-predict, second freeze for arm D (tree node bench-235b-stream-predict). The first freeze's pick for arm D
 # (16 VRAM slots, 56 RAM slots, a 60.07 GB RAM tier under the 64 GB budget) was OOM-killed on every round before the first
-# token: the process took the 64 GB (anon 60.9 GB at the kill, still rising). The planner's host footprint leaves about 3.2 GB
-# for everything else; the run needed more. This script prices the pick again with the RAM budget 5 GB lower (59 GB, RAM_D2_BYTES),
+# token, with the rest of the container at 60.7 to 61.5 GB anon: the balloon's own page tables and the other processes take part of
+# the 64 GB, so the harness delivers about 62 GB, not the planner's budget. This script prices the pick again with the RAM budget 5 GB lower (59 GB, RAM_D2_BYTES),
 # on the same layout, disk curve and routing trace, and freezes it in predictions/d2/ before arm D2 runs. Nothing else changes.
 # The planner's RAM slot options are a quarter, half and all of the experts outside VRAM (28, 56, 112), so a budget that drops the
 # pick to the next option halves the tier. PIN_D2 ("16,52") instead keeps the failed pick's VRAM slots and lowers its RAM slots by

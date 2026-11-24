@@ -341,18 +341,15 @@ fn main() -> Result<()> {
                 })
                 .transpose()?;
             let replay = match &tier_replay {
-                Some(p) => Some(tetraeder_planner::read_tier_replay(p).map_err(anyhow::Error::msg)?),
+                Some(p) => {
+                    Some(tetraeder_planner::read_tier_replay(p).map_err(anyhow::Error::msg)?)
+                }
                 None => None,
             };
             let w = Workload { prompt, r#gen };
-            let (runs, dropped) = tetraeder_planner::single_node_runs(
-                &graph,
-                &layout,
-                &w,
-                pin,
-                replay.as_deref(),
-            )
-            .map_err(anyhow::Error::msg)?;
+            let (runs, dropped) =
+                tetraeder_planner::single_node_runs(&graph, &layout, &w, pin, replay.as_deref())
+                    .map_err(anyhow::Error::msg)?;
             let pick = runs.first().context("no placement fits the node")?;
             let row = tetraeder_planner::builder::slot_row_bytes(&layout);
             let env: BTreeMap<String, String> = BTreeMap::from([
