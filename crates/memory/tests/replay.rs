@@ -73,6 +73,69 @@ fn total_hits(o: &Outcome) -> u64 {
     o.prefill.ram_hits + o.decode.ram_hits
 }
 
+fn step(step: u32, n_tokens: u32, ids: &[u16]) -> Record {
+    Record::Step(LayerStep {
+        step,
+        layer: 0,
+        n_tokens,
+        ids: ids.to_vec(),
+        predicted: None,
+        predicted2: None,
+    })
+}
+
+/// One layer of 8 experts, 2 routed per token. Prefill of 4 tokens routing every expert once,
+/// the hot-set refresh (experts 0 and 1 by the count tie), then `second` more prefills of the
+/// same routing and `decode` decode steps routing experts of both tiers.
+fn covering_trace(second: u32, decode: u32) -> Trace {
+    let all: Vec<u16> = (0..8).collect();
+    let mut records = vec![step(0, 4, &all), Record::HotRefresh { step: 0 }];
+    for s in 1..=second {
+        records.push(step(s, 4, &all));
+    }
+    for s in 0..decode {
+        records.push(step(second + 1 + s, 1, &[1 + (s % 7) as u16, 5]));
+    }
+    Trace {
+        header: header(1, 8, 2),
+        records,
+    }
+}
+
+fn prefill_bytes(o: &Outcome) -> u64 {
+    (o.prefill.disk_bytes_per_token * o.prefill.tokens as f64).round() as u64
+}
+
+#[test]
+fn covering_slots_leave_the_ram_tier_holding_the_complement() {
+    // 2 VRAM + 6 RAM slots hold all 8 experts. The first prefill reads 8; the refresh reads the
+    // hot pair, which left the RAM tier meanwhile, and then the 2 others its loads evicted. It
+    // frees the RAM copies of the hot pair, so the second prefill reads nothing more.
+    let c = cfg(2, 6, Policy::Lru, false);
+    let once = replay(&covering_trace(0, 0), &c);
+    let twice = replay(&covering_trace(1, 0), &c);
+    assert_eq!(prefill_bytes(&once), 12 * EXPERT_BYTES);
+    assert_eq!(
+        prefill_bytes(&twice),
+        prefill_bytes(&once),
+        "second prefill"
+    );
+    let decode = replay(&covering_trace(1, 20), &c);
+    assert_eq!(decode.decode.disk_bytes_per_token, 0.0);
+    assert_eq!(decode.decode.ram_hit_rate, 1.0);
+}
+
+#[test]
+fn slots_that_do_not_cover_a_layer_behave_as_before() {
+    // 2 VRAM + 4 RAM slots leave 6 experts for 4 slots: the refresh keeps its copies and the
+    // second prefill re-reads (hand-checked LRU: 8 + 2 reads before the second prefill, 4 in it).
+    let c = cfg(2, 4, Policy::Lru, false);
+    let once = replay(&covering_trace(0, 0), &c);
+    let twice = replay(&covering_trace(1, 0), &c);
+    assert_eq!(prefill_bytes(&once), 10 * EXPERT_BYTES);
+    assert_eq!(prefill_bytes(&twice), 14 * EXPERT_BYTES);
+}
+
 #[test]
 fn lru_and_belady_on_a_hand_checked_sequence() {
     let steps: Vec<Vec<Vec<u16>>> = [0, 1, 0, 2, 1].iter().map(|&e| vec![vec![e]]).collect();
@@ -163,7 +226,8 @@ fn prefetch_trace(seed: u64, n_steps: usize) -> Trace {
 
 proptest! {
     /// Rule 5 style: without prefetch the offline optimum never has fewer RAM hits than LRU, at
-    /// every slot count.
+    /// every slot count that leaves experts outside both tiers (a covering LRU tier also holds the
+    /// complement of the hot set; Belady does not model that fill).
     #[test]
     fn belady_never_loses_to_lru(
         seed in 1u64..u64::MAX,
@@ -181,7 +245,7 @@ proptest! {
             })
             .collect();
         let t = decode_trace(header(2, n_expert, n_used as u32), &steps, marker);
-        for ram in (n_used as u32).max(2)..n_expert {
+        for ram in (n_used as u32).max(2)..n_expert - 2 {
             let lru = replay(&t, &cfg(2, ram, Policy::Lru, false));
             let opt = replay(&t, &cfg(2, ram, Policy::Belady, false));
             prop_assert_eq!(lru.decode.ram_lookups + lru.prefill.ram_lookups,

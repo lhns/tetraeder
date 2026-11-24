@@ -869,6 +869,7 @@ impl<'a, 't> Sim<'a, 't> {
                     .collect()
             };
             if wanted.is_empty() {
+                self.complement_ram(il);
                 continue;
             }
             // make_resident: VRAM lookups (all misses), then the loads through the RAM tier in
@@ -887,8 +888,33 @@ impl<'a, 't> Sim<'a, 't> {
                     t.cpu_group(il, &g, false);
                 }
             }
+            self.complement_ram(il);
         }
         self.refresh_freq_pins();
+    }
+
+    /// `Streamer::complement_ram`: where the VRAM and RAM slots cover the layer, the RAM tier is
+    /// left holding exactly the experts outside VRAM (the refresh loaded the hot set through it).
+    fn complement_ram(&mut self, il: usize) {
+        let Ram::Slots(c) = &mut self.ram else {
+            return;
+        };
+        let vram = self.vram.layer(il);
+        let (inside, outside): (Vec<u32>, Vec<u32>) =
+            (0..self.h.n_expert).partition(|&e| vram.slot_of(e).is_some());
+        if outside.len() > self.ram_slots {
+            return;
+        }
+        for e in inside {
+            if c.layer_mut(il).release(e).is_some() {
+                self.prefetched[il][e as usize] = false;
+            }
+        }
+        self.fill_ram(il, &outside);
+        if let Some(t) = self.timing.as_mut() {
+            let g: Vec<(u32, u32)> = outside.iter().map(|&e| (e, 0)).collect();
+            t.cpu_group(il, &g, false);
+        }
     }
 
     /// `VramPolicy::Freq`: re-pick the top experts of every layer by routing count; newcomers

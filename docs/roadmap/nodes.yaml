@@ -3707,18 +3707,20 @@ nodes:
   title: libllama path differs on CUDA
   track: serving
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - bench/results/regression-gate-20261123/README.md
-  verdict_quote: ''
+  - tests/conformance/parity/cases.yaml
+  - docs/notes/llamacpp-parity.md
+  verdict_quote: 'CI run 45415720514 ubuntu the parity suite is green on CPU with reuse pinned off and the logprobs-after-reuse case; the CUDA band 0.03 is not yet run on a box'
   headline: ''
   depends_on:
   - bench-regression-gate
   replaced_by: []
   lane: box-later
-  start: ''
-  end: ''
+  start: '2026-11-24'
+  end: '2026-11-24'
   folded: []
   overview: false
   plain: On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
@@ -3727,17 +3729,20 @@ nodes:
   title: Node prediction equals the cluster reference
   track: planner
   kind: tooling
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - crates/planner/tests/cluster.rs
+  - crates/costmodel/src/predict.rs
+  - docs/notes/stream-predict-diagnosis.md
+  verdict_quote: 'CI run 45415720514 ubuntu test a_reference_equals_its_node_run ... ok; the_reader_copy_rate_does_not_depend_on_the_thread_quota ignored until ADR 0092'
   headline: ''
   depends_on:
   - bench-235b-stream-predict
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-24'
+  end: '2026-11-24'
   folded: []
   overview: false
   plain: A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix).
@@ -3745,17 +3750,20 @@ nodes:
   title: Read-free covering expert tiers
   track: memory
   kind: defect
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - crates/memory/tests/replay.rs
+  - crates/model/tests/cpu_experts.rs
+  - crates/memory/src/replay/sim.rs
+  verdict_quote: 'CI run 45415720514 ubuntu test cpu_covering_slots_read_nothing_after_the_refresh ... ok; test covering_slots_leave_the_ram_tier_holding_the_complement ... ok'
   headline: ''
   depends_on:
   - bench-235b-stream-predict
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-24'
+  end: '2026-11-24'
   folded: []
   overview: false
   plain: When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
@@ -3803,7 +3811,7 @@ nodes:
   title: Cost model 6 for streamed MoE
   track: planner
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''

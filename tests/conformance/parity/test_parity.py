@@ -82,24 +82,24 @@ def tetraeder_bin():
 
 
 class Pool:
-    """Servers started on first use and kept for the session, keyed by (kind, key, extra args, context size).
+    """Servers started on first use and kept for the session, keyed by (kind, key, extra args, context size, pin).
     `{tmp}` in an argument is a directory of that server alone (slot files)."""
 
     def __init__(self, llama_bin, tetraeder_bin, log_dir):
         self.llama_bin, self.tetraeder_bin, self.log_dir = llama_bin, tetraeder_bin, log_dir
         self.running = {}
 
-    def get(self, kind, key, extra=(), ctx=CTX):
-        k = (kind, key, tuple(extra), ctx)
+    def get(self, kind, key, extra=(), ctx=CTX, pin=False):
+        k = (kind, key, tuple(extra), ctx, pin)
         if k not in self.running:
             tag = f"-{len(self.running)}"
             tmp = self.log_dir / f"tmp{tag}"
             tmp.mkdir(exist_ok=True)
             args = [a.replace("{tmp}", str(tmp)) for a in extra]
             if kind == "llama":
-                self.running[k] = start_llama(self.llama_bin, key, self.log_dir, args, tag, ctx)
+                self.running[k] = start_llama(self.llama_bin, key, self.log_dir, args, tag, ctx, pin)
             else:
-                self.running[k] = start_tetraeder(self.tetraeder_bin, key, self.log_dir, args, tag, ctx)
+                self.running[k] = start_tetraeder(self.tetraeder_bin, key, self.log_dir, args, tag, ctx, pin)
         return self.running[k]
 
     def close(self):
@@ -114,13 +114,31 @@ def pool(llama_bin, tetraeder_bin, tmp_path_factory):
     p.close()
 
 
-def send(base_url: str, case: dict, body: dict | None = None) -> Answer:
+COMPARES_OUTPUT = ("text", "logprobs", "stream")
+
+
+def pinned(case: dict) -> bool:
+    """Cases that compare tokens or logprobs run with prompt-cache reuse off on both servers, unless the case is
+    about reuse (`reuse: true`)."""
+    return case["mode"] in COMPARES_OUTPUT and not case.get("reuse", False)
+
+
+def with_tolerance(case: dict) -> dict:
+    """`tolerance_cuda` replaces `tolerance` when PARITY_CUDA=1 (the CUDA runs: scripts/gate_extra_box.sh, sp_prep.sh)."""
+    if os.environ.get("PARITY_CUDA") == "1" and "tolerance_cuda" in case:
+        return {**case, "tolerance": case["tolerance_cuda"]}
+    return case
+
+
+def send(base_url: str, case: dict, body: dict | None = None, no_cache_prompt: bool = False) -> Answer:
     method, path = case["endpoint"].split(" ", 1)
     headers = dict(case.get("headers", {}))
     body = case.get("body") if body is None else body
     # tetraeder requires `model` (a row of its own, case model-optional); every other case names it
     if isinstance(body, dict) and body.keys() & {"messages", "prompt", "input"} and not case.get("no_model"):
         body = {"model": "tiny", **body}
+    if no_cache_prompt and isinstance(body, dict) and body.keys() & {"messages", "prompt", "input"}:
+        body = {"cache_prompt": False, **body}
     kw = {"json": body} if body is not None else {}
     with httpx.Client(timeout=TIMEOUT) as c:
         if case["mode"] == "stream":
@@ -140,12 +158,12 @@ def _json_or_text(text: str):
         return text
 
 
-def probed_body(pool, case, engine) -> dict:
+def probed_body(pool, case, engine, pin=False) -> dict:
     """The request body with a field derived from the baseline (the tiny model's text and token ids are not
     known in advance): `stop_ascii` stops on printable ASCII characters of what the baseline generates for the body; `ban_first_token`
     biases the baseline's first token for `prompt` down."""
     probe = case["probe"]
-    base = pool.get("llama", FAMILY[engine]).base_url
+    base = pool.get("llama", FAMILY[engine], pin=pin).base_url
     if probe["kind"] == "stop_ascii":
         r = send(base, case, case["body"]).body["choices"][0]
         out = r.get("message", {}).get("content") or r.get("text") or ""
@@ -201,16 +219,17 @@ def test_case(case, engine, pool):
     if "tetraeder_refuses" in case:
         return check_refusal(case, engine, pool)
     ctx = case.get("ctx", CTX)
-    base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx)
-    body = probed_body(pool, case, engine) if "probe" in case else None
+    pin = pinned(case)
+    base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx, pin)
+    body = probed_body(pool, case, engine, pin) if "probe" in case else None
     try:
-        other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx)
+        other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx, pin)
     except ServerStartError as e:
         raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
     run_setup(case, base_srv)
     run_setup(case, other_srv)
-    base = send(base_srv.base_url, case, body)
+    base = send(base_srv.base_url, case, body, no_cache_prompt=pin)
     other = send(other_srv.base_url, case, body)
     check_premise(case, base)
-    diffs = compare(case, base, other)
+    diffs = compare(with_tolerance(case), base, other)
     assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)

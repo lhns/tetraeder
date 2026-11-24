@@ -24,6 +24,8 @@ const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const N_PROMPT: usize = 24;
 const N_DECODE: usize = 3;
 const SLOTS: usize = 8;
+/// RAM slots that cover the 32 experts together with `SLOTS` compute slots.
+const SLOTS_COVER: usize = 24;
 
 fn fixture() -> PathBuf {
     quantized_moe(&MoeSpec::REALISH, Ftype::Q4KM, "q4km")
@@ -179,6 +181,60 @@ fn cpu_decode_with_hot_set_issues_no_uploads() {
         "a second prefill reads nothing"
     );
     assert_eq!(again.uploads, after_prefill.uploads);
+}
+
+/// hardware: cpu. Covering slots (8 compute + 24 RAM = the 32 experts of a layer): the hot-set
+/// refresh leaves the RAM tier holding exactly the 24 experts outside the compute tier, so a
+/// second prefill (of another prompt) and its decode read nothing from the file, and the
+/// logits equal the resident builder's bit for bit. Before the complement fill the RAM tier kept
+/// copies of the hot experts and the second prefill re-read part of the rest.
+#[test]
+fn cpu_covering_slots_read_nothing_after_the_refresh() {
+    let path = fixture();
+    let mut base = load(&path, &opts(CPU, None));
+    let (want, tokens) = sequence(&mut base, None);
+
+    let mut m = load(&path, &opts(CPU, Some(SLOTS_COVER)));
+    let (mut got, _) = run_prompt(&mut m, &prompt(37, 5), Some(&tokens[..N_DECODE]));
+    let first = m.expert_stats().unwrap().io;
+    assert!(first.bytes_read > 0, "the first request reads the file");
+    m.reset();
+    let (more, _) = run_prompt(&mut m, &prompt(53, 11), Some(&tokens[N_DECODE..]));
+    got.extend(more);
+    let second = m.expert_stats().unwrap().io;
+    assert_eq!(
+        second.bytes_read, first.bytes_read,
+        "the second prefill and its decode read no bytes"
+    );
+    assert_eq!(second.experts_read, first.experts_read);
+    for (i, (a, b)) in want.iter().zip(&got).enumerate() {
+        assert!(
+            a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits()),
+            "eval {i} differs from the resident builder"
+        );
+    }
+}
+
+/// hardware: cpu. The warm entry point reads the whole RAM tier of a covering plan before any
+/// request; the first prefill then reads nothing more, and a plan the slots do not cover is left
+/// alone.
+#[test]
+fn cpu_warm_ram_tier_fills_a_covering_tier_only() {
+    let path = fixture();
+    let mut m = load(&path, &opts(CPU, Some(32)));
+    m.warm_ram_tier().unwrap();
+    let warm = m.expert_stats().unwrap().io;
+    assert!(warm.experts_read > 0, "the warm-up read the experts");
+    m.eval(&prompt(37, 5)).unwrap();
+    assert_eq!(
+        m.expert_stats().unwrap().io.experts_read,
+        warm.experts_read,
+        "a warmed tier needs no read in the first prefill"
+    );
+
+    let mut part = load(&path, &opts(CPU, Some(12)));
+    part.warm_ram_tier().unwrap();
+    assert_eq!(part.expert_stats().unwrap().io.experts_read, 0);
 }
 
 /// hardware: cpu. The routing counts of one model, as a profile, give another model its hot

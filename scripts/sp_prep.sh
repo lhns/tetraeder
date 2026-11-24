@@ -111,7 +111,7 @@ run_suite() { # run_suite TAG [ENV=VALUE...] [-- pytest args]: the parity suite 
   [ ${#args[@]} -eq 0 ] && args=(tests/conformance/parity/test_parity.py)
   say "parity run $tag start"
   rm -rf "$out/parity/tmp-$tag"
-  env "${envs[@]}" TETRAEDER_BIN="$tet" LLAMA_SERVER_BIN="$llama_bin" TETRAEDER_REQUIRE_PARITY=1 \
+  env "${envs[@]}" PARITY_CUDA=1 TETRAEDER_BIN="$tet" LLAMA_SERVER_BIN="$llama_bin" TETRAEDER_REQUIRE_PARITY=1 \
     timeout -k 30 40m "$py" -m pytest -q -rA -p no:cacheprovider --basetemp="$out/parity/tmp-$tag" "${args[@]}" \
     > "$out/parity/$tag.log" 2>&1 8>&-
   echo "rc=$?" >> "$out/parity/$tag.log"
