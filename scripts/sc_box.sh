@@ -289,6 +289,24 @@ st_report() {
   say "report done"
 }
 
+# report only: more rounds of the judged configuration (the round-to-round spread that three rounds cannot show) and the
+# anchors again, into report/ so that judged/ keeps exactly the rounds of the rule
+st_extra() {
+  [ -s "$p/FROZEN.sha256" ] || die "no frozen prediction"
+  local r line envs=()
+  while IFS= read -r line; do [ -n "$line" ] && envs+=("$line"); done < <(judged_env)
+  for r in $(seq 1 "${EXTRA_ROUNDS:-5}"); do
+    run_one "extra-r$r" "$out/report/extra-r$r.json" "${envs[@]}" "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
+  done
+  for r in $(seq 1 "${EXTRA_ANCHOR_ROUNDS:-2}"); do
+    # shellcheck disable=SC2046
+    run_one "anchor-repeat-a1-r$r" "$out/report/anchor-repeat-a1-r$r.json" $(seg_env "$a1")
+    # shellcheck disable=SC2046
+    run_one "anchor-repeat-a2-r$r" "$out/report/anchor-repeat-a2-r$r.json" $(seg_env "$a2")
+  done
+  say "extra done"
+}
+
 main() {
   say "sc_box start stages='$stages' threads=$threads out=$out model=$model span=$split..$end slots=$vs,$rs"
   gpu_sampler_start
