@@ -2614,6 +2614,25 @@ nodes:
   overview: false
   plain: 'Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).'
   notes: 'Done when (ADR 0091), the certificate tooling of the owner''s choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test).'
+- id: cluster-planner-hardening
+  title: Harden the cluster planner inputs
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-planner
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors.
+  notes: 'From the read-only review of 81d4ecc4..51738939 (2026-11-24); none reachable without a malformed cluster.toml or layout. The transport findings of the same review went to cluster-discovery.'
 - id: cluster-discovery
   title: Node list, health and probes
   track: cluster
