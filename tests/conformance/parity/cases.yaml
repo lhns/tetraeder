@@ -22,6 +22,11 @@
 #           No baseline is started and nothing is compared; endpoint, body and mode are placeholders. For flags that
 #           only some engines can honour: the matrix row says what llama-server does with them
 # `{tmp}` in a server argument is a directory of that server alone (slot files)
+# reuse     true: the case is about prompt-cache reuse, so both servers keep it on. Every other case of mode text, logprobs
+#           or stream runs with reuse off (servers.py PIN_*: tetraeder `--no-prefix-reuse --cache-ram 0`, llama-server
+#           `--cache-ram 0` and `cache_prompt: false` in the request), because on CUDA the same prompt gives different
+#           logits fresh and after reuse (docs/notes/llamacpp-parity.md, CUDA)
+# tolerance_cuda  replaces `tolerance` when PARITY_CUDA=1 (the CUDA runs)
 # expect    pass, or `gap <tree node>`: xfail(strict), flipped to pass in the change that closes the gap
 #
 # Tokens are compared at temperature 0 and in the seeded cases (same chain and RNG as llama-server). The tiny models are
@@ -1011,6 +1016,7 @@ cases:
     body: {"prompt": "Hello", "temperature": 0, "max_tokens": 8, "cache_prompt": false}
     value_paths: ["choices[0].finish_reason"]
     mode: text
+    reuse: true
     engines: [auto]
     expect: pass
   - id: n-cache-reuse-accepted
@@ -1020,6 +1026,7 @@ cases:
     body: {"prompt": "Hello", "temperature": 0, "max_tokens": 8, "n_cache_reuse": 16}
     value_paths: ["choices[0].finish_reason"]
     mode: text
+    reuse: true
     engines: [auto]
     expect: pass
   - id: id-slot-out-of-range
@@ -1105,6 +1112,22 @@ cases:
     row: "logprobs shape"
     endpoint: POST /v1/chat/completions
     body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 3, "logprobs": true, "top_logprobs": 3}
+    mode: logprobs
+    engines: [auto]
+    expect: pass
+  # The one case that keeps reuse on: the second identical request is served from the prompt cache of both servers.
+  # CPU stays exact (1e-3). On CUDA the logits after reuse differ from a fresh evaluation in both engines; the measured
+  # spread of the first-token logprob is -1.8332, -1.8114 and -1.8150 (0.022), so the CUDA band is 0.03.
+  - id: logprobs-after-reuse
+    group: B
+    row: "n_probs, logprobs, top_logprobs, post_sampling_probs"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 3, "logprobs": true, "top_logprobs": 2}
+    setup:
+      - {endpoint: POST /v1/chat/completions, body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 3, "logprobs": true, "top_logprobs": 2}}
+    reuse: true
+    tolerance: 0.001
+    tolerance_cuda: 0.03
     mode: logprobs
     engines: [auto]
     expect: pass

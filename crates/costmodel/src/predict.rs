@@ -1270,6 +1270,24 @@ mod tests {
         assert_eq!(p.pp_tok_s, base.pp_tok_s);
     }
 
+    /// One thread's copy rate does not shrink when the container gets more cores: the reader's
+    /// read term must be the same on a CPU with 12 and with 61 threads and no thread curve
+    /// (`docs/notes/stream-predict-diagnosis.md` section 1; measured 2.8 to 3.3 GB/s on 61).
+    #[test]
+    #[ignore = "fails until ADR 0092 (planner-costmodel-stream-terms)"]
+    fn the_reader_copy_rate_does_not_depend_on_the_thread_quota() {
+        let f = with_tier(tier(ReadPath::Reader, 30e6, 60e6, 0.0));
+        let read = |threads: u32| {
+            let mut hw = hw_disk();
+            let cpu = hw.devices.iter_mut().find(|d| d.id == "cpu0").unwrap();
+            cpu.thread_curve.clear();
+            cpu.threads = Some(threads);
+            let p = predict(&hw, &f, 512, 128).unwrap();
+            term(&p.tg_breakdown, "read:nvme0")
+        };
+        close(read(61), read(12));
+    }
+
     #[test]
     fn service_is_the_longer_of_the_chain_and_the_busy_disk() {
         let hw = hw_disk();

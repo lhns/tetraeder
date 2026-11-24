@@ -92,7 +92,7 @@ st_conf() {
   fi
   nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2>&1 | sed 's/^/before: /' > "$out/gpu-conf.txt"
   rm -rf "$out/parity-tmp"
-  TETRAEDER_BIN="$tet" LLAMA_SERVER_BIN="$llama_bin" TETRAEDER_REQUIRE_PARITY=1     timeout -k 30 60m "$py" -m pytest -q -rA -p no:cacheprovider --basetemp="$out/parity-tmp" tests/conformance/parity/test_parity.py > "$out/parity.log" 2>&1 8>&-
+  PARITY_CUDA=1 TETRAEDER_BIN="$tet" LLAMA_SERVER_BIN="$llama_bin" TETRAEDER_REQUIRE_PARITY=1     timeout -k 30 60m "$py" -m pytest -q -rA -p no:cacheprovider --basetemp="$out/parity-tmp" tests/conformance/parity/test_parity.py > "$out/parity.log" 2>&1 8>&-
   echo "rc=$?" >> "$out/parity.log"
   nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2>&1 | sed 's/^/after: /' >> "$out/gpu-conf.txt"
   # proof the servers ran on CUDA: the device and offload lines of both servers' logs

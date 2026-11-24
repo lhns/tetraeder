@@ -21,10 +21,10 @@ flowchart TB
     memory_kv_auto["✔ Planner picks the KV<br/>format"]
     memory_prefix_ssd["✔ Prefix cache spills<br/>to SSD"]
     memory_prefix_disk_async["✔ Disk prefix restore<br/>off the step"]
+    memory_ram_tier_complement>"✔ Read-free covering<br/>expert tiers"]
     memory_safetensors["⏸ Load safetensors<br/>models directly"]
     memory_kv_host["○ KV cache partly in<br/>RAM"]
     memory_kv_tiers["⏸ KV cache spills to<br/>RAM, disk"]
-    memory_ram_tier_complement>"⚠ Read-free covering<br/>expert tiers"]
     memory_prefill_misses["⏸ Stream expert misses<br/>during prefill"]
     memory_typed_slots["⏸ Per-expert formats<br/>by tier"]
     memory_tiers ~~~ memory_pair_groups
@@ -40,14 +40,14 @@ flowchart TB
     memory_ram_pool ~~~ memory_prefix_ssd
     memory_kv_auto ~~~ memory_prefix_ssd
     memory_prefix_ssd ~~~ memory_prefix_disk_async
+    memory_prefix_ssd ~~~ memory_ram_tier_complement
     memory_prefix_ssd ~~~ memory_safetensors
-    memory_prefix_ssd ~~~ memory_kv_host
-    memory_prefix_disk_async ~~~ memory_kv_tiers
-    memory_safetensors ~~~ memory_ram_tier_complement
+    memory_prefix_disk_async ~~~ memory_kv_host
+    memory_ram_tier_complement ~~~ memory_kv_host
+    memory_safetensors ~~~ memory_kv_host
+    memory_kv_host ~~~ memory_kv_tiers
     memory_kv_host ~~~ memory_prefill_misses
-    memory_kv_tiers ~~~ memory_typed_slots
-    memory_ram_tier_complement ~~~ memory_typed_slots
-    memory_prefill_misses ~~~ memory_typed_slots
+    memory_kv_host ~~~ memory_typed_slots
     memory_tiers --> memory_pair_groups
     memory_tiers --> memory_prefetch
     memory_prefetch --> memory_io_service
@@ -76,11 +76,10 @@ flowchart TB
     class memory_tiers,memory_kv_auto,memory_prefix_ssd,memory_prefix_disk_async unrated
     class memory_pair_groups,memory_ram_freq,memory_adaptive_tier mixed
     class memory_prefetch,memory_conversion,memory_io_service vsucc
-    class memory_low_bit_kv succ
+    class memory_low_bit_kv,memory_ram_tier_complement succ
     class memory_ram_pool dead
     class memory_safetensors,memory_kv_tiers,memory_prefill_misses,memory_typed_slots parked
     class memory_kv_host next
-    class memory_ram_tier_complement finding
 ```
 <!-- END GENERATED: track-memory -->
 
@@ -104,7 +103,7 @@ flowchart TB
 | `memory-kv-auto` | Planner picks the KV format | feature | local | done | unrated | 2026-11-23 | 2026-11-23 | serving-kv-layout |  |  |  | docs/adr/0086-kv-format-auto.md; crates/planner/tests/kv_auto.rs; docs/notes/strata-parity.md |
 | `memory-prefix-disk-async` | Disk prefix restore off the step | feature | local | done | unrated | 2026-11-23 | 2026-11-23 | memory-prefix-ssd |  |  |  | docs/adr/0087-prefix-cache-disk-tier.md; crates/scheduler/src/prefix_cache.rs; crates/scheduler/src/prefix_disk.rs; crates/scheduler/src/scheduler.rs |
 | `memory-prefix-ssd` | Prefix cache spills to SSD | feature | local | done | unrated | 2026-11-23 | 2026-11-23 | serving-prefix-cache |  |  |  | docs/adr/0087-prefix-cache-disk-tier.md; crates/scheduler/src/prefix_cache.rs; crates/scheduler/src/prefix_disk.rs |
-| `memory-ram-tier-complement` | Read-free covering expert tiers | defect | ci | next | unrated |  |  | bench-235b-stream-predict |  |  |  |  |
+| `memory-ram-tier-complement` | Read-free covering expert tiers | defect | ci | done | unrated | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  |  | crates/memory/tests/replay.rs; crates/model/tests/cpu_experts.rs; crates/memory/src/replay/sim.rs |
 | `memory-prefill-misses` | Stream expert misses during prefill | feature | local | parked | unrated |  |  | memory-io-service |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier | feature | local | parked | unrated |  |  | serving-kv-layout, planner-quality |  |  |  |  |
 
@@ -127,7 +126,7 @@ flowchart TB
 | `memory-kv-auto` | Planner picks the KV format | CI run 45097627980 on 948b770 passed cargo test on Linux and Windows, including kv_auto (9 tests, the fixture sweep and the memory proptest). Built, CI-tested, not measured. |  | serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16. | Formats exist (ADR 0050 b); judged by a paired run on a model we run. Measured 2026-11-23 (regression-gate-20261123) - on the 30B auto keeps f16 up to ctx 229376 and picks q8_0 at 262144 where f16 does not start; at ctx 32768 q8_0 over f16 is 0.92 at c4 and 0.86 at c1. |  |  |  |  |
 | `memory-prefix-disk-async` | Disk prefix restore off the step | CI memory-prefix-disk-async run 45115915312: test (ubuntu-24.04) success, test (windows-latest) success; disk restore no longer stalls a running sequence, matches a RAM restore, falls back on a failed read, keeps the file on cancel (not measured) |  | A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet. | A 20K-token Qwen3-8B snapshot is about 2.9 GB, about a second of NVMe read that stalled every sequence before. The tests use a gated reader on a fake backend. A paired run of disk restore against recompute on a box is still open. |  |  |  |  |
 | `memory-prefix-ssd` | Prefix cache spills to SSD | CI memory-prefix-ssd run 45091422684: test (ubuntu-24.04) success, test (windows-latest) success; the spill, restore, budget, replacement, cleanup and write-failure tests and the scheduler restore test pass (not measured) |  | Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet. | Default off. A paired speed run on a box (disk restore against recompute) is a later item. |  |  |  |  |
-| `memory-ram-tier-complement` | Read-free covering expert tiers |  |  | When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again). |  |  |  |  |  |
+| `memory-ram-tier-complement` | Read-free covering expert tiers | CI run 45415720514 ubuntu test cpu_covering_slots_read_nothing_after_the_refresh ... ok; test covering_slots_leave_the_ram_tier_holding_the_complement ... ok |  | When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again). |  |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill |  |  | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). | Parked with Track B (m2-plan, Track B: candidate first item when it resumes). Done when: one timed box run of the prefill buckets first, then a paired run of the 235B 32K prefill. |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier |  |  | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). | Parked: was waiting for the KV and slot layout (C6, decided chunked 2026-11-14); nothing schedules it now. Done when: a mix of slot formats passes parity and the quality gate. |  |  |  |  |
 
