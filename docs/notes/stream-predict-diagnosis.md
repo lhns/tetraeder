@@ -4,9 +4,9 @@ Date 2026-11-24. Phase 6, M3. Input: session `bench/results/stream-predict-20261
 
 ## Summary
 
-- The two code paths price the same plan the same way. 0.49 (ADR 0091 step 2) against 0.145 (`node-predict`) is the hardware graph, not the code: the reader's copy rate is the CPU bandwidth divided by the thread count (40 GB/s / 61 = 0.66 GB/s here, / 12 = 3.3 GB/s on the cluster fixture). Neither number is right; the run read at about 2.8 GB/s.
+- The two code paths price the same plan the same way. 0.49 (ADR 0091 step 2) against 0.145 (`node-predict`) is the hardware graph, not the code: the reader's copy rate is the CPU bandwidth divided by the thread count (40 GB/s / 61 = 0.66 GB/s here, / 12 = 3.3 GB/s on the cluster fixture). Neither number is right; the run read at 2.8 to 3.3 GB/s.
 - Three of the README's readings do not hold. CPU expert compute is not priced 2x too slow: the model sends 75% of decode pairs to the CPU and the run sent 30%, so the bytes are off, not the rate. Arm R's prefill expert matmuls did not run on the CPU: op offload ran them on the GPU, as the cost model assumes. Arm D2's whole-file prefill read is a cold first request, not a property of the 52-slot tier.
-- The judged plan's segments are arm R's regime (32 VRAM and 96 RAM slots, every expert resident). There, the decode error (-0.45, -0.33 with the trace) is structural and survives any calibration of the fitted rates: the routing input (VRAM pair share 0.25 uniform, 0.41 trace, 0.70 measured). ADR 0091's "the uniform routing prior does not enter" is wrong for these segments.
+- The judged plan's segments are arm R's regime (32 VRAM and 96 RAM slots, every expert resident). There, the decode error (-0.45, -0.33 with the trace) is structural and survives any calibration of the fitted rates: the routing input (VRAM pair share 0.25 uniform, 0.41 trace, 0.70 measured). ADR 0091's "the uniform routing prior does not enter" is wrong for these segments. The anchor fit does not save it either: without a replay it takes the anchors' full-hit rate (0.148 in arm R) as the pair share.
 - Arm R's prefill error (+0.35) is mostly fitted (offload copy at about 15 GB/s against the 20 GB/s PCIe prior). About +0.11 is structural: 21.6 GB still read after one warm pass, because the RAM tier keeps copies of the VRAM hot set.
 - Arm D2's errors are mostly structural: the reader copy-rate artifact in decode; in prefill, the cold first request, the hot-set refresh inside the timed call, and the offload copy of whole RAM-slot tensors per chunk.
 - Arm D OOMed because the planner was given the nominal 64 GB, not the 61 GB the balloon leaves. The footprint was right.
@@ -38,7 +38,7 @@ The pick can differ only on a tie of `request_s` (references pick per ubatch, th
 
 The prefill gap (100 against 85.7 tok/s) is the disk curve: prefill reads have no copy term, and the disk-prior variant gives 100.4.
 
-**Which is right:** neither. One thread's copy rate does not shrink when the container gets more cores. Arm D2 read 682 MB per token in 242 ms of reader time, copies included (2.8 GB/s), on 61 threads. The 12-thread number is closer by accident. The fix is in section 7 (C2).
+**Which is right:** neither. One thread's copy rate does not shrink when the container gets more cores. Arm D2 read 682 MB per token, copies included, at 2.8 to 3.3 GB/s on 61 threads: 2.8 GB/s over the prefetch read time (242 ms), 3.3 GB/s over the streamer time (208 ms). The 12-thread number is closer by accident. The fix is in section 7 (C2).
 
 **Equivalence test (for a Sonnet worker)**, `crates/planner/tests/cluster.rs`, next to `a_reference_predicts_as_the_single_node_path_does`:
 
@@ -54,6 +54,7 @@ fn a_reference_equals_its_node_run() {
             let slots = |id| st.expert_cache.iter().find(|c| c.device == id).unwrap().slots;
             let (v, ram, ub) = (slots("gpu0"), slots("cpu0"), r.plan.knobs.ubatch.unwrap());
             let one = hw.node_graph(seg.node.as_deref());
+            if one.device("nvme0").is_none() { continue; } // node_run needs the builder disk
             let (pinned, _) = single_node_runs(&one, &layout, &W, Some((v, ram)), None).unwrap();
             let run = pinned.iter().find(|x| x.ubatch == ub).unwrap();
             assert_eq!(run.pp_tps.to_bits(), r.prediction.pp_tps.to_bits(), "{name}");
@@ -66,7 +67,7 @@ fn a_reference_equals_its_node_run() {
 }
 ```
 
-`W` is the file's `Workload { prompt: 2048, gen: 128 }`. Nodes without `nvme0` are skipped by `single_node_runs` returning `Err`; skip on `Err` only when `seg`'s node has no disk. A second test pins the explanation and fails until C2 lands: in `costmodel/src/predict.rs` tests, `the_reader_copy_rate_does_not_depend_on_the_thread_quota` takes `hw_disk()` with `cpu0.threads` 12 and then 61 (no thread curve), the same `TierFeatures`, and asserts equal `read:nvme0` terms.
+`W` is the file's `Workload { prompt: 2048, gen: 128 }`. Every other `Err` is a test failure. The test must run at least one reference that has a GPU and a disk (assert a counter above 0). A second test pins the explanation and fails until C2 lands: in `costmodel/src/predict.rs` tests, `the_reader_copy_rate_does_not_depend_on_the_thread_quota` takes `hw_disk()` with `cpu0.threads` 12 and then 61 (no thread curve), the same `TierFeatures`, and asserts equal `read:nvme0` terms.
 
 ## 2. Term table
 
@@ -97,7 +98,7 @@ Measured terms come from `decode_profile_per_token` and `prefill_profile_per_uba
 | tg | GPU and hops | 19.1 ms; 21.3 ms | 0.5 ms GPU-only segments | Fitted |
 | tg | Host | none | 16.3 ms | Fitted through c0 |
 | tg | Total | 7.35 s; 1.30 s | 379 ms | e_tg -0.95; -0.71 |
-| pp | Disk | 16.1 s (64.4 GB at 4.0 GB/s, the uniform steady-state share) | streamer 36.0 s for 137.8 GB: 12073 experts, every one once plus 41 | Structural, a protocol mismatch: the timed prefill was the process's first (no warm pass), so it is a cold first touch. A warm 52-slot tier reads about 60 of 112 per layer, about 64 GB, which the uniform prior gets right |
+| pp | Disk | 16.1 s (64.4 GB at 4.0 GB/s, the uniform steady-state share) | streamer 36.0 s for 137.8 GB: 12073 experts, every one once plus 41 | Structural, a protocol mismatch: the timed prefill was the process's first (no warm pass), so it is a cold first touch. A warm 52-slot tier reads about 50 to 64 GB: the trace replay `replay-D2.json` gives 26.9 MB per token (55 GB per ubatch), and with LRU and hits first at most 60 of 112 experts per layer miss (64 GB). The uniform prior's 64.4 GB is the upper end |
 | pp | Hot-set refresh | none | 7.7 s (`prefill_s` 57.9 against profile total 50.2; 1496 uploads; `finish_step` runs `refresh_hot_set` after the first prefill) | Structural (a first-request cost) |
 | pp | Offload copy | 6.01 s (120 GB at 20 GB/s) | in `compute_ms` 16.1 s: 3 chunks per layer, each copying its whole 52-slot tensor, so 156 slot rows (167 GB) instead of 112 | Rate fitted. Bytes structural (copies per chunk) |
 | pp | GPU compute and hops | 1.19 + 1.37 + 0.28 s | in the 16.1 s; segment 0 took 142 ms (cold CUDA kernels, no warm pass) | Fitted |
@@ -114,7 +115,12 @@ Ideal: every fitted parameter set to the value that makes its term equal the mea
 | D2 tg | -0.95, -0.71 | -0.94, -0.67 (fitting B_cpu to 47 GB/s lifts `B_copy` only to 0.78 GB/s) | The copy-rate artifact and the uniform bytes. With the trace and a real copy rate (8 GB/s; `B_eff` 2.66 GB/s, 237 ms) about -0.10 |
 | D2 pp | +1.32 | about +1.14 (copy at 15 GB/s) | Cold first touch (+73 GB, about 18 s), refresh (7.7 s), per-chunk copies (+47 GB, about 3 s). With all three priced, about +0.03 |
 
-**A caveat that matters for the exit.** A real fit does not reach the "ideal" column: it fits the rates through the model's features. If the anchors' routing matched the judged run, B_cpu would absorb the share error: 6.52 GB per 54 ms gives an unphysical 120 GB/s, and the judged prediction would land close for the wrong reason. ADR 0091's anchors take a fixed-seed hidden tensor as input, not the exit prompt's hidden states, so their routing locality is unknown and need not match. Arm R's share went from 0.25 (slots) to 0.70 because the hot set came from the same prompt's prefill. The model needs the routing as an input (section 7, C1), and the anchors must be fitted with their own measured shares.
+**A caveat that matters for the exit: how the fit sees an anchor's routing.** A real fit does not reach the "ideal" column, because it fits the rates through the model's features. The builder fit (`score_builder_curve` in `planner/src/score.rs`, which ADR 0091's "as ADR 0040 and 0056 fit them for the streaming builder" names) builds each anchor's features in one of two ways:
+
+- from a routing replay, if it passes ADR 0056's fidelity gate (replayed RAM hit within 0.5 points of the anchor's);
+- otherwise from `HitModel`, an interpolation of the anchors' measured `decode_layers.full_hit_rate_mean`.
+
+`builder_features` takes that value as the VRAM pair share. The full-hit rate is the share of layer steps with every routed expert in VRAM, which is a different quantity: arm R shows 0.148 full-hit against a 0.70 pair share, and D2 shows 0.006 against 0.466. On the `HitModel` path the fit charges about 85% of the active expert bytes to the CPU and absorbs the gap into B_cpu (7.3 GB per 54 ms is about 135 GB/s, unphysical). That transfers to the judged run only if its ratio of full-hit to pair share matches the anchors'. ADR 0091's anchors take a fixed-seed hidden tensor as input, not the exit prompt's hidden states, so their routing locality need not match. Arm R's share went from 0.25 (slots) to 0.70 because the hot set came from the same prompt's prefill. The model needs the routing as an input (section 7, C1). The anchor features need the measured pair share as the share and the full-hit rate only for the switches.
 
 ## 3. The 21.6 GB in arm R's prefill
 
@@ -129,7 +135,7 @@ The routing replay of `predictions/replay-R.json` shows the same thing: it mirro
 
 **Does it break the exit's premise?** Yes, in two ways. (a) ADR 0091's "nothing comes from disk" holds only from the third request of a process. The first request reads the whole segment, about 68.6 GB of experts at 47 layers, plus the refresh (arm R's warm pass ran at 23.4 tok/s). The second reads about 16% of the RAM tier. (b) Case S takes ADR 0068's workload and rounds, and each `exit_regime`-style round is a fresh process, so a judged pp2048 would be the cold first request unless the protocol says otherwise. ADR 0091 does not say.
 
-**Fix: engine-side, plus an explicit protocol.** When a layer's active compute slots plus RAM slots cover every expert, `refresh_hot_set` should leave RAM holding exactly the complement of the hot set: free the RAM slots of the hot experts and read the missing non-hot ones. Then a covering plan is read-free from the second request on, for any routing, and the one-time cost falls on the first request. The model should not price first touch. The exit judges a serving rate, and first touch is a per-process transient whose size depends on the warm-up, not on the plan. Pricing it would make the prediction a prediction of the protocol. The protocol has to make the steady state explicit: warm requests until a prefill reads 0 bytes (covering plans) or one full request (others), and a covering plan whose judged prefill reads more than 0 bytes is unclean.
+**Fix. Engine-side, plus an explicit protocol.** When a layer's active compute slots plus RAM slots cover every expert, `refresh_hot_set` should leave RAM holding exactly the complement of the hot set: free the RAM slots of the hot experts and read the missing non-hot ones. Then a covering plan is read-free from the second request on, for any routing, and the one-time cost falls on the first request. The model should not price first touch. The exit judges a serving rate, and first touch is a per-process transient whose size depends on the warm-up, not on the plan. Pricing it would make the prediction a prediction of the protocol. The protocol has to make the steady state explicit: warm requests until a prefill reads 0 bytes (covering plans) or one full request (others), and a covering plan whose judged prefill reads more than 0 bytes is unclean.
 
 ## 4. Prefill expert matmuls in arm R: on the GPU, not the CPU
 
@@ -137,15 +143,17 @@ They ran on the GPU. With `op_offload` and a step of at least 32 tokens (`offloa
 
 - The engine used 3.8 cores during arm R's prefill and 26.9 in decode (host sampler `engine_cores`), with GPU busy at 65%.
 - 366,635 pairs at 2048 rows per layer in 9.5 s is not a 61-thread CPU K-quant rate.
-- Both arms have exactly one GPU-only segment per ubatch (`segs_gpu` 1): segment 0, which holds no expert group. Its 142 ms in D2 against 6 ms in R is cold CUDA kernels: D2 had no warm pass.
+- Both arms have exactly one GPU-only segment per ubatch (`segs_gpu` 1): segment 0, which holds no expert group. Its 142 ms in D2 against 6 ms in R is most likely first use of the 2048-row kernels, because D2 had no warm pass. That is an inference, not separated in the profile.
 
-ADR 0030 has no rule on this (its decision list has no point 6 about prefill placement). The rule is ADR 0044. The cost model knows it: `predict.rs` charges `offload_copy` plus `offload_compute` for CPU parts at M >= 32, with the same threshold. Arm R's prefill error is therefore the copy rate (fitted) and the first-touch reads (section 3), not placement. Aside (not a fix here): the hot set served 76% of prefill pairs (CPU pairs 23.8%), yet op offload copies the full 103 GB RAM tier per 2048-token ubatch. Whether computing the remaining 24% on the CPU beats the copy is a separate measurement.
+ADR 0030 has no rule on this (its decision list has no point 6 about prefill placement). The builder rule is ADR 0035's "placement v1": VRAM misses are computed from their RAM slots on the CPU backend. ADR 0044 moves those ops to the GPU at 32 or more step tokens. The cost model knows it: `predict.rs` charges `offload_copy` plus `offload_compute` for CPU parts at M >= 32, with the same threshold. Arm R's prefill error is therefore the copy rate (fitted) and the first-touch reads (section 3), not placement. Aside (not a fix here): the hot set served 76% of prefill pairs (CPU pairs 23.8%), yet op offload copies the full 103 GB RAM tier per 2048-token ubatch. Whether computing the remaining 24% on the CPU beats the copy is a separate measurement.
 
 ## 5. Budget rule under `EMULATE_RAM_GB`
 
 **Why the 64 GB pick OOMed.** `arms/oom-D-cgroup-memory.json`: limit 1032.77 GB, balloon 968.77 GB. At the last sample before the kill, anon was 1029.71 GB (60.94 GB outside the balloon, the engine's RSS 61.2 GB including file-backed pages) and file 0.52 GB. That leaves 2.55 GB of kernel memory: the balloon's page tables (968.77 GB / 4096 x 8 B = 1.89 GB) plus the engine's page tables and slab. So the engine could use about 61 GB, and the planner's pick needed tier + 2.4 GB = 62.4 GB. The planner's own footprint (`footprint`: tier + embed 0.35 GB + `BUILDER_IO` 0.27 GB + `HOST_RESERVE` 2.15 GB = 62.9 GB) is slightly conservative against the measured peak (tier + 2.29 to 2.45 GB in R and D2) and is not the problem. The problem is the budget: the planner was given 64 GB (63.4 GB after its 1% margin), and the container left about 61. One composition detail: the measured `io` buffer is 1.6 GB, not `BUILDER_IO`'s 256 MiB. `HOST_RESERVE` covers it today; worth correcting when the footprint is next touched.
 
-**Rule (proposed for ADR 0092).** The planner's RAM budget under the balloon is measured, not nominal. `exit_run.sh`, after the balloon holds and with the samplers running, before the engine starts, writes into the node graph's `cpu0.capacity_bytes`:
+The balloon also takes 8 to 9 minutes to fill, and `scripts/sp_arms.sh` starts the engine once it holds 90%: at round 1's first sample the container's anon was 886.6 GB against the 968.8 GB target. The balloon finished filling while the engine loaded, and the kill came after that, so the arithmetic above holds. A headroom read at engine start, though, would have been about 80 GB too high.
+
+**Rule (proposed for ADR 0092).** The planner's RAM budget under the balloon is measured, not nominal. `exit_run.sh` waits until `balloon_guard` reports the full target (not 90%). Then, with the samplers running and before the engine starts, it writes into the node graph's `cpu0.capacity_bytes`:
 
 ```
 ram_budget = memory.max - memory.current + inactive_file - 1 GiB
@@ -189,7 +197,13 @@ Engine and harness:
 
 Cost model and planner (one ADR, 0092; `MODEL_VERSION` 6; the ledger ratchet applies):
 
-- **C1. Routing as an input.** The decode split of a builder segment (VRAM pair share, full-hit share, RAM hit, disk bytes) comes from a replay of a routing trace of the judged workload: the frozen exit prompt, pp2048 plus greedy tg128, recorded once with `TETRAEDER_EXIT_ROUTING_OUT` and hash-frozen before any judged run. It no longer comes from the uniform prior. `predict --cluster` and `node-predict` take `--tier-replay` per segment. Without a trace, the prediction is marked `routing: uniform` and is not judgeable. Anchor features are built from each anchor's own measured `decode_layers` shares and `cpu_pairs`, not from a prior, so the fit sets physical rates. Check: in sample, arm R and D2 re-priced with their measured shares and in-sample fitted rates are within 0.15 on tg (in-sample only, recorded as such). Planner rule-4 tests run on every fixture with a synthetic trace.
+- **C1. Routing as an input.** The decode split of a builder segment (VRAM pair share, full-hit share, RAM hit, disk bytes) comes from a replay of a routing trace of the judged workload: the frozen exit prompt, pp2048 plus greedy tg128, recorded once with `TETRAEDER_EXIT_ROUTING_OUT` and hash-frozen before any judged run. It no longer comes from the uniform prior. `predict --cluster` and `node-predict` take `--tier-replay` per segment. Without a trace, the prediction is marked `routing: uniform` and is not judgeable. Anchor features are built from each anchor's own measured `decode_layers.vram_pair_share` (the share) and `full_hit_rate_mean` (the switches only), not from a prior. That replaces `HitModel`'s use of the full-hit rate as the share, so the fit sets physical rates. A fidelity gate extends ADR 0056's:
+
+- the replayed decode `vram_share` must lie within 0.02 of the measured `vram_pair_share` on every anchor and on the judged run;
+- the full-hit share within 0.02;
+- the RAM hit within 0.005, as today.
+
+A gate miss makes the prediction not judgeable. The gate's open risk: D2's replay of another prompt's trace gives a RAM hit of 0.911 against 0.874 measured, and a VRAM share of 0.246 against 0.466. Check: in sample, arm R and D2 re-priced with their measured shares and in-sample fitted rates are within 0.15 on tg (in-sample only, recorded as such). Planner rule-4 tests run on every fixture with a synthetic trace.
 - **C2. Reader copy rate.** `B_copy` becomes the CPU device's measured single-thread copy rate (`copy_bytes_per_s`; prior 8 GB/s, measured by `tetraeder-bench disk-curve --copy` or a memcpy probe in the profile), not `cpu_rates(1)`. Check: the failing test of section 1 passes. D2 decode re-priced with the trace replay lands within 0.15 in sample (estimate -0.10).
 - **C3. Offload copy per chunk.** The prefill offload copy of a builder segment is `ceil(outside / ram_slots) x ram_slots` slot rows per layer, not `(1 - f)` of the expert bytes. Covering plans are unchanged (one chunk). Check: unit test (16, 52) gives 3 chunks and 156 rows. D2's in-sample prefill compute term within 0.15 of `compute_ms` (16.1 s).
 - **C4. Budget rule.** Section 5's `ram_budget` in `exit_run.sh` and in the node graph. `ram_slot_options` gains the largest RAM slot count that fits the budget, so the pick is not limited to quarter, half and all of the experts outside VRAM. Check: rule-5 property "footprint never exceeds budget" on every fixture, plus a test that the session's graph with `ram_budget` 59.9 GB rejects (16, 56) and accepts (16, 52).
@@ -213,7 +227,7 @@ One RTX 3090 box (24 GB, `cuda: ok`, 230 GB disk, CPU quota 8 or more, the exit'
 2. Whole-model greedy run of the frozen exit prompt (streamed, report only). It dumps the hidden rows at layer 47 (E3) and records the routing trace (C1). Hash both. About 3 minutes.
 3. Anchors the exit's way: layers 47 to 58 and 47 to 70 (quarter and half of the span), fixed-seed hidden input, no head, 32 VRAM + 96 RAM slots, pp2048 tg128, two rounds, warm (E2). Fit.
 4. Freeze `predict` of the segment layers 47 to 93 (32 + 96 slots, ubatch 2048), with decode from the trace replay of step 2. Commit the hash before step 5.
-5. Judged: the 47-layer segment, input from step 2's hidden rows, warm until prefill reads 0 bytes, three rounds. Pass: `|e_pp| <= 0.15` and `|e_tg| <= 0.15` on the medians.
+5. Judged: the 47-layer segment, input from step 2's hidden rows, warm until prefill reads 0 bytes, three rounds. The C1 fidelity gate is applied to the judged rounds' measured shares and is reported before the errors. Pass: `|e_pp| <= 0.15` and `|e_tg| <= 0.15` on the medians.
 6. Report only: the same segment with fixed-seed input (the routing gap between anchor input and real input), and step 3's fit redone on real-hidden anchors.
 
 About 1.5 h of box time, dominated by the download.
