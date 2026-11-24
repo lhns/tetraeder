@@ -15,8 +15,8 @@ flowchart TB
     cluster_mtls["✔ Node certificates<br/>and trust rules"]
     cluster_discovery["✔ Node list, health<br/>and probes"]
     cluster_planner_hardening>"⚠ Harden the cluster<br/>planner inputs"]
-    cluster_pipeline_nodes["⛔ Pipeline stages<br/>across machines"]
-    cluster_replicas["⛔ Model replicas<br/>behind one router"]
+    cluster_pipeline_nodes["○ Pipeline stages<br/>across machines"]
+    cluster_replicas["○ Model replicas<br/>behind one router"]
     cluster_join_leave["⛔ Nodes join and leave<br/>live"]
     cluster_remote_kv["⛔ KV cache on another<br/>machine"]
     cluster_failover["⛔ Keep serving when a<br/>node dies"]
@@ -63,7 +63,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery unrated
     class cluster_planner_hardening finding
-    class cluster_pipeline_nodes,cluster_replicas,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_replica_scaling blocked
+    class cluster_pipeline_nodes,cluster_replicas next
+    class cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_replica_scaling blocked
     class cluster_experts_nodes parked
 ```
 <!-- END GENERATED: track-cluster -->
@@ -82,10 +83,10 @@ flowchart TB
 | `cluster-planner-hardening` | Harden the cluster planner inputs | defect | ci | next | unrated |  |  | cluster-planner |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-transport |  |  | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | docs/adr/0091-phase6-multi-node.md; crates/control/tests/sim.rs; crates/control/tests/tls_loopback.rs; crates/transport/tests/hardening.rs |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | blocked | unrated |  |  | cluster-discovery, cluster-replicas |  |  |  |  |
-| `cluster-pipeline-nodes` | Pipeline stages across machines | feature | cluster | blocked | unrated |  |  | cluster-planner, cluster-discovery |  |  |  |  |
+| `cluster-pipeline-nodes` | Pipeline stages across machines | feature | cluster | next | unrated |  |  | cluster-planner, cluster-discovery |  |  |  |  |
 | `cluster-experts-nodes` | Experts on other machines | feature | cluster | parked | unrated |  |  | bench-phase6-exit |  |  |  |  |
 | `cluster-remote-kv` | KV cache on another machine | feature | cluster | blocked | unrated |  |  | cluster-replicas |  |  |  |  |
-| `cluster-replicas` | Model replicas behind one router | feature | cluster | blocked | unrated |  |  | cluster-discovery |  |  |  |  |
+| `cluster-replicas` | Model replicas behind one router | feature | cluster | next | unrated |  |  | cluster-discovery |  |  |  |  |
 | `cluster-failover` | Keep serving when a node dies | feature | cluster | blocked | unrated |  |  | cluster-replicas, cluster-join-leave |  |  |  |  |
 | `cluster-replica-scaling` | Add and remove replicas live | feature | cluster | blocked | unrated |  |  | cluster-replicas, bench-m3-report |  |  |  |  |
 
