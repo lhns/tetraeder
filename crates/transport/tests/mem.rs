@@ -97,7 +97,7 @@ fn close_fails_a_blocked_read_at_once() {
 
 // hardware: none
 #[test]
-fn unknown_nodes_and_duplicate_connections_are_refused() {
+fn unknown_nodes_are_refused_and_a_second_connection_replaces_the_first() {
     let board = MemTransport::switchboard();
     let (a, b) = (board.node(&id("a")), board.node(&id("b")));
     assert_eq!(
@@ -109,16 +109,21 @@ fn unknown_nodes_and_duplicate_connections_are_refused() {
     );
     let first = a.connect(&peer("b"), Purpose::Prefix).unwrap();
     let inb = b.accept().unwrap();
+    // The second connection for the purpose replaces the first, which is reset.
+    let second = a.connect(&peer("b"), Purpose::Prefix).unwrap();
+    let _second_in = b.accept().unwrap();
+    let mut first = first;
     assert_eq!(
-        a.connect(&peer("b"), Purpose::Prefix).err().unwrap().kind(),
-        ErrorKind::AlreadyExists
+        first.tx.write(b"x").unwrap_err().kind(),
+        ErrorKind::ConnectionReset
     );
+    drop(second);
+    let first = a.connect(&peer("b"), Purpose::Prefix).unwrap();
     // Another purpose, and the other direction, are separate connections.
     let _c = a.connect(&peer("b"), Purpose::Control).unwrap();
     let _d = b.connect(&peer("a"), Purpose::Prefix).unwrap();
     drop(first);
     drop(inb);
-    let _again = a.connect(&peer("b"), Purpose::Prefix).unwrap();
 }
 
 // hardware: none

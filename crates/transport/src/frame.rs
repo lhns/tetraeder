@@ -47,6 +47,11 @@ pub fn write_frame<W: Write, T: Serialize>(
 
 /// The next frame; `Ok(None)` at a clean end of input (EOF before the first byte).
 pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, String> {
+    read_frame_max(r, MAX_FRAME)
+}
+
+/// [`read_frame`] with a smaller limit, for a connection whose purpose has small frames.
+pub fn read_frame_max<R: Read>(r: &mut R, max: u64) -> Result<Option<Frame>, String> {
     let mut len = [0u8; 4];
     let mut got = 0;
     while got < len.len() {
@@ -59,7 +64,7 @@ pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, String> {
         }
     }
     let total = u64::from(u32::from_le_bytes(len));
-    if !(4..=MAX_FRAME).contains(&total) {
+    if !(4..=max.min(MAX_FRAME)).contains(&total) {
         return Err(format!("bad frame length {total}"));
     }
     // `take` grows the buffer as bytes arrive, so a corrupt length cannot allocate ahead.
@@ -72,10 +77,10 @@ pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, String> {
         return Err("truncated frame".into());
     }
     let hlen = u32::from_le_bytes([body[0], body[1], body[2], body[3]]) as usize;
-    if 4 + hlen > body.len() {
+    let Some(end) = hlen.checked_add(4).filter(|e| *e <= body.len()) else {
         return Err("bad header length".into());
-    }
-    let payload = body.split_off(4 + hlen);
+    };
+    let payload = body.split_off(end);
     let header = body.split_off(4);
     Ok(Some(Frame { header, payload }))
 }

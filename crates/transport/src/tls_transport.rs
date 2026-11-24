@@ -97,7 +97,48 @@ impl Drop for Rt {
     }
 }
 
-type Live = Mutex<HashMap<(NodeId, Purpose), Arc<AtomicBool>>>;
+/// One live inbound connection: its `dead` flag and a handle to shut its socket down.
+struct LiveEntry {
+    dead: Arc<AtomicBool>,
+    sock: std::net::TcpStream,
+}
+
+type Live = Mutex<HashMap<(NodeId, Purpose), LiveEntry>>;
+
+/// Registration of an inbound connection in the live map; clears it when dropped, so a handshake
+/// cancelled by the timeout or a connection that ended never leaves a stale entry.
+struct LiveGuard {
+    live: Arc<Live>,
+    key: (NodeId, Purpose),
+    dead: Arc<AtomicBool>,
+}
+
+impl Drop for LiveGuard {
+    fn drop(&mut self) {
+        self.dead.store(true, Ordering::SeqCst);
+        let mut live = lock(&self.live);
+        if live
+            .get(&self.key)
+            .is_some_and(|e| Arc::ptr_eq(&e.dead, &self.dead))
+        {
+            live.remove(&self.key);
+        }
+    }
+}
+
+/// Handshakes in flight before authentication; further connections are dropped at once.
+const MAX_HANDSHAKES: usize = 64;
+/// Registered inbound connections (peers x purposes); a replica or segment number is chosen by
+/// the peer, so the map is bounded.
+const MAX_LIVE: usize = 4096;
+/// Accepted connections waiting for `accept`.
+const INBOX: usize = 256;
+/// TCP keepalive: a peer that crashed or whose NAT entry vanished is noticed in about 25 s,
+/// so its entry does not linger. Membership notices faster (heartbeats).
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(10);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+/// Longest `reason` of a refusal that is echoed into an error.
+const MAX_REASON: usize = 120;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -109,7 +150,7 @@ struct Inner {
     acceptor: TlsAcceptor,
     nodes_anchors: Arc<Anchors>,
     buffers: SocketBuffers,
-    live: Live,
+    live: Arc<Live>,
     log: Mutex<Vec<LinkBuffers>>,
     stop: watch::Sender<bool>,
 }
@@ -120,7 +161,7 @@ struct Raw {
     sock: std::net::TcpStream,
     peer: NodeId,
     purpose: Purpose,
-    dead: Arc<AtomicBool>,
+    guard: LiveGuard,
 }
 
 /// TCP + TLS 1.3 (rustls, ring), mutual authentication.
@@ -158,12 +199,16 @@ impl TlsTransport {
             .with_client_cert_verifier(verifier.clone())
             .with_single_cert(chain.clone(), identity.key.clone_key())?;
         server.alpn_protocols = vec![ALPN.to_vec()];
+        // No session resumption: every connection checks the certificate chain and the node id.
+        server.session_storage = Arc::new(rustls::server::NoServerSessionStorage {});
+        server.send_tls13_tickets = 0;
         let mut client = ClientConfig::builder_with_provider(provider)
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .dangerous()
             .with_custom_certificate_verifier(verifier)
             .with_client_auth_cert(chain, identity.key.clone_key())?;
         client.alpn_protocols = vec![ALPN.to_vec()];
+        client.resumption = rustls::client::Resumption::disabled();
 
         let rt = Builder::new_multi_thread()
             .worker_threads(2)
@@ -180,11 +225,11 @@ impl TlsTransport {
             acceptor: TlsAcceptor::from(Arc::new(server)),
             nodes_anchors: trust,
             buffers,
-            live: Mutex::new(HashMap::new()),
+            live: Arc::new(Mutex::new(HashMap::new())),
             log: Mutex::new(Vec::new()),
             stop,
         });
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(INBOX);
         let mut local_addr = None;
         let listening = if let Some(addr) = listen {
             let std_listener = bind(addr, buffers)?;
@@ -226,7 +271,8 @@ impl TlsTransport {
             rd,
             wr,
             raw.sock,
-            raw.dead,
+            Arc::clone(&raw.guard.dead),
+            Some(raw.guard),
             raw.peer,
             raw.purpose,
             m,
@@ -300,7 +346,49 @@ fn peer_id(certs: Option<&[CertificateDer<'static>]>) -> io::Result<NodeId> {
         .and_then(|c| node_id_of(c).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e)))
 }
 
+fn keepalive(tcp: &TcpStream) -> io::Result<()> {
+    let ka = socket2::TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    SockRef::from(tcp).set_tcp_keepalive(&ka)
+}
+
+/// A refusal reason from the peer, cut so it cannot flood an error message or a log.
+fn short(s: &str) -> String {
+    s.chars().take(MAX_REASON).collect()
+}
+
 impl Inner {
+    /// Registers an inbound connection, closing the one it replaces: the peer is authenticated,
+    /// so a second connection for the same purpose means the first is stale (a crashed process,
+    /// a dropped NAT entry). `None` when the map is full.
+    fn register(
+        &self,
+        peer: &NodeId,
+        purpose: &Purpose,
+        sock: &std::net::TcpStream,
+    ) -> Option<LiveGuard> {
+        let key = (peer.clone(), purpose.clone());
+        let dead = Arc::new(AtomicBool::new(false));
+        let entry = LiveEntry {
+            dead: Arc::clone(&dead),
+            sock: sock.try_clone().ok()?,
+        };
+        let mut live = lock(&self.live);
+        if live.len() >= MAX_LIVE && !live.contains_key(&key) {
+            return None;
+        }
+        if let Some(old) = live.insert(key.clone(), entry) {
+            old.dead.store(true, Ordering::SeqCst);
+            let _ = old.sock.shutdown(Shutdown::Both);
+        }
+        Some(LiveGuard {
+            live: Arc::clone(&self.live),
+            key,
+            dead,
+        })
+    }
+
     /// Keeps a handle that can shut the socket down, and records the effective buffers.
     fn tune(
         &self,
@@ -309,6 +397,7 @@ impl Inner {
         purpose: &Purpose,
     ) -> io::Result<(TcpStream, std::net::TcpStream)> {
         tcp.set_nodelay(true)?;
+        keepalive(&tcp)?;
         let std = tcp.into_std()?;
         let keep = std.try_clone()?;
         match effective_buffers(&std) {
@@ -401,7 +490,7 @@ impl Inner {
         if !ans.ok {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                format!("{} refused the connection: {}", peer.id, ans.reason),
+                format!("{} refused the connection: {}", peer.id, short(&ans.reason)),
             ));
         }
         Ok((tls, keep, Arc::new(AtomicBool::new(false))))
@@ -441,31 +530,21 @@ impl Inner {
                 return None;
             }
         };
-        let dead = Arc::new(AtomicBool::new(false));
-        let duplicate = {
-            let mut live = lock(&self.live);
-            let key = (peer.clone(), hello.purpose.clone());
-            if live.get(&key).is_some_and(|d| !d.load(Ordering::SeqCst)) {
-                true
-            } else {
-                live.insert(key, Arc::clone(&dead));
-                false
-            }
-        };
-        let answer = if duplicate {
-            metrics::rejected("duplicate");
-            Answer {
+        // The guard clears the entry on every way out below, also when the timeout cancels us.
+        let Some(guard) = self.register(&peer, &hello.purpose, &keep) else {
+            metrics::rejected("limit");
+            let busy = Answer {
                 ok: false,
-                reason: "duplicate".into(),
-            }
-        } else {
-            Answer {
-                ok: true,
-                reason: String::new(),
-            }
+                reason: "too many connections".into(),
+            };
+            let _ = write_small(&mut tls, &busy).await;
+            return None;
         };
-        if write_small(&mut tls, &answer).await.is_err() || duplicate {
-            dead.store(true, Ordering::SeqCst);
+        let ok = Answer {
+            ok: true,
+            reason: String::new(),
+        };
+        if write_small(&mut tls, &ok).await.is_err() {
             return None;
         }
         {
@@ -488,12 +567,13 @@ impl Inner {
             sock: keep,
             peer,
             purpose: hello.purpose,
-            dead,
+            guard,
         })
     }
 
     fn tune_inbound(&self, tcp: TcpStream) -> io::Result<(TcpStream, std::net::TcpStream)> {
         tcp.set_nodelay(true)?;
+        keepalive(&tcp)?;
         let std = tcp.into_std()?;
         let keep = std.try_clone()?;
         Ok((TcpStream::from_std(std)?, keep))
@@ -503,18 +583,33 @@ impl Inner {
 async fn accept_loop(
     inner: Arc<Inner>,
     listener: TcpListener,
-    tx: mpsc::Sender<Raw>,
+    tx: mpsc::SyncSender<Raw>,
     mut stop: watch::Receiver<bool>,
 ) {
+    let slots = Arc::new(tokio::sync::Semaphore::new(MAX_HANDSHAKES));
     loop {
         tokio::select! {
             r = listener.accept() => {
-                let Ok((tcp, _)) = r else { continue };
+                let tcp = match r {
+                    Ok((tcp, _)) => tcp,
+                    Err(e) => {
+                        // Out of descriptors or a reset before accept: do not spin.
+                        tracing::warn!("accept failed: {e}");
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        continue;
+                    }
+                };
+                let Ok(slot) = Arc::clone(&slots).try_acquire_owned() else {
+                    metrics::rejected("limit");
+                    continue;
+                };
                 let (inner, tx) = (Arc::clone(&inner), tx.clone());
                 tokio::spawn(async move {
+                    let _slot = slot;
                     match tokio::time::timeout(ACCEPT_TIMEOUT, inner.serve(tcp)).await {
                         Ok(Some(raw)) => {
-                            let _ = tx.send(raw);
+                            // A full inbox drops the connection (and its registration).
+                            let _ = tx.try_send(raw);
                         }
                         // Refused: already counted.
                         Ok(None) => {}
@@ -546,6 +641,7 @@ impl Transport for TlsTransport {
             wr,
             keep,
             dead,
+            None,
             peer.id.clone(),
             purpose,
             m,
@@ -608,6 +704,8 @@ struct Shared {
     closed: watch::Sender<bool>,
     dead: Arc<AtomicBool>,
     sock: std::net::TcpStream,
+    /// Clears the acceptor's registration when the last half is gone.
+    _guard: Option<LiveGuard>,
     /// Keeps the runtime alive while a half exists.
     _rt: Arc<Rt>,
 }
@@ -628,6 +726,7 @@ fn build<S>(
     wr: WriteHalf<S>,
     sock: std::net::TcpStream,
     dead: Arc<AtomicBool>,
+    guard: Option<LiveGuard>,
     peer: NodeId,
     purpose: Purpose,
     m: LinkMetrics,
@@ -640,6 +739,7 @@ where
         closed,
         dead,
         sock,
+        _guard: guard,
         _rt: Arc::clone(rt),
     });
     let rx = Rx {
@@ -688,11 +788,11 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin + 'static> Read for Rx<S> {
             }
         });
         match r {
-            // A peer that vanished without `close_notify` (a crash) reads as end of input; a
-            // frame cut in the middle is still caught by `read_frame` as truncated.
+            // A peer that vanished without `close_notify` (a crash, a cut socket) is a reset,
+            // not a clean end: only `close_notify` reads as `Ok(0)`.
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
                 self.shared.dead.store(true, Ordering::SeqCst);
-                Ok(0)
+                Err(io::Error::from(io::ErrorKind::ConnectionReset))
             }
             Ok(0) | Err(_) => {
                 self.shared.dead.store(true, Ordering::SeqCst);

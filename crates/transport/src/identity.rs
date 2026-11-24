@@ -62,6 +62,8 @@ pub fn certs_from_pem(pem: &[u8]) -> Result<Vec<CertificateDer<'static>>> {
 /// A node id may hold letters, digits and `.`, `_`, `-`: it ends up in a URI.
 pub fn check_node_id(id: &str) -> Result<()> {
     let ok = !id.is_empty()
+        && id != "."
+        && id != ".."
         && id.len() <= 63
         && id
             .bytes()
@@ -144,11 +146,23 @@ enum Usage {
     Client,
 }
 
-/// Trust anchors plus the configured node ids.
+/// Trust anchors plus the configured node ids. An anchor that is a CA certificate (basic
+/// constraints `cA`) vouches for every certificate it signs. Any other anchor is a pinned node
+/// certificate: webpki does not check `cA` on an anchor, so the key of a pinned node could sign
+/// a certificate for another node. A pinned certificate therefore vouches only for itself: the
+/// peer's certificate must be the same bytes.
 pub struct Anchors {
-    anchors: Vec<TrustAnchor<'static>>,
+    cas: Vec<TrustAnchor<'static>>,
+    pinned: Vec<(CertificateDer<'static>, TrustAnchor<'static>)>,
     nodes: HashSet<NodeId>,
     algs: WebPkiSupportedAlgorithms,
+}
+
+fn is_ca(cert: &CertificateDer<'_>) -> bool {
+    x509_parser::parse_x509_certificate(cert.as_ref())
+        .ok()
+        .and_then(|(_, x)| x.basic_constraints().ok().flatten().map(|b| b.value.ca))
+        .unwrap_or(false)
 }
 
 impl Anchors {
@@ -157,19 +171,23 @@ impl Anchors {
         nodes: &[NodeId],
         algs: WebPkiSupportedAlgorithms,
     ) -> Result<Self> {
-        let anchors = certs
-            .iter()
-            .map(|c| {
-                webpki::anchor_from_trusted_cert(c)
-                    .map(|a| a.to_owned())
-                    .map_err(|e| anyhow!("not usable as a trust anchor: {e}"))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        if anchors.is_empty() {
+        let (mut cas, mut pinned) = (Vec::new(), Vec::new());
+        for c in certs {
+            let a = webpki::anchor_from_trusted_cert(c)
+                .map(|a| a.to_owned())
+                .map_err(|e| anyhow!("not usable as a trust anchor: {e}"))?;
+            if is_ca(c) {
+                cas.push(a);
+            } else {
+                pinned.push((c.clone(), a));
+            }
+        }
+        if cas.is_empty() && pinned.is_empty() {
             bail!("no trust anchor");
         }
         Ok(Self {
-            anchors,
+            cas,
+            pinned,
             nodes: nodes.iter().cloned().collect(),
             algs,
         })
@@ -190,9 +208,20 @@ impl Anchors {
             Usage::Server => KeyUsage::server_auth(),
             Usage::Client => KeyUsage::client_auth(),
         };
+        let one;
+        let anchors: &[TrustAnchor<'static>] = if let Some((_, a)) = self
+            .pinned
+            .iter()
+            .find(|(c, _)| c.as_ref() == ee.as_ref())
+        {
+            one = [a.clone()];
+            &one
+        } else {
+            &self.cas
+        };
         cert.verify_for_usage(
             self.algs.all,
-            &self.anchors,
+            anchors,
             intermediates,
             now,
             usage,
@@ -229,7 +258,8 @@ pub(crate) struct PeerVerifier {
 impl std::fmt::Debug for Anchors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Anchors")
-            .field("anchors", &self.anchors.len())
+            .field("cas", &self.cas.len())
+            .field("pinned", &self.pinned.len())
             .field("nodes", &self.nodes)
             .finish_non_exhaustive()
     }
@@ -442,6 +472,19 @@ pub mod testing {
                 key_pem: key.serialize_pem(),
             })
         }
+    }
+
+    /// A certificate naming `id`, signed by the key of `signer` (a node's self-signed
+    /// certificate, so not a CA): what a holder of that key can mint.
+    pub fn forge_signed_by(signer_id: &str, signer: &Generated, id: &str) -> Result<Generated> {
+        let skey = rcgen::KeyPair::from_pem(&signer.key_pem)?;
+        let scert = node_params(signer_id)?.self_signed(&skey)?;
+        let key = rcgen::KeyPair::generate()?;
+        let cert = node_params(id)?.signed_by(&key, &scert, &skey)?;
+        Ok(Generated {
+            cert_pem: cert.pem(),
+            key_pem: key.serialize_pem(),
+        })
     }
 
     /// A certificate whose name is not a node id (no `tetraeder-node:` SAN).
