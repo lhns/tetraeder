@@ -29,7 +29,7 @@ flowchart TB
     planner_low_bit_formats["⏸ One and two bit<br/>formats"]
     planner_ep_split["○ Expert-parallel<br/>split on two GPUs"]
     planner_ram_slots_zero["⏸ Plan experts with no<br/>RAM tier"]
-    planner_costmodel_stream_terms["⛔ Cost model 6 for<br/>streamed MoE"]
+    planner_costmodel_stream_terms["○ Cost model 6 for<br/>streamed MoE"]
     planner_live_replan["⛔ Replan without<br/>draining"]
     planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
     planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
@@ -98,9 +98,9 @@ flowchart TB
     class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3,planner_low_ram_modes,planner_node_predict_check unrated
     class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5,planner_ep_prefill_recheck succ
     class planner_core vsucc
-    class planner_cost_model_v5_host2,planner_ep_split next
+    class planner_cost_model_v5_host2,planner_ep_split,planner_costmodel_stream_terms next
     class planner_low_bit_formats,planner_ram_slots_zero,planner_slot_campaign,planner_replan_part_b parked
-    class planner_costmodel_stream_terms,planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
+    class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
 ```
 <!-- END GENERATED: track-planner -->
 
@@ -131,7 +131,7 @@ flowchart TB
 | `planner-low-ram-modes` | Experts on GPU and SSD only | experiment | local | done | unrated | 2026-11-23 | 2026-11-23 | memory-tiers |  |  |  | crates/planner/tests/low_ram_modes.rs; docs/notes/strata-parity.md |
 | `planner-ram-slots-zero` | Plan experts with no RAM tier | feature | local | parked | unrated |  |  | planner-low-ram-modes |  |  |  | crates/planner/tests/low_ram_modes.rs |
 | `planner-node-predict-check` | Node prediction equals the cluster reference | tooling | ci | done | unrated | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  |  | crates/planner/tests/cluster.rs; crates/costmodel/src/predict.rs; docs/notes/stream-predict-diagnosis.md |
-| `planner-costmodel-stream-terms` | Cost model 6 for streamed MoE | feature | ci | blocked | unrated |  |  | bench-235b-stream-predict, planner-node-predict-check, cluster-owner-routing-input |  |  |  |  |
+| `planner-costmodel-stream-terms` | Cost model 6 for streamed MoE | feature | ci | next | unrated |  |  | bench-235b-stream-predict, planner-node-predict-check, cluster-owner-routing-input |  |  |  |  |
 | `planner-slot-campaign` | Check planner's expert slot picks | experiment | box-later | parked | unrated |  |  | planner-fill-tier |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B | feature | local | parked | unrated |  |  | planner-replan |  |  |  |  |
 | `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | experiment | local | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-v4, multi-prefill-no-capture |  |  | ep-4 pp 0.959 | bench/results/v4a-20261121/README.md; bench/results/v2c-20261121/README.md |
