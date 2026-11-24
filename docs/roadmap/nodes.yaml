@@ -2560,7 +2560,7 @@ nodes:
   - bench/results/stream-predict-20261124/errors.json
   - bench/results/stream-predict-20261124/predictions/FROZEN.sha256
   - bench/results/stream-predict-20261124/predictions/d2/FROZEN.sha256
-  verdict_quote: 'clean measurement, bad outcome. On one box the planner''s frozen prediction of the single-node Qwen3-235B-A22B is outside 15% in both regimes, for pp2048 and tg128: arm R (all experts in RAM, 32 VRAM slots) e_pp +0.350, e_tg -0.448; arm D (64 GB budget, experts streamed from NVMe, the re-priced arm D2) e_pp +1.320, e_tg -0.948'
+  verdict_quote: 'clean measurement, bad outcome. On one box the planner''s frozen prediction of the single-node Qwen3-235B-A22B is outside 15% in both regimes, for pp2048 and tg128: arm R (all experts in RAM, 32 VRAM slots) e_pp +0.350, e_tg -0.448'
   headline: 'e_pp +0.35 and e_tg -0.45 with every expert in RAM; +1.32 and -0.95 streamed from NVMe'
   depends_on: []
   replaced_by: []

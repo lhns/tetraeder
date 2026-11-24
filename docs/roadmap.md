@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 46 rated nodes are confirmed by the owner.
+0 of 47 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-regression-gate`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -332,7 +332,6 @@ flowchart TB
 | 30B admission probe rerun | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |
 | 30B same-box A/B | ✔ done · successful | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |
 | 30B concurrency-4 gap | ○ next | The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; the A/A is done (A40 box, two runs 1.001 at c4 and 0.996 at c1, strata-q36-20261123), the bisect of 6b07795 to main and finding the gap are left. |
-| Predict the 235B on one box | ○ next | Before any cluster code, the 235B streamed on one RTX 3090 box under a 64 GB RAM budget is predicted and then measured, to see whether the streaming cost model holds the 15% line that the Phase 6 exit needs (ADR 0091, named risk from ADR 0056). |
 | First two-box cluster session | ⛔ blocked | Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once). |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
@@ -376,7 +375,6 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
-- `bench-235b-stream-predict`: Predict the 235B on one box
 - `serving-cuda-parity`: libllama path differs on CUDA
 
 **cluster**
@@ -422,7 +420,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 115 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 116 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -822,6 +820,7 @@ Generated on 2026-11-24.
 - `serving-parity-sampling`: Sampler parity with llama-server (✔ done · successful). The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
 - `serving-recurrent-reuse`: Recurrent models break slot reuse (✔ fixed). A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
 - `serving-strata-owner-scope`: Which Strata model families to add (✔ done · n/a). The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
+- `bench-235b-stream-predict`: Predict the 235B on one box (✔ done · bad). Before any cluster code, the planner predicted the single-node 235B in two regimes (all experts in RAM with 32 VRAM slots; a 64 GB budget with experts streamed from NVMe), and one A40 box measured both. Neither is within 15% (prefill over-predicted by 34 to 132%, decode under-predicted by 33 to 95%), so the cost-model fix of ADR 0091 comes before the Phase 6 exit. The first pick for 64 GB was OOM-killed on the box; its re-priced version ran.
 - `bench-regression-gate`: Regression gate on final main (✔ done · mixed). One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).
 - `cluster-discovery`: Node list, health and probes (✔ done · unrated). Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091).
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
@@ -857,7 +856,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (20 done, 3 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (33 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (34 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 15 nodes (7 done, 3 next, 4 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
