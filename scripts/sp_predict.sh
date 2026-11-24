@@ -31,7 +31,9 @@ tet="$root/target/release/tetraeder"
 plan="$root/target/release/tetraeder-plan"
 bench="$root/target/release/tetraeder-bench"
 prior="$root/crates/planner/fixtures/rtx3090_prior.toml"
-gpu_bytes=$(( $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1) * 1048576 ))
+gpu_real=$(( $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1) * 1048576 ))
+# arm D is a 3090-class card (the prior's 24 GiB) whatever the box has; arm R may use the whole card
+gpu_d="${GPU_D_BYTES:-25769803776}"
 mem=$(cat /sys/fs/cgroup/memory.max 2> /dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2> /dev/null)
 total=$(awk '/MemTotal/ { print $2 * 1024 }' /proc/meminfo)
 case "$mem" in '' | max) mem=$total ;; esac
@@ -40,7 +42,7 @@ ram_d="${RAM_D_BYTES:-64000000000}"
 die() { say "FATAL: $*"; echo "SP_PREDICT_DONE rc=1"; exit 1; }
 
 main() {
-  say "sp_predict start threads=$threads gpu_bytes=$gpu_bytes mem=$mem ram_d=$ram_d"
+  say "sp_predict start threads=$threads gpu_real=$gpu_real gpu_d=$gpu_d mem=$mem ram_d=$ram_d"
   for f in "$model" "$tet" "$plan" "$bench" "$trace"; do [ -e "$f" ] || die "missing $f"; done
   "$tet" plan layout "$model" --out "$p/layout.json" || die "layout"
   # the disk curve beside nothing else: idle disk and CPU
@@ -48,14 +50,20 @@ main() {
   local arm ram
   for arm in D R; do
     ram=$ram_d
-    [ "$arm" = R ] && ram=$mem
+    gpu_bytes=$gpu_d
+    pin=()
+    if [ "$arm" = R ]; then
+      ram=$mem
+      gpu_bytes=$gpu_real
+      [ -n "${PIN_R:-}" ] && pin=(--pin "$PIN_R")
+    fi
     python3 -I scripts/sp_make_hw.py --prior "$prior" --ram-bytes "$ram" --gpu-bytes "$gpu_bytes" --threads "$threads" \
       --disk-curve "$p/disk-curve.json" --out "$p/hw-$arm.toml" || die "hw $arm"
     python3 -I scripts/sp_make_hw.py --prior "$prior" --ram-bytes "$ram" --gpu-bytes "$gpu_bytes" --threads "$threads" \
       --keep-disk-prior --out "$p/hw-$arm-diskprior.toml" || die "hw $arm prior disk"
     # the pick under the uniform routing prior, on the measured disk curve (the arm's frozen config) and on the prior disk
-    "$plan" node-predict --hw "$p/hw-$arm.toml" --layout "$p/layout.json" --out "$p/pred-$arm-uniform.json" || die "predict $arm uniform"
-    "$plan" node-predict --hw "$p/hw-$arm-diskprior.toml" --layout "$p/layout.json" --out "$p/pred-$arm-uniform-diskprior.json" || die "predict $arm uniform diskprior"
+    "$plan" node-predict --hw "$p/hw-$arm.toml" --layout "$p/layout.json" "${pin[@]}" --out "$p/pred-$arm-uniform.json" || die "predict $arm uniform"
+    "$plan" node-predict --hw "$p/hw-$arm-diskprior.toml" --layout "$p/layout.json" "${pin[@]}" --out "$p/pred-$arm-uniform-diskprior.json" || die "predict $arm uniform diskprior"
     # the picked pair on the recorded routing trace
     local pair
     pair=$(python3 -I -c "import json,sys; d=json.load(open(sys.argv[1]))['pick']; print(f\"{d['vram_slots']},{d['ram_slots']}\")" "$p/pred-$arm-uniform.json")
