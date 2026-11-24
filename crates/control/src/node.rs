@@ -394,7 +394,7 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
                     segments: Vec::new(),
                     predicted_s: Vec::new(),
                 },
-                true,
+                false,
             );
             reply(NodeReply::Assigned)
         }
@@ -500,9 +500,9 @@ fn probe_peer(
     })
 }
 
-/// An assignment equal to the running one (not given up) changes nothing, so the head can repeat
-/// `Assign` and `StartReplica` on every reconnect without restarting a healthy worker or engine.
-/// `keep_same` is false only where a caller wants the restart.
+/// `keep_same`: an assignment equal to the running one (not given up) changes nothing, so the
+/// head can repeat `StartReplica` on every reconnect without restarting a healthy engine. An
+/// `Assign` always restarts its worker: the leader that connects next must meet empty KV.
 fn assign(s: &Arc<Shared>, a: Assignment, keep_same: bool) {
     let key = (a.replica, a.segment);
     if keep_same

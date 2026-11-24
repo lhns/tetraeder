@@ -32,7 +32,8 @@ pub enum NodeRequest {
     /// Start the replica engine (`tetraeder replica`) this node leads; `plan` is the replica's
     /// plan TOML (empty for a whole model on one node) and `segments` the nodes of its
     /// segments, in order, when it spans nodes (the head assigned them already). Starting an
-    /// engine that already runs with the same arguments changes nothing.
+    /// engine that already runs with the same arguments changes nothing; `Assign` always starts
+    /// the worker afresh.
     StartReplica {
         replica: u32,
         plan: String,

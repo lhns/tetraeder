@@ -613,6 +613,19 @@ fn join_loop(
             continue;
         }
         let attempt = || -> Result<crate::replica::ReplicaInfo, String> {
+            if !spec.segments.is_empty() {
+                // A replica across nodes starts as a whole: the leader goes first, so that it
+                // meets segment workers with empty KV (an `Assign` restarts its worker).
+                let _ = crate::client::request(
+                    transport.as_ref(),
+                    remote.peer(),
+                    &NodeRequest::Release {
+                        replica: r,
+                        segment: crate::node::REPLICA_SEGMENT,
+                    },
+                    &[],
+                );
+            }
             for (i, s) in spec.segments.iter().enumerate() {
                 crate::client::request(
                     transport.as_ref(),
