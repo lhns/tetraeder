@@ -2,6 +2,12 @@
 //! `Device` gains `node` and the cluster code lands. The golden file was written by the code
 //! before step 2 (`TETRAEDER_UPDATE_GOLDEN=1` rewrites it; do that only for a change that is
 //! meant to move single-node numbers). Floats are compared by bit pattern.
+//!
+//! ADR 0092 section 7: the golden is two files. `single_node_predictions.txt` holds every
+//! prediction that cost model 6 must leave bit-identical and is never rewritten for it;
+//! `single_node_predictions_streamed.txt` holds the builder plans whose RAM tier does not cover
+//! the experts outside VRAM, which cost model 6 may move once, in the commit that sets
+//! `MODEL_VERSION` 6.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -54,6 +60,7 @@ const GRAPHS: [(&str, &str); 9] = [
 ];
 
 const GOLDEN: &str = "tests/golden/single_node_predictions.txt";
+const GOLDEN_STREAMED: &str = "tests/golden/single_node_predictions_streamed.txt";
 
 fn size(params: u64) -> UnitSize {
     UnitSize {
@@ -112,9 +119,10 @@ fn streamed(plan: &Plan, layout: &ModelLayout) -> bool {
     )
 }
 
-/// One line per plan and prediction of every fixture, and whether each line is streamed.
-fn snapshot() -> (String, Vec<bool>) {
-    let mut flags: Vec<bool> = Vec::new();
+/// One line per plan and prediction of every fixture: the non-streamed lines and the streamed
+/// ones, each in the order of the whole.
+fn snapshot() -> (String, String) {
+    let mut streamed_out = String::new();
     let mut out = String::new();
     let models = [model("dense", 12, 0), model("moe", 12, 8)];
     for (name, toml) in GRAPHS {
@@ -144,7 +152,6 @@ fn snapshot() -> (String, Vec<bool>) {
                         s.ttft_s.to_bits()
                     )
                     .unwrap();
-                    flags.push(false);
                 }
             }
         }
@@ -176,8 +183,13 @@ fn snapshot() -> (String, Vec<bool>) {
                         Ok(p) => (p.pp_tok_s, p.tg_tok_s, p.request_s),
                         Err(_) => (f64::NAN, f64::NAN, f64::NAN),
                     };
+                    let dst = if streamed(plan, &layout) {
+                        &mut streamed_out
+                    } else {
+                        &mut out
+                    };
                     writeln!(
-                        out,
+                        dst,
                         "serve {name} {lname} {engine:?} #{i} plan={:016x} pp={:016x} tg={:016x} req={:016x}",
                         fnv(&plan.to_toml().unwrap()),
                         pp.to_bits(),
@@ -185,33 +197,37 @@ fn snapshot() -> (String, Vec<bool>) {
                         req.to_bits()
                     )
                     .unwrap();
-                    flags.push(streamed(plan, &layout));
                 }
             }
         }
     }
-    (out, flags)
+    (out, streamed_out)
 }
 
-#[test]
-fn single_node_plans_and_predictions_are_unchanged() {
-    let (now, flags) = snapshot();
-    let idx: Vec<String> = (0..flags.len())
-        .filter(|&i| flags[i])
-        .map(|i| i.to_string())
-        .collect();
-    eprintln!("SPLIT_STREAMED {}", idx.join(","));
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
-    if std::env::var_os("TETRAEDER_UPDATE_GOLDEN").is_some() {
-        std::fs::write(&path, &now).unwrap();
+fn check(now: &str, golden: &str, update: bool) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(golden);
+    if update {
+        std::fs::write(&path, now).unwrap();
         return;
     }
     let want = std::fs::read_to_string(&path)
         .unwrap()
         .replace("\r\n", "\n");
-    assert!(want.lines().count() > 50, "golden file is nearly empty");
     for (i, (a, b)) in want.lines().zip(now.lines()).enumerate() {
-        assert_eq!(a, b, "line {i} differs");
+        assert_eq!(a, b, "{golden}: line {i} differs");
     }
-    assert_eq!(want.lines().count(), now.lines().count());
+    assert_eq!(want.lines().count(), now.lines().count(), "{golden}");
+}
+
+#[test]
+fn single_node_plans_and_predictions_are_unchanged() {
+    let (now, streamed) = snapshot();
+    let update = std::env::var_os("TETRAEDER_UPDATE_GOLDEN").is_some();
+    assert!(now.lines().count() > 50, "golden file is nearly empty");
+    assert!(
+        streamed.lines().count() > 10,
+        "no streamed plan in the golden"
+    );
+    check(&now, GOLDEN, update);
+    check(&streamed, GOLDEN_STREAMED, update);
 }
