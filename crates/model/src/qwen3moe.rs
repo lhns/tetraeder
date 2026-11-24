@@ -728,7 +728,9 @@ impl Qwen3Moe {
             opts.kv_rotation,
         )?;
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
+        // A segment without layers (embedding or head only) holds no experts to stream.
         let streamer = slots
+            .filter(|_| !weights.layers.is_empty())
             .map(|n| {
                 let tensors: Vec<_> = weights.layers.iter().map(Layer::exps_owned).collect();
                 let cfg = StreamerConfig {

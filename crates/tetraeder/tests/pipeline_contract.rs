@@ -427,6 +427,22 @@ fn a_snapshot_is_the_segments_in_order_and_restores_by_row_bytes() {
 
 // hardware: none
 #[test]
+fn the_kv_format_carries_the_cut_points_when_two_segments_hold_layers() {
+    let (p, _) = three(CAP);
+    assert_eq!(p.kv_format(), "f16/f16@0-2,2-5,5-8");
+    // Embedding-only and head-only segments hold no KV: one layer-holding segment is the
+    // one-node layout, with the one-node key.
+    let segs = vec![
+        fake(true, false, (0, 0), 1),
+        fake(false, false, (0, 4), 32),
+        fake(false, true, (4, 4), 1),
+    ];
+    let p = PipelineBackend::new(segs.into_iter().map(|s| s.0).collect()).unwrap();
+    assert_eq!(p.kv_format(), "f16/f16");
+}
+
+// hardware: none
+#[test]
 fn copies_and_cuts_go_to_every_segment() {
     let (mut p, st) = three(CAP);
     p.decode(&[input(0, &[1, 2, 3], false)]).unwrap();

@@ -12,10 +12,11 @@
 //! segment that cannot be cut back marks its sequences lost.
 //!
 //! Snapshots are the segments' snapshots one after the other in segment order. That is not the
-//! bytes of a one-node snapshot (those hold all K layers, then all V layers), so a snapshot
-//! restores only into a pipeline cut at the same layers, and the prefix cache keys it by
-//! [`BatchBackend::kv_format`]; moving KV between differently cut replicas (step 5) needs the
-//! K and V halves of each segment's share separated first.
+//! bytes of a one-node snapshot (those hold all K layers, then all V layers) and has the same
+//! size as one, so a snapshot restores only into a pipeline cut at the same layers. What keeps a
+//! foreign snapshot out is [`BatchBackend::kv_format`], the key of the prefix cache and of slot
+//! files: it carries the cut points. Moving KV between differently cut replicas (step 5) needs
+//! the K and V halves of each segment's share separated first.
 //!
 //! Not done here: micro-batches in flight across segments for a prefill (ADR 0077). A prefill
 //! walks the segments one chunk at a time, as a decode does.
@@ -377,10 +378,24 @@ impl BatchBackend for PipelineBackend {
         self.segs.iter().all(|s| s.can_cut_suffix())
     }
 
+    /// The format of the segments' KV, and with two or more segments that hold layers their cut
+    /// points (`f16/f16@0-2,2-4`): the snapshot bytes of one cut are not those of another.
     fn kv_format(&self) -> String {
-        self.kv_segs()
+        let base = self
+            .kv_segs()
             .next()
-            .map_or_else(|| self.segs[0].kv_format(), |s| s.kv_format())
+            .map_or_else(|| self.segs[0].kv_format(), |s| s.kv_format());
+        let cuts: Vec<String> = self
+            .infos
+            .iter()
+            .filter(|i| i.layers.0 < i.layers.1)
+            .map(|i| format!("{}-{}", i.layers.0, i.layers.1))
+            .collect();
+        if cuts.len() > 1 {
+            format!("{base}@{}", cuts.join(","))
+        } else {
+            base
+        }
     }
 
     fn on_gpu(&self) -> bool {

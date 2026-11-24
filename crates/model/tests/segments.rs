@@ -11,7 +11,7 @@ use common::synth::{MoeSpec, write_moe};
 use common::{PROMPT, TOP_K, argmax, dense_fixture, dense_fixture_l4, fixture, tol_batch, top_k};
 use std::path::PathBuf;
 use tetraeder_model::{
-    BackendChoice, DenseOptions, LoadOptions, Qwen3, Qwen3Moe, SegmentSpec, SeqEval,
+    BackendChoice, DenseOptions, LoadOptions, MissPolicy, Qwen3, Qwen3Moe, SegmentSpec, SeqEval,
 };
 use tetraeder_plan::KvFormat;
 
@@ -31,6 +31,9 @@ enum Kind {
     Moe,
     /// Experts streamed through slots: a graph per layer.
     MoeStreamed,
+    /// Streamed with a RAM tier, the cpu miss policy, a hot set and prefetch: the path of the
+    /// 235B on a node (ADR 0091, Case S), on every segment including those after layer 0.
+    MoeRam,
 }
 
 struct Model {
@@ -58,7 +61,7 @@ impl Net {
                 )
                 .unwrap(),
             )),
-            Kind::Moe | Kind::MoeStreamed => Net::Moe(Box::new(
+            Kind::Moe | Kind::MoeStreamed | Kind::MoeRam => Net::Moe(Box::new(
                 Qwen3Moe::load(
                     &m.path,
                     &LoadOptions {
@@ -66,7 +69,15 @@ impl Net {
                         kv_rotation: Some(false),
                         n_seq_max: 2,
                         n_ctx: 512,
-                        expert_slots: matches!(m.kind, Kind::MoeStreamed).then_some(3),
+                        expert_slots: matches!(m.kind, Kind::MoeStreamed | Kind::MoeRam)
+                            .then_some(3),
+                        ram_slots: matches!(m.kind, Kind::MoeRam).then_some(6),
+                        miss: if matches!(m.kind, Kind::MoeRam) {
+                            MissPolicy::Cpu
+                        } else {
+                            MissPolicy::default()
+                        },
+                        prefetch: matches!(m.kind, Kind::MoeRam),
                         segment,
                         ..LoadOptions::new(CPU)
                     },
@@ -164,6 +175,12 @@ fn models() -> Vec<Model> {
             path: synth_moe(4),
             n_layer: 4,
             name: "moe4_streamed",
+        },
+        Model {
+            kind: Kind::MoeRam,
+            path: synth_moe(4),
+            n_layer: 4,
+            name: "moe4_ram",
         },
     ]
 }

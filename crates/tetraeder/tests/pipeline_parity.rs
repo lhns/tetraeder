@@ -25,7 +25,9 @@ use tetraeder_control::node::{Assignment, Daemon, Launcher, NodeOptions, Restart
 use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, Qwen3, Qwen3Moe, SegmentSpec};
 use tetraeder_plan::{KvFormat, Plan};
 use tetraeder_profiler::HardwareGraph;
-use tetraeder_scheduler::{BatchBackend, DenseBackend, MoeBackend, SeqInput};
+use tetraeder_scheduler::{
+    BackendError, BatchBackend, DenseBackend, MOE_CHUNK, MoeBackend, SeqInput,
+};
 use tetraeder_transport::identity::{Generated, certs_from_pem, generate_self_signed};
 use tetraeder_transport::{
     CertificateDer, Identity, MemTransport, NodeId, SocketBuffers, TlsTransport, Transport,
@@ -52,6 +54,10 @@ struct Case {
     kind: Kind,
     path: PathBuf,
     n_layer: u32,
+    /// Tokens per model step of the MoE backends (the plan's ubatch); `None`: the default.
+    chunk: Option<usize>,
+    /// KV pool rows of the segment that holds the head and not the embedding.
+    tail_pool: usize,
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -67,29 +73,48 @@ fn cases() -> Vec<Case> {
             kind: Kind::Dense,
             path: fixture("tiny-qwen3-l4-f16.gguf"),
             n_layer: 4,
+            chunk: None,
+            tail_pool: 512,
         },
         Case {
             name: "dense2",
             kind: Kind::Dense,
             path: fixture("tiny-qwen3-f16.gguf"),
             n_layer: 2,
+            chunk: None,
+            tail_pool: 512,
         },
         Case {
             name: "moe2",
             kind: Kind::Moe,
             path: fixture("tiny-qwen3moe-f16.gguf"),
             n_layer: 2,
+            chunk: None,
+            tail_pool: 512,
         },
     ]
 }
 
-fn dense_opts(segment: Option<SegmentSpec>) -> DenseOptions {
+/// The cases with steps that mix decoders and prompt chunks, and a MoE that runs four tokens
+/// per model step so a long input is several pieces.
+fn mixed_cases() -> Vec<Case> {
+    let mut v = cases();
+    v.truncate(1);
+    v.push(Case {
+        name: "moe2_chunk4",
+        chunk: Some(4),
+        ..cases().remove(2)
+    });
+    v
+}
+
+fn dense_opts(segment: Option<SegmentSpec>, pool: usize) -> DenseOptions {
     DenseOptions {
         kv: KvFormat::F16,
         kv_rotation: Some(false),
         extra_bufts: false,
         n_seq_max: 2,
-        n_ctx_pool: 512,
+        n_ctx_pool: pool,
         segment,
         ..DenseOptions::new(CPU)
     }
@@ -110,12 +135,13 @@ fn moe_opts(segment: Option<SegmentSpec>) -> LoadOptions {
 fn whole(c: &Case) -> Box<dyn BatchBackend> {
     match c.kind {
         Kind::Dense => Box::new(DenseBackend::new(
-            Qwen3::load(&c.path, &dense_opts(None)).unwrap(),
+            Qwen3::load(&c.path, &dense_opts(None, 512)).unwrap(),
             false,
         )),
-        Kind::Moe => Box::new(MoeBackend::new(
+        Kind::Moe => Box::new(MoeBackend::with_chunk(
             Qwen3Moe::load(&c.path, &moe_opts(None)).unwrap(),
             false,
+            c.chunk.unwrap_or(MOE_CHUNK),
         )),
     }
 }
@@ -190,15 +216,22 @@ impl Launcher for ModelLauncher {
         let dead = Arc::new(AtomicBool::new(false));
         let ((in_tx, mut in_rx), (out_tx, out_rx)) = (pipe(&dead), pipe(&dead));
         let (kind, path) = (self.case.kind, self.case.path.clone());
+        let chunk = self.case.chunk.unwrap_or(MOE_CHUNK);
+        let pool = if spec.head && !spec.embed {
+            self.case.tail_pool
+        } else {
+            512
+        };
         std::thread::spawn(move || {
             let mut backend: Box<dyn BatchBackend> = match kind {
                 Kind::Dense => Box::new(DenseBackend::new(
-                    Qwen3::load(&path, &dense_opts(Some(spec))).unwrap(),
+                    Qwen3::load(&path, &dense_opts(Some(spec), pool)).unwrap(),
                     false,
                 )),
-                Kind::Moe => Box::new(MoeBackend::new(
+                Kind::Moe => Box::new(MoeBackend::with_chunk(
                     Qwen3Moe::load(&path, &moe_opts(Some(spec))).unwrap(),
                     false,
+                    chunk,
                 )),
             };
             let mut out = out_tx;
@@ -509,6 +542,10 @@ fn cpu_pipeline_snapshots_round_trip() {
             snap.len(),
             snap == one_snap
         );
+        // The key of the prefix cache carries the cut points, so a one-node snapshot, or one of
+        // another cut, is not offered to this pipeline.
+        assert_ne!(pipe.kv_format(), one.kv_format(), "{}", c.name);
+        assert!(pipe.kv_format().starts_with(&one.kv_format()), "{}", c.name);
         pipe.seq_restore(1, &snap, n).unwrap();
         assert_eq!(pipe.seq_len(1), n);
         let a = step(&mut pipe, 0, &[5], false);
@@ -528,40 +565,115 @@ fn cpu_pipeline_snapshots_round_trip() {
     }
 }
 
-/// hardware: cpu. A worker that fails a step: the pipeline reports the error and the earlier
-/// segments are back at the length from before, so the next step on the same sequence works.
+/// hardware: cpu. The tail segment has a pool half the size: a step that overflows it fails with
+/// `KvFull` there after the first segment has taken it. The pipeline cuts the first segment back,
+/// undoes an overflowing reservation, and the next step on the same sequence equals the whole
+/// model's.
 #[test]
 fn cpu_a_failed_step_is_rolled_back_on_every_segment() {
-    let c = cases().remove(0);
+    let c = Case {
+        tail_pool: 256,
+        ..cases().remove(0)
+    };
     let nodes = mem_nodes(&c);
     let p = plan(&c, 2, "a", "b", None);
     let mut pipe = nodes.pipeline(&p);
-    step(&mut pipe, 0, &PROMPT, false);
-    let before = pipe.seq_len(0);
-    // A token outside the vocabulary: the first segment refuses it.
-    let bad = pipe.decode(&[SeqInput {
-        seq: 0,
-        tokens: &[1_000_000],
-        all_logits: false,
-    }]);
-    assert!(bad.is_err());
-    assert_eq!(pipe.seq_len(0), before);
-    // The head segment refuses hidden rows of the wrong size: that is the second segment
-    // failing after the first advanced. A decode of two sequences where the second is unknown.
-    let bad = pipe.decode(&[
-        SeqInput {
+    let mut reference = whole(&c);
+    let want = step(reference.as_mut(), 0, &PROMPT, false);
+    let got = step(&mut pipe, 0, &PROMPT, false);
+    let mut run = Run {
+        max_diff: 0.0,
+        bit_equal: true,
+    };
+    check_row(&mut run, &got, &want, "prompt");
+    let before = (pipe.seq_len(0), pipe.seq_reserved(0));
+    // A reservation the tail segment cannot give: the first segment gives its share back.
+    let e = pipe.seq_reserve(0, 300).unwrap_err();
+    assert!(matches!(e, BackendError::KvFull { .. }), "{e}");
+    assert_eq!((pipe.seq_len(0), pipe.seq_reserved(0)), before);
+    // A step that outgrows the tail segment: the first one took it, then was cut back.
+    let long: Vec<i32> = (0..300).map(|i| i % 200).collect();
+    let e = pipe
+        .decode(&[SeqInput {
             seq: 0,
-            tokens: &[3],
+            tokens: &long,
             all_logits: false,
-        },
-        SeqInput {
-            seq: 7,
-            tokens: &[3],
+        }])
+        .err()
+        .unwrap();
+    assert!(matches!(e, BackendError::KvFull { .. }), "{e}");
+    assert_eq!(pipe.seq_len(0), before.0);
+    assert!(!pipe.seq_lost(0));
+    // A token the first segment refuses.
+    assert!(
+        pipe.decode(&[SeqInput {
+            seq: 0,
+            tokens: &[1_000_000],
             all_logits: false,
-        },
-    ]);
-    assert!(bad.is_err());
-    assert_eq!(pipe.seq_len(0), before);
-    let ok = step(&mut pipe, 0, &[3], false);
-    assert_eq!(ok.len(), pipe.n_vocab());
+        }])
+        .is_err()
+    );
+    assert_eq!(pipe.seq_len(0), before.0);
+    // Both segments are where the whole model is: the next step agrees with it.
+    let want = step(reference.as_mut(), 0, &[3], false);
+    let got = step(&mut pipe, 0, &[3], false);
+    check_row(&mut run, &got, &want, "step after the failures");
+    println!(
+        "pipeline rollback dense4 max_logit_diff {:e} bit_equal {}",
+        run.max_diff, run.bit_equal
+    );
+}
+
+/// The rows of every input of one step.
+fn rows(b: &mut dyn BatchBackend, ins: &[(u32, &[i32], bool)]) -> Vec<Vec<f32>> {
+    let inputs: Vec<SeqInput<'_>> = ins
+        .iter()
+        .map(|&(seq, tokens, all_logits)| SeqInput {
+            seq,
+            tokens,
+            all_logits,
+        })
+        .collect();
+    let out = b.decode(&inputs).unwrap();
+    (0..out.len()).map(|i| out.rows(i).to_vec()).collect()
+}
+
+/// hardware: cpu. Steps as the scheduler makes them on the CPU: a prompt chunk of 70 tokens with
+/// a short input of five, decoders next to each other, then a decoder with a chunk. The worker
+/// runs them as several groups, and a MoE that takes four tokens per model step as several
+/// pieces; the hidden rows of each group and piece are cut from the payload in input order.
+#[test]
+fn cpu_mixed_steps_cut_the_hidden_rows_per_group_and_piece() {
+    for c in mixed_cases() {
+        let nodes = mem_nodes(&c);
+        let p = plan(&c, c.n_layer / 2, "a", "b", None);
+        let mut pipe = nodes.pipeline(&p);
+        let mut reference = whole(&c);
+        let long: Vec<i32> = (0..70).map(|i| (i * 7 + 3) % 200).collect();
+        let short = [5, 9, 33, 100, 7];
+        let steps: Vec<Vec<(u32, &[i32], bool)>> = vec![
+            vec![(0, &long, false), (1, &short, true)],
+            vec![(0, &[11], false), (1, &[12], false)],
+            vec![(0, &long[..66], false), (1, &[13], true)],
+        ];
+        let mut run = Run {
+            max_diff: 0.0,
+            bit_equal: true,
+        };
+        for (n, ins) in steps.iter().enumerate() {
+            let want = rows(reference.as_mut(), ins);
+            let got = rows(&mut pipe, ins);
+            assert_eq!(got.len(), want.len(), "{} step {n}", c.name);
+            for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+                assert_eq!(g.len(), w.len(), "{} step {n} input {i}", c.name);
+                for (gr, wr) in g.chunks(pipe.n_vocab()).zip(w.chunks(pipe.n_vocab())) {
+                    check_row(&mut run, gr, wr, &format!("{} step {n} input {i}", c.name));
+                }
+            }
+        }
+        println!(
+            "pipeline mixed steps {} max_logit_diff {:e} bit_equal {}",
+            c.name, run.max_diff, run.bit_equal
+        );
+    }
 }

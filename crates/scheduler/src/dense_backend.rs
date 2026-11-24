@@ -210,8 +210,14 @@ impl BatchBackend for DenseBackend {
         self.decode_feed(inputs, None)
     }
 
+    /// Only a share of the layers is a segment; the whole model is served as before.
     fn as_segment(&mut self) -> Option<&mut dyn SegmentBackend> {
-        Some(self)
+        let n_layer = self.model.hparams().attn.n_layer;
+        if self.model.segment().is_whole(n_layer) {
+            None
+        } else {
+            Some(self)
+        }
     }
 
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
