@@ -96,3 +96,45 @@ fn a_request_that_waits_past_the_deadline_ends_with_one_error() {
     std::thread::sleep(Duration::from_millis(100));
     assert!(waiting.try_recv().is_err());
 }
+
+// hardware: none
+#[test]
+fn a_replica_being_replaced_keeps_the_requests_waiting_until_the_new_one_joins() {
+    // A planned drain ends with the old replica leaving the router and the new one joining. A
+    // request that arrives between the two waits for it; it is not refused as overloaded
+    // (cluster_integration, the planned drain: clients streaming through the replan).
+    let e = engine(1);
+    e.set_up(0, true);
+    assert!(e.drain(0, Duration::from_secs(1)));
+    e.set_up(0, false);
+    let mut waiting = e
+        .generate(request())
+        .expect("a replica being replaced is coming back: wait, do not refuse");
+    assert_eq!(e.queued(), 1);
+    e.set_up(0, true);
+    let t0 = Instant::now();
+    loop {
+        match waiting.try_recv() {
+            Ok(GenEvent::Finished { .. }) => break,
+            Ok(GenEvent::Error(m)) => panic!("{m}"),
+            _ => {
+                assert!(t0.elapsed() < Duration::from_secs(10), "never finished");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
+}
+
+// hardware: none
+#[test]
+fn a_replacement_that_is_given_up_refuses_at_once_again() {
+    let e = engine(1);
+    e.set_up(0, true);
+    assert!(e.drain(0, Duration::from_secs(1)));
+    e.set_up(0, false);
+    e.end_replace(0);
+    assert!(matches!(
+        e.generate(request()),
+        Err(EngineError::Overloaded)
+    ));
+}

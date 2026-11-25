@@ -94,6 +94,7 @@ pub fn serve_loop(
                     info: None,
                     state: state(backend),
                     step_s: None,
+                    stats: None,
                 };
                 write_frame(output, &reply, &[]).map_err(anyhow::Error::msg)?;
                 continue;
@@ -200,10 +201,15 @@ fn handle(
         info: None,
         state: State::default(),
         step_s: None,
+        stats: None,
     };
     let res: Result<(), BackendError> = match req {
         Request::Info => {
             reply.info = Some(info(b));
+            Ok(())
+        }
+        Request::Stats => {
+            reply.stats = b.expert_stats_json();
             Ok(())
         }
         Request::SeqReserve { seq, n } => b.seq_reserve(*seq, *n),

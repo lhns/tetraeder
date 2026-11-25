@@ -3,6 +3,7 @@
 mod advise;
 mod bench;
 mod cluster;
+mod cluster_session;
 mod comm_probe;
 mod detector_score;
 mod doctor;
@@ -83,7 +84,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::DetectorScore(args)) => detector_score::run(&args),
         Some(Command::Advise(args)) => advise::run(&args),
         Some(Command::Serve(args)) => serve::run(&args),
-        Some(Command::Worker(args)) => worker::run(&args),
+        Some(Command::Worker(args)) => worker::run(args),
         Some(Command::Replica(args)) => replica::run(&args),
         Some(Command::Info(args)) => info::run(&args),
         Some(Command::CommProbe(args)) => comm_probe::run(&args),

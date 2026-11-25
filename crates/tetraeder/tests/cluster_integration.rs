@@ -33,6 +33,7 @@ use tetraeder_control::proto::NodeRequest;
 use tetraeder_control::replica::{FetchFrom, RemoteEngine};
 use tetraeder_control::{ClusterConfig, Config, PlanSource, Proposal, Replanner, SystemClock};
 use tetraeder_control::{Trigger, client};
+use tetraeder_costmodel::cluster::hop_time;
 use tetraeder_gateway::engine::{Engine, GenEvent, GenerateRequest, SamplingParams};
 use tetraeder_model::{BackendChoice, LoadOptions};
 use tetraeder_plan::Plan;
@@ -488,10 +489,21 @@ impl FetchPolicy for Priced {
         assert!(kv.row_bytes > 0, "the replica reported its snapshot size");
         let n = tokens.len() as u32;
         let bytes = u64::from(n) * kv.row_bytes;
+        // The prompt speed is set from the probed hop time of this very fetch, so the rule's
+        // answer does not depend on how fast the machine's loopback is: a recompute ten times
+        // slower than the hop, or ten times faster.
+        let hop = hop_time(
+            &self.hw,
+            self.nodes[holder as usize],
+            self.nodes[target as usize],
+            bytes as f64,
+        )
+        .expect("the probe measured the link");
+        assert!(hop > 0.0, "the probed hop of {bytes} B is {hop} s");
         let pp = if self.slow_prefill.load(Ordering::SeqCst) {
-            0.5
+            f64::from(n) / (10.0 * hop)
         } else {
-            1e9
+            f64::from(n) * 10.0 / hop
         };
         let fetch = fetch_beats_recompute(
             &self.hw,

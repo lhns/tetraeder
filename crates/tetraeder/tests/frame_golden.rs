@@ -27,6 +27,7 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
         info,
         state: state.clone(),
         step_s: None,
+        stats: None,
     };
     vec![
         ("info", encode(&Request::Info, &[]).unwrap()),

@@ -13,7 +13,7 @@ use crate::serve::{ServeArgs, build_scheduler, scheduler_over_step};
 use anyhow::Context;
 use clap::Args;
 use std::sync::Arc;
-use tetraeder::pipeline::replica_pipeline;
+use tetraeder::pipeline::{plan_step_tokens, replica_pipeline};
 use tetraeder::remote_backend::{RemoteBackend, RemoteConfig};
 use tetraeder_control::kv::{
     PrefixGrants, PrefixKey, PrefixStore, read_relay_preface, serve_prefix_io,
@@ -64,20 +64,6 @@ impl PrefixStore for SchedulerStore {
             .first()
             .map_or(u64::MAX, |m| u64::from(m.context_length))
     }
-}
-
-/// The scheduler's step tokens for a replica that runs `plan`: its prefill micro-batches times
-/// its ubatch, so a step is the one the planner priced (ADR 0077, 0091). `None` when the plan
-/// names no ubatch, or `--step-tokens` is given (the operator's flag wins).
-pub(crate) fn plan_step_tokens(
-    plan: &tetraeder_plan::Plan,
-    explicit: Option<u32>,
-) -> Option<usize> {
-    if explicit.is_some() {
-        return None;
-    }
-    let ubatch = plan.knobs.ubatch?;
-    Some(plan.knobs.prefill_micro_batches.max(1) as usize * ubatch.max(1) as usize)
 }
 
 /// Writes `content` to `file` atomically, so the daemon never reads half of it. The file holds
