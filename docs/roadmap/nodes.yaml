@@ -2767,17 +2767,21 @@ nodes:
   title: Prefill pipelined across stages
   track: cluster
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/tetraeder/src/pipeline.rs
+  - crates/tetraeder/tests/pipeline_parity.rs
+  - crates/tetraeder/tests/pipeline_contract.rs
+  verdict_quote: 'pipelined prefill slow link walk 1.312 s pipelined 0.904 s ratio 0.69 (CI run 45526039702, ubuntu; windows 1.266 s and 0.951 s, ratio 0.75)'
+  headline: 'a prefill step is cut into micro-batches in flight across the segments of a PipelineBackend, as the flow-shop price of predict_cluster assumes; on a slowed link it took 0.69 of the walk time (0.75 on Windows) (four micro-batches, a 0.85 limit), with the same logits and greedy tokens'
   depends_on:
   - cluster-pipeline-nodes
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-25
+  end: 2026-11-25
   folded: []
   overview: false
   plain: A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes).

@@ -30,7 +30,8 @@ use tetraeder_scheduler::{
 };
 use tetraeder_transport::identity::{Generated, certs_from_pem, generate_self_signed};
 use tetraeder_transport::{
-    CertificateDer, Identity, MemTransport, NodeId, SocketBuffers, TlsTransport, Transport,
+    CertificateDer, Identity, LinkFault, MemTransport, NodeId, SocketBuffers, Switchboard,
+    TlsTransport, Transport,
 };
 
 mod common;
@@ -319,6 +320,30 @@ fn compare(whole: &mut dyn BatchBackend, pipe: &mut dyn BatchBackend, what: &str
     run
 }
 
+/// Tests that measure time take the write side, so no other test computes meanwhile; the rest
+/// hold the read side for as long as their nodes live. A test holds one set of nodes at a time.
+static LOAD: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+#[allow(dead_code)]
+enum Load {
+    Shared(std::sync::RwLockReadGuard<'static, ()>),
+    Alone(std::sync::RwLockWriteGuard<'static, ()>),
+}
+
+fn load(alone: bool) -> Load {
+    if alone {
+        Load::Alone(
+            LOAD.write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    } else {
+        Load::Shared(
+            LOAD.read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
+}
+
 /// Everything the daemons of one test hold.
 struct Nodes {
     _daemons: Vec<Daemon>,
@@ -327,6 +352,10 @@ struct Nodes {
     launcher: Arc<ModelLauncher>,
     dir: PathBuf,
     name: &'static str,
+    /// The simulated network of a `MemTransport` cluster, to put a fault on a link.
+    board: Option<Arc<Switchboard>>,
+    /// Dropped last, after the daemons stopped.
+    _load: Load,
 }
 
 impl Drop for Nodes {
@@ -364,6 +393,11 @@ fn daemon(cfg: &ClusterConfig, t: Arc<dyn Transport>, launcher: Arc<ModelLaunche
 
 /// Two daemons on a `MemTransport` switchboard, the head dialing as node `a`.
 fn mem_nodes(c: &Case) -> Nodes {
+    mem_nodes_as(c, false)
+}
+
+fn mem_nodes_as(c: &Case, alone: bool) -> Nodes {
+    let load = load(alone);
     let dir = scratch(&format!("mem-{}", c.name));
     let board = MemTransport::switchboard();
     let cfg = cluster_config(&[1, 2], &dir);
@@ -386,11 +420,14 @@ fn mem_nodes(c: &Case) -> Nodes {
         launcher,
         dir,
         name: "mem",
+        board: Some(board),
+        _load: load,
     }
 }
 
 /// Two daemons on loopback TLS with pinned self-signed certificates.
 fn tls_nodes(c: &Case) -> Nodes {
+    let load = load(false);
     let dir = scratch(&format!("tls-{}", c.name));
     let names = [NodeId::new("a"), NodeId::new("b")];
     let gens: Vec<(&str, Generated)> = ["a", "b"]
@@ -432,6 +469,8 @@ fn tls_nodes(c: &Case) -> Nodes {
         launcher,
         dir,
         name: "tls",
+        board: None,
+        _load: load,
     }
 }
 
@@ -676,4 +715,173 @@ fn cpu_mixed_steps_cut_the_hidden_rows_per_group_and_piece() {
             c.name, run.max_diff, run.bit_equal
         );
     }
+}
+
+// ---- pipelined prefill (ADR 0077, ADR 0091 step 2 pricing) ----
+
+/// A prompt of `n` tokens.
+fn prompt(n: usize) -> Vec<i32> {
+    (0..n).map(|i| ((i * 7 + 3) % 200) as i32).collect()
+}
+
+/// A prompt of `n` tokens prefilled walking the segments (sequence 0) and pipelined in `micro`
+/// micro-batches (sequence 1), against the one-node run: every row within `tol_batch`, the
+/// greedy tokens equal.
+fn pipelined_case(nodes: &Nodes, c: &Case, cut: u32, head_apart: bool, micro: u32, n: usize) {
+    let p = plan(c, cut, "a", "b", head_apart.then_some("a"));
+    let mut pipe = nodes.pipeline(&p);
+    let mut reference = whole(c);
+    let what = format!(
+        "{} cut {cut} head_apart {head_apart} micro {micro} tokens {n}",
+        c.name
+    );
+    let toks = prompt(n);
+    let nv = reference.n_vocab();
+    // The last row only (ADR 0077 pipelines such inputs); the greedy steps below read every
+    // layer's KV rows of both sequences, so a wrong micro-batch shows there too.
+    let want = step(reference.as_mut(), 0, &toks, false);
+    pipe.set_prefill_micro_batches(1);
+    let walk = step(&mut pipe, 0, &toks, false);
+    pipe.set_prefill_micro_batches(micro);
+    let piped = step(&mut pipe, 1, &toks, false);
+    assert_eq!(piped.len(), nv, "{what}");
+    let mut run = Run {
+        max_diff: 0.0,
+        bit_equal: true,
+    };
+    check_row(&mut run, &piped, &want, &format!("{what} against one node"));
+    check_row(&mut run, &piped, &walk, &format!("{what} against the walk"));
+    let mut t = argmax(&want[want.len() - nv..]) as i32;
+    assert_eq!(t as usize, argmax(&piped[piped.len() - nv..]), "{what}");
+    for i in 0..N_GREEDY {
+        let w = step(reference.as_mut(), 0, &[t], false);
+        let a = step(&mut pipe, 0, &[t], false);
+        let b = step(&mut pipe, 1, &[t], false);
+        assert_eq!(argmax(&a), argmax(&w), "{what} walk step {i}");
+        assert_eq!(argmax(&b), argmax(&w), "{what} pipelined step {i}");
+        t = argmax(&w) as i32;
+    }
+    assert_eq!(pipe.seq_len(1), reference.seq_len(0), "{what}");
+    println!(
+        "pipelined prefill parity {what} max_logit_diff {:e} bit_equal {}",
+        run.max_diff, run.bit_equal
+    );
+}
+
+/// hardware: cpu. Pipelined prefill against the walk and the one-node run at the first, middle
+/// and last boundary of the 4-layer model, with the head on a segment of its own, on the
+/// 2-layer model, and on a MoE that runs four tokens per model step.
+#[test]
+fn cpu_pipelined_prefill_matches_the_walk_and_one_node() {
+    let c = cases().remove(0);
+    {
+        let nodes = mem_nodes(&c);
+        for cut in 1..c.n_layer {
+            pipelined_case(&nodes, &c, cut, false, 3, 64);
+        }
+        pipelined_case(&nodes, &c, 2, true, 4, 64);
+    }
+    let c = cases().remove(1);
+    pipelined_case(&mem_nodes(&c), &c, 1, false, 2, 33);
+    let c = mixed_cases().remove(1);
+    pipelined_case(&mem_nodes(&c), &c, 1, false, 3, 30);
+}
+
+/// hardware: cpu. A pipelined prefill that outgrows the tail segment: the segments hold
+/// micro-batches by then, and every one is cut back; the next step equals the one-node run.
+#[test]
+fn cpu_a_failed_pipelined_prefill_is_rolled_back_on_every_segment() {
+    let c = Case {
+        tail_pool: 256,
+        ..cases().remove(0)
+    };
+    let nodes = mem_nodes(&c);
+    let p = plan(&c, 2, "a", "b", None);
+    let mut pipe = nodes.pipeline(&p);
+    pipe.set_prefill_micro_batches(4);
+    let mut reference = whole(&c);
+    let mut run = Run {
+        max_diff: 0.0,
+        bit_equal: true,
+    };
+    let want = step(reference.as_mut(), 0, &PROMPT, false);
+    let got = step(&mut pipe, 0, &PROMPT, false);
+    check_row(&mut run, &got, &want, "prompt");
+    let before = pipe.seq_len(0);
+    let long = prompt(300);
+    let e = pipe
+        .decode(&[SeqInput {
+            seq: 0,
+            tokens: &long,
+            all_logits: false,
+        }])
+        .err()
+        .unwrap();
+    assert!(matches!(e, BackendError::KvFull { .. }), "{e}");
+    assert_eq!(pipe.seq_len(0), before);
+    assert!(!pipe.seq_lost(0));
+    let want = step(reference.as_mut(), 0, &[3], false);
+    let got = step(&mut pipe, 0, &[3], false);
+    check_row(&mut run, &got, &want, "step after the failure");
+}
+
+/// hardware: cpu. With the links of the middle segment slowed (bytes per second, no latency), a
+/// pipelined prefill keeps the link in and the link out busy at the same time and takes less
+/// wall time than the walk, which pays one after the other. The model compute is a few
+/// milliseconds, so the links decide.
+#[test]
+fn cpu_a_pipelined_prefill_overlaps_the_segments_on_a_slow_link() {
+    let c = cases().remove(0);
+    // Alone: on a loaded runner the head reacts late and the overlap shows less.
+    let nodes = mem_nodes_as(&c, true);
+    // Embedding on `a`, a middle segment on `b`, the head on `a`: hidden rows cross the link to
+    // `b` and back.
+    let p = plan(&c, 2, "a", "b", Some("a"));
+    let mut pipe = nodes.pipeline(&p);
+    assert_eq!(pipe.segments().len(), 3);
+    let n = 64;
+    let toks = prompt(n);
+    let hidden_bytes = (n * pipe.segments()[0].n_embd * 4) as f64;
+    let link_s = 0.6;
+    let slow = LinkFault::Slow {
+        alpha: Duration::ZERO,
+        bytes_per_s: hidden_bytes / link_s,
+    };
+    let board = nodes.board.as_ref().unwrap();
+    // Warm up the workers before the clock runs, then put the fault on.
+    step(&mut pipe, 1, &toks[..4], false);
+    pipe.seq_rm(1, 0).unwrap();
+    board.fault(&NodeId::new("a"), &NodeId::new("b"), slow);
+    board.fault(&NodeId::new("b"), &NodeId::new("a"), slow);
+    pipe.set_prefill_micro_batches(1);
+    let t = std::time::Instant::now();
+    let walk = step(&mut pipe, 0, &toks, false);
+    let walk_s = t.elapsed().as_secs_f64();
+    pipe.set_prefill_micro_batches(4);
+    // The fastest of three runs: a hiccup of the runner delays one run, a missing overlap
+    // delays all of them.
+    let mut piped = Vec::new();
+    let mut piped_s = f64::MAX;
+    for _ in 0..3 {
+        pipe.seq_rm(1, 0).unwrap();
+        let t = std::time::Instant::now();
+        piped = step(&mut pipe, 1, &toks, false);
+        piped_s = piped_s.min(t.elapsed().as_secs_f64());
+    }
+    println!(
+        "pipelined prefill slow link walk {walk_s:.3} s pipelined {piped_s:.3} s ratio {:.2}",
+        piped_s / walk_s
+    );
+    let mut run = Run {
+        max_diff: 0.0,
+        bit_equal: true,
+    };
+    check_row(&mut run, &piped, &walk, "last row");
+    // The walk pays the link in and the link out: about two link times.
+    assert!(walk_s > 1.6 * link_s, "the fault is on: walk {walk_s:.3} s");
+    // Four micro-batches: about 1.25 link times in the ideal case.
+    assert!(
+        piped_s < 0.85 * walk_s,
+        "no overlap: pipelined {piped_s:.3} s, walk {walk_s:.3} s"
+    );
 }

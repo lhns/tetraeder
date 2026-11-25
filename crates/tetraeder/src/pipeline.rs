@@ -18,16 +18,54 @@
 //! files: it carries the cut points. Moving KV between differently cut replicas (step 5) needs
 //! the K and V halves of each segment's share separated first.
 //!
-//! Not done here: micro-batches in flight across segments for a prefill (ADR 0077). A prefill
-//! walks the segments one chunk at a time, as a decode does.
+//! Pipelined prefill (ADR 0077, 0091 step 2 pricing): with `prefill_micro_batches` above one, a
+//! step of a single input of several tokens is cut into micro-batches by
+//! `plan::micro_batch_sizes`. Segment `s` takes micro-batch `k` as soon as segment `s - 1` has
+//! returned it, while segment `s - 1` already works on `k + 1`; a remote segment has up to
+//! `DEPTH` (2) requests queued, so the next one is on the link while the worker computes. The head
+//! still forwards every hidden row itself (the star), so each boundary is two links, in and out,
+//! as `predict_cluster` prices them. KV rows per segment are appended micro-batch by micro-batch
+//! in order, which is what the sequential walk does with one chunk. Steps of several inputs
+//! (decoders next to a chunk) and decode steps walk the segments in turn as before.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::ops::Range;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tetraeder_scheduler::{
     BackendError, BatchBackend, Feed, Outputs, SegmentBackend, SegmentInfo, SeqId, SeqInput,
+    StepOut,
 };
 use tetraeder_telemetry::Metrics;
+
+/// Steps queued on one remote segment in a pipelined prefill: the one it computes and the one on
+/// the link. More would only buffer rows in the worker.
+const DEPTH: usize = 2;
+
+/// The rows a segment returned for the one input of a micro-batch of `tokens` tokens, owned so
+/// the segment is free again. A segment without the head must return a row per token.
+fn own_rows(
+    out: StepOut<'_>,
+    seg: usize,
+    tokens: usize,
+    is_last: bool,
+) -> Result<Vec<f32>, BackendError> {
+    let out = out.rows();
+    let width = out.n_vocab().max(1);
+    if out.len() != 1 {
+        return Err(BackendError::Failed(format!(
+            "segment {seg} returned {} inputs for one",
+            out.len()
+        )));
+    }
+    let rows = out.rows(0);
+    if !is_last && rows.len() / width != tokens {
+        return Err(BackendError::Failed(format!(
+            "segment {seg} returned {} rows for {tokens} tokens of 1 inputs",
+            rows.len() / width
+        )));
+    }
+    Ok(rows.to_vec())
+}
 
 /// Decode steps of one token on one sequence are what the planner predicts; only they feed the
 /// residual.
@@ -47,6 +85,8 @@ pub struct PipelineBackend {
     metrics: Option<Metrics>,
     /// The predicted decode step of each segment, seconds.
     predicted: Vec<Option<f64>>,
+    /// Micro-batches a prefill step is cut into (ADR 0077); 1 walks the segments in turn.
+    micro: u32,
 }
 
 impl PipelineBackend {
@@ -93,6 +133,7 @@ impl PipelineBackend {
             lost: HashSet::new(),
             metrics: None,
             predicted: vec![None; n],
+            micro: 1,
         })
     }
 
@@ -114,8 +155,168 @@ impl PipelineBackend {
         }
     }
 
+    /// Cuts a prefill step of one input into `m` micro-batches kept in flight across the
+    /// segments (the plan's `knobs.prefill_micro_batches`); 1, the default, walks the segments
+    /// in turn.
+    pub fn with_prefill_micro_batches(mut self, m: u32) -> Self {
+        self.set_prefill_micro_batches(m);
+        self
+    }
+
+    pub fn set_prefill_micro_batches(&mut self, m: u32) {
+        self.micro = m.max(1);
+    }
+
     pub fn segments(&self) -> &[SegmentInfo] {
         &self.infos
+    }
+
+    /// Sizes of the micro-batches of this step, when it is a prefill that is worth pipelining:
+    /// one input of at least two tokens that returns its last row only (ADR 0077: a speculative
+    /// verification wants every row and walks), two or more segments, and `micro` above one.
+    fn micro_sizes(&self, inputs: &[SeqInput<'_>]) -> Option<Vec<usize>> {
+        let [one] = inputs else { return None };
+        if self.micro < 2 || self.segs.len() < 2 || one.tokens.len() < 2 || one.all_logits {
+            return None;
+        }
+        Some(tetraeder_plan::micro_batch_sizes(
+            one.tokens.len(),
+            self.micro,
+        ))
+    }
+
+    fn record_segment(&self, s: usize, wall: Duration) {
+        if let Some(m) = &self.metrics {
+            let own = self.segs[s].last_step_time().unwrap_or(wall);
+            m.segment_step(s as u32, own.as_secs_f64());
+        }
+    }
+
+    /// A pipelined prefill of one input. On an error every started step is finished (its reply
+    /// read), then all segments are cut back to the lengths from before the step: a segment
+    /// that failed micro-batch `k` holds the ones before it.
+    fn decode_micro(
+        &mut self,
+        inp: &SeqInput<'_>,
+        sizes: &[usize],
+        before: &[(SeqId, usize)],
+    ) -> Result<(), BackendError> {
+        let mut offs = vec![0usize];
+        for n in sizes {
+            offs.push(offs[offs.len() - 1] + n);
+        }
+        let mut flight: Vec<VecDeque<(usize, Instant)>> = vec![VecDeque::new(); self.segs.len()];
+        if let Err(e) = self.micro_loop(inp, &offs, &mut flight) {
+            for (s, q) in flight.iter_mut().enumerate() {
+                for _ in q.drain(..) {
+                    let _ = self.segs[s].finish_step();
+                }
+            }
+            self.cut_back(self.segs.len(), before);
+            self.logits.clear();
+            self.spans.clear();
+            return Err(e);
+        }
+        let rows = self.logits.len() / self.n_vocab().max(1);
+        self.spans.push(0..rows);
+        Ok(())
+    }
+
+    /// Starts every step whose input is there on the segments that compute apart from us, runs
+    /// one ready step on a segment that does not, else waits for the oldest started step. Rows
+    /// move on as they arrive; `flight[s]` holds the started steps of segment `s` (micro-batch,
+    /// start time).
+    fn micro_loop(
+        &mut self,
+        inp: &SeqInput<'_>,
+        offs: &[usize],
+        flight: &mut [VecDeque<(usize, Instant)>],
+    ) -> Result<(), BackendError> {
+        let n_seg = self.segs.len();
+        let last = n_seg - 1;
+        let m = offs.len() - 1;
+        let piece = |k: usize| SeqInput {
+            seq: inp.seq,
+            tokens: &inp.tokens[offs[k]..offs[k + 1]],
+            all_logits: inp.all_logits,
+        };
+        let overlap: Vec<bool> = self.segs.iter().map(|s| s.can_overlap()).collect();
+        // hid[s][k]: the rows segment `s` returned for micro-batch `k`, until `s + 1` took them.
+        let mut hid: Vec<Vec<Option<Vec<f32>>>> = vec![vec![None; m]; n_seg];
+        let mut next = vec![0usize; n_seg];
+        let mut done_last = 0;
+        self.logits.clear();
+        self.spans.clear();
+        while done_last < m {
+            for s in (0..n_seg).filter(|&s| overlap[s]) {
+                while next[s] < m
+                    && flight[s].len() < DEPTH
+                    && (s == 0 || hid[s - 1][next[s]].is_some())
+                {
+                    let k = next[s];
+                    let rows = if s == 0 { None } else { hid[s - 1][k].take() };
+                    let feed = rows.as_deref().map_or(Feed::Tokens, Feed::Hidden);
+                    let p = piece(k);
+                    self.segs[s].start_step(std::slice::from_ref(&p), feed)?;
+                    flight[s].push_back((k, Instant::now()));
+                    next[s] += 1;
+                }
+            }
+            // One step on a segment of our own, then back to feeding the others.
+            let ready = (0..n_seg)
+                .rev()
+                .find(|&s| !overlap[s] && next[s] < m && (s == 0 || hid[s - 1][next[s]].is_some()));
+            if let Some(s) = ready {
+                let k = next[s];
+                let rows = if s == 0 { None } else { hid[s - 1][k].take() };
+                let feed = rows.as_deref().map_or(Feed::Tokens, Feed::Hidden);
+                let p = piece(k);
+                let t = Instant::now();
+                let res = self.segs[s].step(std::slice::from_ref(&p), feed);
+                let wall = t.elapsed();
+                let data = own_rows(res?, s, p.tokens.len(), s == last)?;
+                self.record_segment(s, wall);
+                next[s] += 1;
+                if s == last {
+                    self.logits = data;
+                    done_last += 1;
+                } else {
+                    hid[s][k] = Some(data);
+                }
+                continue;
+            }
+            // Take the reply of a started step that has come in, the segment furthest along
+            // first; never block on one segment while another one's reply may be waiting.
+            let ready = (0..n_seg)
+                .rev()
+                .find(|&s| !flight[s].is_empty() && self.segs[s].reply_ready(Duration::ZERO));
+            let Some(s) = ready else {
+                if flight.iter().all(VecDeque::is_empty) {
+                    return Err(BackendError::Failed(
+                        "the pipelined prefill stalled with nothing in flight".into(),
+                    ));
+                }
+                // Nothing has come in: look again shortly. A timed wait on a channel rounds up
+                // to the timer tick on Windows (15 ms), a sleep does not.
+                std::thread::sleep(Duration::from_micros(100));
+                continue;
+            };
+            let Some((k, t)) = flight[s].pop_front() else {
+                continue;
+            };
+            let res = self.segs[s].finish_step();
+            let wall = t.elapsed();
+            let data = own_rows(res?, s, offs[k + 1] - offs[k], s == last)?;
+            self.record_segment(s, wall);
+            if s == last {
+                // The input returns its last row only: the last micro-batch's row is the result.
+                self.logits = data;
+                done_last += 1;
+            } else {
+                hid[s][k] = Some(data);
+            }
+        }
+        Ok(())
     }
 
     /// Segments that hold layers, so a KV cache.
@@ -268,6 +469,11 @@ impl BatchBackend for PipelineBackend {
             .map(|i| (i.seq, self.seq_len(i.seq)))
             .collect();
         let n_tokens: usize = inputs.iter().map(|i| i.tokens.len()).sum();
+        if let Some(sizes) = self.micro_sizes(inputs) {
+            self.decode_micro(&inputs[0], &sizes, &before)?;
+            let width = self.n_vocab();
+            return Ok(Outputs::new(width, &self.logits, &self.spans));
+        }
         let decode_step = is_decode_step(inputs);
         let last = self.segs.len() - 1;
         for i in 0..=last {
