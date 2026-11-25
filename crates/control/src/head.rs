@@ -10,7 +10,7 @@
 //! whoever takes the sender out of its [`Slot`] first (the replica's final event, the loss of the
 //! replica, or a cancel).
 
-use crate::kv::PrefixKey;
+use crate::kv::{PrefixGrants, PrefixKey};
 use crate::membership::NodeState;
 use crate::metrics;
 use crate::monitor::Monitor;
@@ -121,6 +121,8 @@ struct Pending {
     req: Option<GenerateRequest>,
     slot: Arc<Slot>,
     prompt: Vec<u32>,
+    /// What the client asked for: a leader that streams more is cut off at this many tokens.
+    max_tokens: u32,
 }
 
 struct State {
@@ -136,6 +138,8 @@ struct Inner {
     targets: Vec<ReplicaTarget>,
     state: Mutex<State>,
     policy: Option<Arc<dyn FetchPolicy>>,
+    /// The grants of a replica that runs on the head's own node (see `offer_prefix`).
+    local_grants: Mutex<Option<Arc<PrefixGrants>>>,
     stop: AtomicBool,
     counts: [AtomicU64; 4],
 }
@@ -187,6 +191,7 @@ impl ClusterEngine {
             front,
             targets,
             policy,
+            local_grants: Mutex::new(None),
             stop: AtomicBool::new(false),
             counts: Default::default(),
         });
@@ -201,6 +206,12 @@ impl ClusterEngine {
             })
             .ok();
         Self { inner, tick }
+    }
+
+    /// The grants served by a replica that runs on the head's node (a target without a
+    /// connection): a fetch from it is announced here instead of over a replica connection.
+    pub fn set_local_grants(&self, g: Arc<PrefixGrants>) {
+        *lock(&self.inner.local_grants) = Some(g);
     }
 
     /// A replica joins (`true`) or leaves the router. Leaving ends its in-flight requests with an
@@ -423,7 +434,7 @@ impl Inner {
             self.execute(actions);
             return;
         }
-        let (req, slot, prompt) = {
+        let (req, slot, prompt, max_tokens) = {
             let mut st = lock(&self.state);
             let Some(p) = st.reqs.get_mut(&id) else {
                 // The client left between the router's decision and now.
@@ -432,7 +443,12 @@ impl Inner {
                 self.execute(a);
                 return;
             };
-            (p.req.take(), Arc::clone(&p.slot), p.prompt.clone())
+            (
+                p.req.take(),
+                Arc::clone(&p.slot),
+                p.prompt.clone(),
+                p.max_tokens,
+            )
         };
         let Some(req) = req else { return };
         if route == Route::Affinity {
@@ -458,7 +474,10 @@ impl Inner {
                             .unwrap_or(0),
                     }
                 };
-                let f = policy.plan(hit.holder.0, to.0, &prompt[..hit.tokens as usize], &kv);
+                let f = policy
+                    .plan(hit.holder.0, to.0, &prompt[..hit.tokens as usize], &kv)
+                    // The holder serves only what it was told to: no announcement, no fetch.
+                    .filter(|f| self.offer_prefix(hit.holder.0, to.0, f));
                 if f.is_none() {
                     metrics::prefix_fetch("recomputed");
                 }
@@ -475,7 +494,7 @@ impl Inner {
                 let me = Arc::clone(self);
                 let spawned = std::thread::Builder::new()
                     .name(format!("router-pump-{id}"))
-                    .spawn(move || me.pump(id, to, &slot, rx));
+                    .spawn(move || me.pump(id, to, &slot, rx, max_tokens));
                 if spawned.is_err() {
                     self.settle(id);
                 }
@@ -489,18 +508,59 @@ impl Inner {
         }
     }
 
-    /// Forwards a replica's events to the client until the final one.
+    /// Announces to the holder's leader that the node of replica `to` may fetch `f` once; false
+    /// when it could not be told (the fetch is then not asked for).
+    fn offer_prefix(&self, holder: u32, to: u32, f: &FetchFrom) -> bool {
+        let Some(requester) = self.targets[to as usize]
+            .remote
+            .as_ref()
+            .map(|r| r.peer().id.clone())
+        else {
+            return false;
+        };
+        match &self.targets[holder as usize].remote {
+            Some(r) => r.offer(requester, f.key.clone()),
+            None => lock(&self.local_grants).as_ref().is_some_and(|g| {
+                g.offer(requester, f.key.clone());
+                true
+            }),
+        }
+    }
+
+    /// Forwards a replica's events to the client until the final one. A replica that streams
+    /// more tokens than the client asked for is cut off at `max_tokens` (a hostile or confused
+    /// leader cannot make a request run on).
     fn pump(
         self: &Arc<Self>,
         id: ReqId,
         to: ReplicaId,
         slot: &Slot,
         mut rx: mpsc::Receiver<GenEvent>,
+        max_tokens: u32,
     ) {
+        let mut tokens = 0u32;
         // Whoever delivers the final event counts the request, so each is counted once, also
         // when a leaving replica raced with its last event.
         loop {
             match rx.blocking_recv() {
+                Some(GenEvent::Token(_)) if max_tokens > 0 && tokens >= max_tokens => {
+                    let done = GenEvent::Finished {
+                        reason: tetraeder_gateway::engine::FinishReason::Length,
+                        stats: tetraeder_gateway::engine::EngineStats {
+                            generated_tokens: tokens,
+                            ..Default::default()
+                        },
+                    };
+                    if slot.finish(done) {
+                        self.count(to.0, "ok");
+                    }
+                    // Dropping `rx` makes the replica's link cancel the request.
+                    break;
+                }
+                Some(ev @ GenEvent::Token(_)) => {
+                    tokens += 1;
+                    slot.send(ev);
+                }
                 Some(ev) if terminal(&ev) => {
                     let ok = !matches!(ev, GenEvent::Error(_));
                     if slot.finish(ev) {
@@ -581,12 +641,14 @@ impl Engine for ClusterEngine {
             let id = st.next;
             st.next += 1;
             let prompt = req.prompt.clone();
+            let max_tokens = req.params.max_tokens;
             st.reqs.insert(
                 id,
                 Pending {
                     req: Some(req),
                     slot,
                     prompt: prompt.clone(),
+                    max_tokens,
                 },
             );
             st.router.submit(id, prompt)
@@ -876,6 +938,7 @@ fn join_loop(
                         segment: u32::try_from(i).map_err(|e| e.to_string())?,
                         plan: s.plan.clone(),
                         model_sha256: spec.model_sha256.clone(),
+                        leader: Some(remote.peer().id.clone()),
                     },
                     &[],
                 )?;

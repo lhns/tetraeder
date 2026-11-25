@@ -10,7 +10,8 @@
 //!
 //! Who may open what: `Control` only from the head; a `Probe` connection is privileged (profile,
 //! assign, link probes) only from the head with session 0, other nodes may only send probe
-//! frames; `Segment` only from a configured node and only for an assigned segment; `Replica`
+//! frames (and are dropped when silent); `Segment` only from the head or the node that leads the
+//! replica (`Assign` names it) and only for an assigned segment; `Replica`
 //! only from the head and only for a replica started with `StartReplica` (the daemon then puts
 //! `Attach` and `Detach` frames around the connection into the engine's stdin, so an engine that
 //! outlives a head connection cancels what that connection started); `Prefix` only from a
@@ -21,6 +22,7 @@ use crate::proto::{self, NodeReply, NodeRequest};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -32,6 +34,13 @@ pub const REPLICA_SEGMENT: u32 = u32::MAX;
 
 /// How long a first call waits for a worker that `Assign` has not started yet.
 const FIRST_START_WAIT: Duration = Duration::from_secs(30);
+/// A probe connection of another node that sends nothing for this long is closed; probes send
+/// one frame after the other.
+const PROBE_IDLE: Duration = Duration::from_secs(30);
+/// Frames waiting for a leader's connection, and how long a full queue is waited for before the
+/// leader counts as not reading (a frame being written can take as long as the link needs).
+const OUTBOX_FRAMES: usize = 16;
+const OUTBOX_STALL: Duration = Duration::from_secs(30);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -48,6 +57,8 @@ pub struct Assignment {
     pub segments: Vec<String>,
     /// For a replica engine, the planner's decode step time per segment, seconds.
     pub predicted_s: Vec<f64>,
+    /// For a segment's worker, the node that leads the replica (it connects to the worker).
+    pub leader: Option<NodeId>,
 }
 
 impl Assignment {
@@ -105,9 +116,53 @@ pub struct NodeOptions {
     pub restart: RestartPolicy,
 }
 
+/// Frames for a leader's connection, written by a thread of their own: a leader that does not
+/// read stalls that thread only, never the worker's reader or a lock others need.
+#[derive(Clone)]
+struct Outbox {
+    tx: SyncSender<Vec<u8>>,
+}
+
+impl Outbox {
+    /// `close` runs when a write fails.
+    fn spawn(mut w: Box<dyn Write + Send>, close: Arc<dyn Fn() + Send + Sync>) -> Self {
+        let (tx, rx) = sync_channel::<Vec<u8>>(OUTBOX_FRAMES);
+        let _ = std::thread::Builder::new()
+            .name("node-out".into())
+            .spawn(move || {
+                while let Ok(b) = rx.recv() {
+                    if w.write_all(&b).and_then(|()| w.flush()).is_err() {
+                        close();
+                        break;
+                    }
+                }
+            });
+        Self { tx }
+    }
+
+    /// Queues a frame; false when the queue stays full for `stall` (the reader does not drain)
+    /// or the writer is gone.
+    fn send(&self, mut b: Vec<u8>, stall: Duration) -> bool {
+        let end = Instant::now() + stall;
+        loop {
+            match self.tx.try_send(b) {
+                Ok(()) => return true,
+                Err(TrySendError::Disconnected(_)) => return false,
+                Err(TrySendError::Full(x)) => {
+                    if Instant::now() >= end {
+                        return false;
+                    }
+                    b = x;
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        }
+    }
+}
+
 struct Sink {
     generation: u64,
-    tx: Box<dyn Write + Send>,
+    out: Outbox,
     close: Arc<dyn Fn() + Send + Sync>,
 }
 
@@ -264,8 +319,16 @@ fn handle_conn(s: &Arc<Shared>, conn: Conn) {
     let head = conn.peer == s.opts.cfg.head;
     let close = Arc::clone(&conn.close);
     match conn.purpose.clone() {
-        Purpose::Control if head => serve_requests(s, conn, true, true),
-        Purpose::Probe { session } => serve_requests(s, conn, head && session == 0, false),
+        Purpose::Control if head => {
+            let limit = s.opts.cfg.node_down_after() * 2;
+            serve_requests(s, conn, true, Some(limit));
+        }
+        Purpose::Probe { session } => {
+            // The head's session 0 waits for long calls (a link probe); another node's probe
+            // sends frames back to back, so silence means it is gone.
+            let privileged = head && session == 0;
+            serve_requests(s, conn, privileged, (!privileged).then_some(PROBE_IDLE));
+        }
         Purpose::Segment { replica, segment } if segment != REPLICA_SEGMENT => {
             relay_segment(s, conn, (replica, segment));
         }
@@ -290,13 +353,13 @@ fn handle_conn(s: &Arc<Shared>, conn: Conn) {
     lock(&s.conns).remove(&id);
 }
 
-/// Answers requests until the connection ends. `watched`: a connection that stays silent for
-/// twice `node_down_after` is closed, so a head that is gone does not hold the purpose.
-fn serve_requests(s: &Arc<Shared>, mut conn: Conn, privileged: bool, watched: bool) {
+/// Answers requests until the connection ends. `idle_limit`: a connection that stays silent for
+/// that long is closed, so a head that is gone does not hold the purpose and a peer cannot keep
+/// a probe connection open for nothing.
+fn serve_requests(s: &Arc<Shared>, mut conn: Conn, privileged: bool, idle_limit: Option<Duration>) {
     let last = Arc::new(AtomicU64::new(s.started.elapsed().as_millis() as u64));
     let done = Arc::new(AtomicBool::new(false));
-    if watched {
-        let limit = s.opts.cfg.node_down_after() * 2;
+    if let Some(limit) = idle_limit {
         let (last, done, close, s2) = (
             Arc::clone(&last),
             Arc::clone(&done),
@@ -318,7 +381,16 @@ fn serve_requests(s: &Arc<Shared>, mut conn: Conn, privileged: bool, watched: bo
             }
         });
     }
-    while let Ok(Some(f)) = proto::recv(&mut conn.rx, &conn.purpose) {
+    loop {
+        let f = match proto::recv_request(&mut conn.rx, &conn.purpose) {
+            Ok(Some(f)) => f,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!(peer = %conn.peer, "bad request frame: {e}");
+                tetraeder_transport::metrics::rejected("bad_frame");
+                break;
+            }
+        };
         last.store(s.started.elapsed().as_millis() as u64, Ordering::SeqCst);
         let (reply, payload) = match frame::parse_header::<NodeRequest>(&f) {
             Ok(req) => answer(s, &req, &f, privileged),
@@ -377,6 +449,7 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
             segment,
             plan,
             model_sha256,
+            leader,
         } => {
             if s.draining.load(Ordering::SeqCst) {
                 return error("the node is draining");
@@ -393,6 +466,7 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
                     model_sha256: model_sha256.clone(),
                     segments: Vec::new(),
                     predicted_s: Vec::new(),
+                    leader: leader.clone(),
                 },
                 false,
             );
@@ -417,6 +491,7 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
                     model_sha256: model_sha256.clone(),
                     segments: segments.clone(),
                     predicted_s: predicted_s.clone(),
+                    leader: None,
                 },
                 true,
             );
@@ -591,14 +666,21 @@ fn supervise(s: &Arc<Shared>, w: &Arc<Worker>) {
         }
         // The worker's frames go to whoever is attached; with nobody, they are dropped.
         while let Ok(Some(f)) = frame::read_frame(&mut stdout) {
-            let mut sink = lock(&w.sink);
-            if let Some(si) = sink.as_mut() {
+            // The write happens on the outbox's thread, outside the lock: a leader that does
+            // not read must not hold `sink` against the next connection or `Release`.
+            let target = lock(&w.sink)
+                .as_ref()
+                .map(|si| (si.generation, si.out.clone()));
+            if let Some((generation, out)) = target {
                 let ok = frame::encode_raw(&f.header, &f.payload)
-                    .map_err(io::Error::other)
-                    .and_then(|b| si.tx.write_all(&b).and_then(|()| si.tx.flush()))
-                    .is_ok();
-                if !ok && let Some(si) = sink.take() {
-                    (si.close)();
+                    .is_ok_and(|b| out.send(b, OUTBOX_STALL));
+                if !ok {
+                    let mut sink = lock(&w.sink);
+                    if sink.as_ref().is_some_and(|x| x.generation == generation)
+                        && let Some(si) = sink.take()
+                    {
+                        (si.close)();
+                    }
                 }
             }
         }
@@ -618,24 +700,36 @@ fn relay_segment(s: &Arc<Shared>, mut conn: Conn, key: (u32, u32)) {
         (conn.close)();
         return;
     };
+    // Only the head and the replica's leader may use a worker: another configured node could
+    // otherwise replace the leader's connection and feed the worker its own frames.
+    if conn.peer != s.opts.cfg.head && w.assign.leader.as_ref() != Some(&conn.peer) {
+        tracing::warn!(peer = %conn.peer, "segment connection from a node that does not lead the replica; closed");
+        tetraeder_transport::metrics::rejected("not_leader");
+        (conn.close)();
+        return;
+    }
     let generation = s.next_id.fetch_add(1, Ordering::SeqCst);
     let replica = key.1 == REPLICA_SEGMENT;
     let rx = &mut conn.rx;
     {
+        let out = Outbox::spawn(
+            std::mem::replace(&mut conn.tx, Box::new(io::sink())),
+            Arc::clone(&conn.close),
+        );
         let mut sink = lock(&w.sink);
         if let Some(old) = sink.take() {
             (old.close)();
         }
         *sink = Some(Sink {
             generation,
-            tx: std::mem::replace(&mut conn.tx, Box::new(io::sink())),
+            out,
             close: Arc::clone(&conn.close),
         });
     }
     if replica {
         mark(&w, true, generation, s);
     }
-    while let Ok(Some(f)) = proto::recv(rx, &conn.purpose) {
+    while let Ok(Some(f)) = proto::recv_request(rx, &conn.purpose) {
         let Ok(bytes) = frame::encode_raw(&f.header, &f.payload) else {
             break;
         };
@@ -692,5 +786,55 @@ fn mark(w: &Arc<Worker>, attach: bool, session: u64, s: &Arc<Shared>) {
     }
     if let Some(si) = lock(&w.stdin).as_mut() {
         let _ = si.write_all(&bytes).and_then(|()| si.flush());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Condvar;
+
+    /// A writer that blocks until opened: a leader that does not read.
+    struct Gate(Arc<(Mutex<bool>, Condvar)>);
+
+    impl Write for Gate {
+        fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+            let (m, cv) = &*self.0;
+            let mut open = lock(m);
+            while !*open {
+                open = cv
+                    .wait(open)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+            Ok(b.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_leader_that_does_not_read_stalls_its_writer_and_not_the_caller() {
+        let gate = Arc::new((Mutex::new(false), Condvar::new()));
+        let out = Outbox::spawn(Box::new(Gate(Arc::clone(&gate))), Arc::new(|| {}));
+        let stall = Duration::from_millis(100);
+        let t0 = Instant::now();
+        let mut sent = 0;
+        while out.send(vec![0u8; 8], stall) {
+            sent += 1;
+            assert!(sent < 1000, "the queue is not bounded");
+        }
+        // The writer holds one frame, the queue the rest.
+        assert!(
+            (OUTBOX_FRAMES..=OUTBOX_FRAMES + 1).contains(&sent),
+            "{sent}"
+        );
+        assert!(t0.elapsed() < Duration::from_secs(5));
+        // The leader reads again: the writer drains.
+        let (m, cv) = &*gate;
+        *lock(m) = true;
+        cv.notify_all();
+        assert!(out.send(vec![0u8; 8], Duration::from_secs(5)));
     }
 }

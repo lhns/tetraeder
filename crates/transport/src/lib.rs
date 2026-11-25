@@ -89,6 +89,17 @@ impl Purpose {
             Self::Segment { .. } | Self::Prefix => frame::MAX_FRAME,
         }
     }
+
+    /// Largest frame the acceptor of a connection reads as a request. Differs from
+    /// [`Purpose::max_frame`] only for `Prefix`: a fetch is a key, the bulk is in the reply. A
+    /// segment request carries a snapshot or hidden states (only the head or the replica's leader
+    /// may open one) and a probe request carries the probe frame.
+    pub fn max_request_frame(&self) -> u64 {
+        match self {
+            Self::Prefix => 1 << 20,
+            other => other.max_frame(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

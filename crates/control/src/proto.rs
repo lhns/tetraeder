@@ -23,6 +23,10 @@ pub enum NodeRequest {
         segment: u32,
         plan: String,
         model_sha256: String,
+        /// The node that leads the replica: besides the head, only it may connect to the
+        /// segment's worker. Without it only the head may.
+        #[serde(default)]
+        leader: Option<NodeId>,
     },
     /// A replica engine is released with `segment` `u32::MAX`.
     Release {
@@ -99,6 +103,12 @@ pub fn send<W: Write, T: Serialize>(tx: &mut W, msg: &T, payload: &[u8]) -> std:
 /// The next frame of a connection of `purpose`, within that purpose's size limit.
 pub fn recv<R: Read>(rx: &mut R, purpose: &Purpose) -> std::io::Result<Option<Frame>> {
     frame::read_frame_max(rx, purpose.max_frame())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// The next request of an inbound connection of `purpose`, within its request limit.
+pub fn recv_request<R: Read>(rx: &mut R, purpose: &Purpose) -> std::io::Result<Option<Frame>> {
+    frame::read_frame_max(rx, purpose.max_request_frame())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 

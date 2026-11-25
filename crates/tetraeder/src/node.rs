@@ -7,14 +7,16 @@
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{self};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tetraeder_control::ClusterConfig;
 use tetraeder_control::client;
-use tetraeder_control::kv::relay_prefix;
+use tetraeder_control::kv::{new_token, relay_prefix};
 use tetraeder_control::node::{Assignment, Daemon, Launcher, NodeOptions, RestartPolicy, WorkerIo};
 use tetraeder_control::proto::NodeRequest;
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
@@ -102,10 +104,77 @@ pub fn parse_buffers(s: &str) -> Result<SocketBuffers, String> {
     })
 }
 
-/// Where a replica engine of this node writes its prefix listener's port (one engine per node
-/// serves prefixes: the last one started).
-fn prefix_port_file(state_dir: &std::path::Path) -> PathBuf {
-    state_dir.join("prefix-port")
+/// Where the replica engine `replica` of this node writes its prefix listener's port.
+fn prefix_port_file(state_dir: &std::path::Path, replica: u32) -> PathBuf {
+    state_dir.join(format!("prefix-port-{replica}"))
+}
+
+/// The prefix listener of one launch of a replica engine: its port file and the token the
+/// daemon must present (a fresh one per launch, passed to the child by environment).
+struct PrefixTarget {
+    file: PathBuf,
+    token: String,
+    launch: u64,
+}
+
+/// The prefix listeners of the replica engines this node runs, one entry per replica from its
+/// launch until it ends. A fetch goes to the newest launch (a `Prefix` connection does not name
+/// a replica; one engine per node serves prefixes in practice).
+#[derive(Default)]
+struct PrefixTargets {
+    by_replica: Mutex<HashMap<u32, PrefixTarget>>,
+    launches: AtomicU64,
+}
+
+impl PrefixTargets {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u32, PrefixTarget>> {
+        self.by_replica
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Registers a launch of `replica`; returns its token and launch number.
+    fn add(&self, replica: u32, file: PathBuf) -> (String, u64) {
+        let token = new_token();
+        let launch = self.launches.fetch_add(1, Ordering::SeqCst);
+        self.lock().insert(
+            replica,
+            PrefixTarget {
+                file,
+                token: token.clone(),
+                launch,
+            },
+        );
+        (token, launch)
+    }
+
+    /// The launch ended: its entry and port file go, unless a newer launch replaced it.
+    fn remove(&self, replica: u32, launch: u64) {
+        let mut m = self.lock();
+        if m.get(&replica).is_some_and(|t| t.launch == launch)
+            && let Some(t) = m.remove(&replica)
+        {
+            let _ = std::fs::remove_file(&t.file);
+        }
+    }
+
+    /// The loopback address and token of the newest listener that has written its port.
+    fn current(&self) -> Option<(std::net::SocketAddr, String)> {
+        let m = self.lock();
+        let mut all: Vec<&PrefixTarget> = m.values().collect();
+        all.sort_by_key(|t| std::cmp::Reverse(t.launch));
+        all.into_iter().find_map(|t| {
+            let port = std::fs::read_to_string(&t.file)
+                .ok()?
+                .trim()
+                .parse::<u16>()
+                .ok()?;
+            Some((
+                std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                t.token.clone(),
+            ))
+        })
+    }
 }
 
 /// Starts `tetraeder worker` for an assignment.
@@ -117,6 +186,7 @@ struct ChildLauncher {
     replica_args: Vec<OsString>,
     /// `--cluster`, `--key` and `--cert` of this node, handed to a replica that spans nodes.
     identity: Vec<OsString>,
+    prefix: Arc<PrefixTargets>,
 }
 
 impl Launcher for ChildLauncher {
@@ -141,6 +211,8 @@ impl Launcher for ChildLauncher {
         }
         std::fs::create_dir_all(&self.state_dir)?;
         let mut cmd = Command::new(&self.exe);
+        // Set for a replica engine: its prefix listener's entry, removed when the child ends.
+        let mut prefix_launch: Option<(u32, u64)> = None;
         if a.is_replica() {
             let plan = self
                 .state_dir
@@ -162,13 +234,14 @@ impl Launcher for ChildLauncher {
                         .collect::<Vec<_>>()
                         .join(","),
                 )
-                .env("TETRAEDER_REPLICA_PLAN", &plan)
-                .env(
-                    crate::replica::PREFIX_PORT_FILE_ENV,
-                    prefix_port_file(&self.state_dir),
-                );
+                .env("TETRAEDER_REPLICA_PLAN", &plan);
             // A port left by an earlier engine must not be read for this one.
-            let _ = std::fs::remove_file(prefix_port_file(&self.state_dir));
+            let file = prefix_port_file(&self.state_dir, a.replica);
+            let _ = std::fs::remove_file(&file);
+            let (token, launch) = self.prefix.add(a.replica, file.clone());
+            prefix_launch = Some((a.replica, launch));
+            cmd.env(crate::replica::PREFIX_PORT_FILE_ENV, &file)
+                .env(crate::replica::PREFIX_TOKEN_ENV, token);
         } else {
             let plan = self.state_dir.join(format!(
                 "replica-{}-segment-{}.plan.toml",
@@ -195,6 +268,7 @@ impl Launcher for ChildLauncher {
             .take()
             .ok_or_else(|| io::Error::other("no stdout"))?;
         let child: Arc<Mutex<Child>> = Arc::new(Mutex::new(child));
+        let prefix = Arc::clone(&self.prefix);
         Ok(WorkerIo {
             stdin: Box::new(stdin),
             stdout: Box::new(stdout),
@@ -204,6 +278,9 @@ impl Launcher for ChildLauncher {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let _ = c.kill();
                 let _ = c.wait();
+                if let Some((replica, launch)) = prefix_launch {
+                    prefix.remove(replica, launch);
+                }
             }),
         })
     }
@@ -290,6 +367,7 @@ pub fn run(a: &NodeArgs) -> Result<()> {
         }
         Ok(c.clone().unwrap_or_default())
     });
+    let prefix = Arc::new(PrefixTargets::default());
     let launcher = Arc::new(ChildLauncher {
         exe: std::env::current_exe()?,
         models_dir: a.models_dir.clone(),
@@ -304,8 +382,8 @@ pub fn run(a: &NodeArgs) -> Result<()> {
             "--cert".into(),
             a.cluster.cert.clone().into(),
         ],
+        prefix: Arc::clone(&prefix),
     });
-    let state_dir = a.state_dir.clone();
     let daemon = Daemon::start(
         transport,
         NodeOptions {
@@ -318,14 +396,9 @@ pub fn run(a: &NodeArgs) -> Result<()> {
     );
     // Other nodes fetch prefixes from this node's replica: its child listens on loopback and the
     // daemon relays the authenticated connection to it.
-    daemon.set_prefix_handler(Arc::new(move |conn| {
-        let port = std::fs::read_to_string(prefix_port_file(&state_dir))
-            .ok()
-            .and_then(|t| t.trim().parse::<u16>().ok());
-        match port {
-            Some(p) => relay_prefix(conn, std::net::SocketAddr::from(([127, 0, 0, 1], p))),
-            None => (conn.close)(),
-        }
+    daemon.set_prefix_handler(Arc::new(move |conn| match prefix.current() {
+        Some((addr, token)) => relay_prefix(conn, addr, &token),
+        None => (conn.close)(),
     }));
     // The daemon runs until the process is stopped.
     loop {

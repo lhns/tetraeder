@@ -15,7 +15,9 @@ use clap::Args;
 use std::sync::Arc;
 use tetraeder::pipeline::replica_pipeline;
 use tetraeder::remote_backend::{RemoteBackend, RemoteConfig};
-use tetraeder_control::kv::{PrefixKey, PrefixStore, serve_prefix_io};
+use tetraeder_control::kv::{
+    PrefixGrants, PrefixKey, PrefixStore, read_relay_preface, serve_prefix_io,
+};
 use tetraeder_control::replica::{KvHooks, PeerLookup, ReplicaServer};
 use tetraeder_gateway::engine::Engine as GatewayEngine;
 use tetraeder_scheduler::{BatchBackend, Scheduler, SegmentBackend};
@@ -28,6 +30,13 @@ pub const PREDICTED_ENV: &str = "TETRAEDER_REPLICA_PREDICTED";
 /// Where the replica writes the loopback port of its prefix listener (set by the daemon, which
 /// relays the `Prefix` connections of other nodes to it).
 pub const PREFIX_PORT_FILE_ENV: &str = "TETRAEDER_PREFIX_PORT_FILE";
+/// The launch's token (set by the daemon): the first line of every connection the daemon relays
+/// to the prefix listener carries it, with the authenticated peer. Without it, a connection is
+/// dropped, so another process that finds the loopback port reads nothing.
+pub const PREFIX_TOKEN_ENV: &str = "TETRAEDER_PREFIX_TOKEN";
+/// A relayed connection must send its first line within this, and may idle this long.
+const PREFIX_PREFACE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+const PREFIX_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The replica's prefix cache as the cluster sees it: the scheduler answers on its own thread.
 struct SchedulerStore(Arc<Scheduler>);
@@ -48,12 +57,22 @@ impl PrefixStore for SchedulerStore {
     fn row_bytes(&self) -> u64 {
         self.0.kv_row_bytes() as u64
     }
+
+    fn max_tokens(&self) -> u64 {
+        self.0
+            .models()
+            .first()
+            .map_or(u64::MAX, |m| u64::from(m.context_length))
+    }
 }
 
 /// Serves the prefix cache to the daemon's relay on a loopback port, written to `file`
-/// (atomically, so the daemon never reads half a number).
+/// (atomically, so the daemon never reads half a number). A connection is served only when it
+/// opens with the launch's `token`; the line also names the peer whose grants apply.
 fn serve_prefix_on_loopback(
     store: Arc<dyn PrefixStore>,
+    grants: Arc<PrefixGrants>,
+    token: String,
     file: &std::path::Path,
 ) -> std::io::Result<()> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
@@ -65,13 +84,21 @@ fn serve_prefix_on_loopback(
         .name("prefix-listen".into())
         .spawn(move || {
             for stream in listener.incoming().flatten() {
-                let store = Arc::clone(&store);
+                let (store, grants, token) =
+                    (Arc::clone(&store), Arc::clone(&grants), token.clone());
                 std::thread::spawn(move || {
                     let Ok(mut tx) = stream.try_clone() else {
                         return;
                     };
                     let mut rx = stream;
-                    serve_prefix_io(&mut rx, &mut tx, store.as_ref());
+                    let _ = rx.set_read_timeout(Some(PREFIX_PREFACE_WAIT));
+                    let Some(peer) = read_relay_preface(&mut rx, &token) else {
+                        tetraeder_transport::metrics::rejected("bad_relay");
+                        return;
+                    };
+                    // A peer that opens a connection and goes quiet does not hold it.
+                    let _ = rx.set_read_timeout(Some(PREFIX_IDLE));
+                    serve_prefix_io(&mut rx, &mut tx, store.as_ref(), &grants, &peer);
                 });
             }
         })?;
@@ -159,9 +186,17 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
     let (engine, kv): (Arc<dyn GatewayEngine>, Option<KvHooks>) = match (&scheduler, &net) {
         (Some(s), Some((cfg, t))) => {
             let store: Arc<dyn PrefixStore> = Arc::new(SchedulerStore(Arc::clone(s)));
+            let grants = Arc::new(PrefixGrants::default());
             if let Some(file) = std::env::var_os(PREFIX_PORT_FILE_ENV) {
-                serve_prefix_on_loopback(Arc::clone(&store), std::path::Path::new(&file))
-                    .context("cannot serve prefixes")?;
+                let token = std::env::var(PREFIX_TOKEN_ENV)
+                    .context("TETRAEDER_PREFIX_TOKEN is not set (the daemon sets it)")?;
+                serve_prefix_on_loopback(
+                    Arc::clone(&store),
+                    Arc::clone(&grants),
+                    token,
+                    std::path::Path::new(&file),
+                )
+                .context("cannot serve prefixes")?;
             }
             let cfg = cfg.clone();
             let peers: PeerLookup = Arc::new(move |n: &NodeId| cfg.peer(n));
@@ -171,6 +206,7 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
                     store,
                     transport: Arc::clone(t),
                     peers,
+                    grants,
                 }),
             )
         }

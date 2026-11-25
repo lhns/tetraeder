@@ -80,7 +80,25 @@ pub fn serve_loop(
         let Some(frame) = read_frame(input).map_err(anyhow::Error::msg)? else {
             return Ok(Flow::Eof);
         };
-        let req: Request = parse_header(&frame).map_err(anyhow::Error::msg)?;
+        // A header that is not a request is that call's failure, not the end of the worker (a
+        // node that may reach the segment connection must not be able to kill the worker).
+        let req: Request = match parse_header(&frame) {
+            Ok(r) => r,
+            Err(e) => {
+                let reply = Reply {
+                    err: Some(WireError::Failed {
+                        msg: format!("bad request: {e}"),
+                        sticky: false,
+                    }),
+                    spans: Vec::new(),
+                    info: None,
+                    state: state(backend),
+                    step_s: None,
+                };
+                write_frame(output, &reply, &[]).map_err(anyhow::Error::msg)?;
+                continue;
+            }
+        };
         let mut payload = Vec::new();
         let mut reply = match handle(backend, &req, &frame.payload, faults, output, &mut payload)? {
             Handled::Reply(r) => *r,

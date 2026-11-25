@@ -13,7 +13,9 @@ use std::time::Duration;
 use tetraeder_control::head::{
     ClusterEngine, ClusterHead, FetchPolicy, KvInfo, ReplicaTarget, StartSpec,
 };
-use tetraeder_control::kv::{PrefixKey, PrefixStore, fetch_beats_recompute, serve_prefix};
+use tetraeder_control::kv::{
+    PrefixGrants, PrefixKey, PrefixStore, fetch_beats_recompute, serve_prefix,
+};
 use tetraeder_control::monitor::Monitor;
 use tetraeder_control::node::{Daemon, NodeOptions, RestartPolicy};
 use tetraeder_control::replica::{FetchFrom, KvHooks, RemoteEngine};
@@ -124,7 +126,16 @@ impl PrefixStore for Store {
         self.puts.fetch_add(1, Ordering::SeqCst);
         self.map.lock().unwrap().insert(key, bytes);
     }
+
+    fn row_bytes(&self) -> u64 {
+        ROW_BYTES
+    }
 }
+
+/// Bytes of one cached token of the fake stores; a snapshot of n tokens is n times this.
+const ROW_BYTES: u64 = 20;
+/// 50 tokens: a snapshot of 1000 bytes.
+const PREFIX: &str = "a conversation about replicas and prefixes of text";
 
 enum Policy {
     Fetch,
@@ -208,7 +219,7 @@ fn follow_up_on_the_other_replica(
         restart: RestartPolicy::default(),
     };
     let (store_a, store_b) = (Store::new(holder_format), Store::new("f16"));
-    let prefix = "a conversation about replicas and prefixes";
+    let prefix = PREFIX;
     if holder_has_it {
         store_a.map.lock().unwrap().insert(
             PrefixKey {
@@ -232,12 +243,17 @@ fn follow_up_on_the_other_replica(
                 let cfg = cfg.clone();
                 Arc::new(move |n| cfg.peer(n))
             },
+            grants: Arc::new(PrefixGrants::default()),
         }));
     }
     let daemon_a = Daemon::start(Arc::clone(&ta), opts(Arc::new(EchoLauncher::default())));
+    // R0 runs on the head's node: the head announces fetches from it to these grants.
+    let grants_a = Arc::new(PrefixGrants::default());
     {
-        let s = Arc::clone(&store_a);
-        daemon_a.set_prefix_handler(Arc::new(move |conn| serve_prefix(conn, s.as_ref())));
+        let (s, g) = (Arc::clone(&store_a), Arc::clone(&grants_a));
+        daemon_a.set_prefix_handler(Arc::new(move |conn| {
+            serve_prefix(conn, s.as_ref(), &g);
+        }));
     }
     let _daemon_b = Daemon::start(Arc::clone(&tb), opts(Arc::clone(&launcher_b) as _));
     let monitor = Arc::new(Monitor::start(Arc::clone(&ta), cfg.clone()));
@@ -274,6 +290,7 @@ fn follow_up_on_the_other_replica(
             format: "f16".into(),
         })),
     ));
+    engine.set_local_grants(Arc::clone(&grants_a));
     engine.set_up(0, true);
     let _head = ClusterHead::start(
         &engine,

@@ -247,6 +247,7 @@ fn drain_is_reported_and_new_assignments_are_refused() {
             segment: 0,
             plan: String::new(),
             model_sha256: String::new(),
+            leader: None,
         },
         &[],
     )
@@ -330,6 +331,7 @@ fn a_first_call_right_after_assign_waits_for_the_worker_to_start() {
         segment: 0,
         plan: "plan".into(),
         model_sha256: "00".into(),
+        leader: None,
     };
     client::request(&head, &peer, &assign, &[]).unwrap();
     // No retry: the first frame goes in before the worker exists and is answered once it does.
@@ -363,6 +365,7 @@ fn assigned_workers_are_relayed_restarted_and_given_up_at_the_cap() {
         segment: 1,
         plan: "plan".into(),
         model_sha256: "00".into(),
+        leader: None,
     };
     client::request(&head, &peer, &assign, &[]).unwrap();
     assert_eq!(d.workers(), 1);
