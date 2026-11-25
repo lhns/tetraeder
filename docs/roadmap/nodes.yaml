@@ -2575,11 +2575,16 @@ nodes:
   title: First two-box cluster session
   track: bench
   kind: session
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - bench/results/phase6-rehearsal-20261125/README.md
+  - bench/results/phase6-rehearsal-20261125/a/caseF/result-worker.json
+  - bench/results/phase6-rehearsal-20261125/a/caseF/result-daemon.json
+  - bench/results/phase6-rehearsal-20261125/a/caseF/result-stop.json
+  - bench/results/phase6-rehearsal-20261125/a/probe-auto.json
+  verdict_quote: 'Status: rehearsal, no verdict. Split parity holds against a one-node run on the same GPU; the failover detection rules hold in all three modes; automatic rejoin fails in two of three modes (4 defects).'
+  headline: 'two boxes, 30B split parity 8 of 8, three failovers clean, rejoin fails twice'
   depends_on:
   - cluster-pipeline-nodes
   - cluster-failover
@@ -2592,8 +2597,8 @@ nodes:
   - ops-review-phase6-serving
   replaced_by: []
   lane: cluster
-  start: ''
-  end: ''
+  start: '2026-11-25'
+  end: '2026-11-25'
   folded: []
   overview: false
   plain: 'Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).'
@@ -4319,3 +4324,83 @@ nodes:
   folded: []
   overview: false
   plain: With no two-GPU host at default power on offer, cases D2 and M2 ran on GPUs 2 and 3 of the V4a box, both engines on the same pair and only that pair judged; chosen over a looser power gate, by delegation to the advisor, to be confirmed with the M2 report.
+
+- id: cluster-rejoin-after-restore
+  title: Head does not restart a replica after its node is restored
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-20261125/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-rehearsal
+  replaced_by: []
+  lane: cluster
+  start: '2026-11-25'
+  end: ''
+  folded: []
+  overview: false
+  plain: 'After B''s engine was killed, B''s daemon was killed and restarted, or the cluster was started cold, the head sometimes never started the replica on B again until the head itself was restarted (Case F modes 1 and 2 failed the 60 s rejoin rule; the very first start stalled for minutes).'
+
+- id: cluster-prefix-fetch-not-triggered
+  title: No prefix fetch between replicas on two GPU nodes
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-20261125/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-rehearsal
+  replaced_by: []
+  lane: cluster
+  start: '2026-11-25'
+  end: ''
+  folded: []
+  overview: false
+  plain: 'A request sent to the replica without a prefix recomputed it although the fetch was priced to win; the head''s own replica may lack the KV format and row size the fetch rule needs.'
+
+- id: cluster-plan-source-gpu-segments
+  title: Planner proposes no plan for two real GPU boxes
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-20261125/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-rehearsal
+  replaced_by: []
+  lane: cluster
+  start: '2026-11-25'
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The cost model refuses a segment that is all on the GPU, so a pipeline plan cannot be priced and the replan source made no proposal when a node left.'
+
+- id: cluster-drain-without-plan
+  title: Node drain does not move load without a cluster plan
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-20261125/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-rehearsal
+  replaced_by: []
+  lane: cluster
+  start: '2026-11-25'
+  end: ''
+  folded: []
+  overview: false
+  plain: 'With a replicas file, draining a node marks it but the router keeps sending it requests; only a cluster plan with the replanner drains a replica.'

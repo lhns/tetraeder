@@ -1,0 +1,71 @@
+{
+ "nonce": "prefix-1795580340",
+ "prompt_tokens_target": 3000,
+ "x1": {
+  "status": 200,
+  "text": " Question two: what is the last word of this text? Question three: how many times does the word \"the\"",
+  "finish": "length",
+  "usage": {
+   "prompt_tokens": 2259,
+   "completion_tokens": 24,
+   "total_tokens": 2283,
+   "prompt_tokens_details": {
+    "cached_tokens": 13
+   }
+  },
+  "t_start": 1795580341.2163324,
+  "wall_s": 2.563,
+  "error": null
+ },
+ "x2": {
+  "status": 200,
+  "text": " Question two: what is the last word of this text? Question three: how many times does the word \"the\"",
+  "finish": "length",
+  "usage": {
+   "prompt_tokens": 2259,
+   "completion_tokens": 24,
+   "total_tokens": 2283,
+   "prompt_tokens_details": {
+    "cached_tokens": 13
+   }
+  },
+  "t_start": 1795580347.2815316,
+  "wall_s": 0.811,
+  "error": null
+ },
+ "fillers": [
+  {
+   "status": 200,
+   "wall_s": 2.14
+  },
+  {
+   "status": 200,
+   "wall_s": 4.236
+  },
+  {
+   "status": 200,
+   "wall_s": 6.339
+  },
+  {
+   "status": 200,
+   "wall_s": 8.432
+  }
+ ],
+ "x3_cold": {
+  "status": 200,
+  "text": " Question two: what is the last word of this text? Question three: how many times does the word \"the\"",
+  "finish": "length",
+  "usage": {
+   "prompt_tokens": 2260,
+   "completion_tokens": 24,
+   "total_tokens": 2284,
+   "prompt_tokens_details": {
+    "cached_tokens": 13
+   }
+  },
+  "t_start": 1795580355.2131035,
+  "wall_s": 0.585,
+  "error": null
+ },
+ "x1_equals_x2": true
+}
