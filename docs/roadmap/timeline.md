@@ -57,6 +57,7 @@ gantt
     Experts on GPU and SSD only :planner_low_ram_modes, 2026-11-23, 2026-11-23
     Node prediction equals the cluster refe… :planner_node_predict_check, 2026-11-24, 2026-11-24
     Cost model 6 for streamed MoE :planner_costmodel_stream_terms, 2026-11-24, 2026-11-24
+    Cost model 6 remaining parts :planner_costmodel_v6_rest, 2026-11-25, 2026-11-25
     Recheck expert-parallel prefill error :planner_ep_prefill_recheck, 2026-11-21, 2026-11-21
     Approve the low-clock anchor :planner_owner_layer_anchor, 2026-11-21, 2026-11-21
     section multi - multi-GPU executor
@@ -150,6 +151,7 @@ gantt
     Plans and predictions across nodes :cluster_planner, 2026-11-23, 2026-11-23
     Node certificates and trust rules :cluster_mtls, 2026-11-23, 2026-11-24
     Cluster serving end to end :cluster_integration, 2026-11-24, 2026-11-24
+    Harden the cluster planner inputs :cluster_planner_hardening, 2026-11-25, 2026-11-25
     Node list, health and probes :cluster_discovery, 2026-11-24, 2026-11-24
     Nodes join and leave live :cluster_join_leave, 2026-11-24, 2026-11-24
     Pipeline stages across machines :cluster_pipeline_nodes, 2026-11-24, 2026-11-24
@@ -159,5 +161,5 @@ gantt
     Routing trace as prediction input :cluster_owner_routing_input, 2026-11-24, 2026-11-24
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-costmodel-v6-rest`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-rehearsal`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-review-phase6-serving`, `ops-packages`, `ops-profiling-mode`, `cluster-planner-hardening`, `cluster-pipeline-prefill`, `cluster-experts-nodes`, `cluster-replica-scaling`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-rehearsal`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-review-phase6-serving`, `ops-packages`, `ops-profiling-mode`, `cluster-pipeline-prefill`, `cluster-experts-nodes`, `cluster-replica-scaling`
 <!-- END GENERATED: timeline -->
