@@ -19,7 +19,9 @@
 #   trigger               start the Case F fault trigger (scripts/phase6_trigger.py, own pid file) on TRIGGER_PORT (7001); token in
 #                         $P6/trigger-token.txt; node b only
 #   endpoint [PORT]       this box's public address and the mapped port (default 7000, the trigger's 7001)
-# Env: THREADS (CPU quota, default cpu_quota.sh), PAR (parallel, 4), CTX (4096), P6, HEAD_HOST and HEAD_PORT (the head, 0.0.0.0:8080), TETRAEDER_BIN (the binary to run; the
+#   judged-round LABEL SHA  one judged Case S round (`tetraeder cluster judged-round`, node a, the head) into judged/LABEL; ends with
+#                         a `ROUND_DONE rc=N` line in logs/launch-judged-LABEL.log (scripts/phase6_exit_s.sh)
+# Env: THREADS (CPU quota, default cpu_quota.sh), PAR (parallel, 4), CTX (4096), WORKER_EXTRA (more worker flags of `node`, e.g. --miss cpu), P6, HEAD_HOST and HEAD_PORT (the head, 0.0.0.0:8080), TETRAEDER_BIN (the binary to run; the
 # loopback dry run sets it), P6_LOOPBACK (1: no hardware, no CUDA; `gates` writes fixture readings; `build` only checks that TETRAEDER_BIN
 # exists; `model` links the tiny MoE fixture, P6_LB_MODEL to change it), TRIGGER_PORT and TRIGGER_HOST (the trigger).
 cd "$(dirname "$0")/.." || exit 1
@@ -114,6 +116,8 @@ case "$stage" in
     args=(node --cluster "$P6/cluster.toml" --key "$P6/keys/key.pem" --cert "$P6/keys/cert.pem" --models-dir "$P6/models"
       --state-dir "$P6/node-state" --buffers "$buf")
     for a in "${engine_flags[@]}"; do args+=("--worker-arg=$a" "--replica-arg=$a"); done
+    # shellcheck disable=SC2086 # a word list on purpose
+    for a in ${WORKER_EXTRA:-}; do args+=("--worker-arg=$a"); done
     # the replica engine's own prefix cache and request log
     args+=("--replica-arg=--request-log" "--replica-arg=$P6/logs/replica-requests.jsonl")
     # `tetraeder::step` at debug: its `admit` lines are the evidence of which requests B served (phase6_exit_f_summary.py)
@@ -204,6 +208,13 @@ case "$stage" in
     date +%s.%N
     setsid nohup "$@" >> "$P6/logs/launch-$tag.log" 2>&1 8>&- < /dev/null &
     echo "launched $tag pid $!"
+    ;;
+  judged-round)
+    label="${1:?label}"
+    sha_v="${2:?model sha256}"
+    mkdir -p "$P6/judged/$label"
+    "$bin" cluster judged-round --cluster "$P6/cluster.toml" --key "$P6/keys/key.pem" --cert "$P6/keys/cert.pem"       --plan "$P6/judged-plan.toml" --model-sha256 "$sha_v" --hidden "${HIDDEN:-$root/runs/sc/hidden.bin}"       --prompt-tokens "${PROMPT_TOKENS:-2048}" --gen "${GEN_TOKENS:-128}" --warm "${WARM:-1}" --out "$P6/judged/$label"
+    echo "ROUND_DONE rc=$?"
     ;;
   worker-kill)
     pid=$(cat "$P6/pids/node" 2> /dev/null) || { echo "no node pid"; exit 1; }

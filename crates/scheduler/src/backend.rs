@@ -152,6 +152,15 @@ pub trait BatchBackend {
     fn counters(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
+    /// The expert caches' counters since load, cumulative, for the judged round (ADR 0092): per
+    /// layer of the model the compute tier's hits, the experts computed on the CPU, the layer
+    /// steps with every routed expert resident and those without, and the RAM tier's hits and
+    /// misses; the bytes read from storage; the slots per layer of each tier and the experts
+    /// per layer. `None` when the backend has no expert cache. The caller takes the difference
+    /// of two readings over the window it times.
+    fn expert_stats_json(&self) -> Option<serde_json::Value> {
+        None
+    }
     /// KV bytes per position (0 when unknown), to size `seq_cp` in the transfer metric.
     fn kv_row_bytes(&self) -> usize {
         0
@@ -218,6 +227,12 @@ pub trait SegmentBackend: BatchBackend {
         inputs: &[SeqInput<'_>],
         feed: Feed<'_>,
     ) -> Result<StepOut<'_>, BackendError>;
+    /// The expert-cache counters of the segment's backend (see
+    /// [`BatchBackend::expert_stats_json`]); a remote segment asks its worker. `None` when it has
+    /// none or the worker cannot answer.
+    fn expert_stats(&mut self) -> Option<serde_json::Value> {
+        self.expert_stats_json()
+    }
     /// The time the segment itself spent on the last step, apart from any network, when it
     /// knows (a remote segment reports its worker's time).
     fn last_step_time(&self) -> Option<std::time::Duration> {
@@ -990,6 +1005,34 @@ impl BatchBackend for MoeBackend {
 
     fn bytes_streamed_total(&self) -> Option<u64> {
         self.model.expert_stats().map(|s| s.io.bytes_read)
+    }
+
+    fn expert_stats_json(&self) -> Option<serde_json::Value> {
+        let st = self.model.expert_stats()?;
+        let (vram, ram) = self.model.tier_slots()?;
+        let layers: Vec<serde_json::Value> = st
+            .layers
+            .iter()
+            .map(|l| {
+                let ram = l.ram.unwrap_or_default();
+                serde_json::json!({
+                    "compute_hits": l.compute.hits,
+                    "cpu": l.cpu,
+                    "full_steps": l.full_steps,
+                    "partial_steps": l.partial_steps,
+                    "ram_hits": ram.hits,
+                    "ram_misses": ram.misses,
+                    "has_ram": l.ram.is_some(),
+                })
+            })
+            .collect();
+        Some(serde_json::json!({
+            "n_expert": self.model.hparams().n_expert,
+            "vram_slots": vram,
+            "ram_slots": ram,
+            "bytes_read": st.io.bytes_read,
+            "layers": layers,
+        }))
     }
 
     /// The builder's step profile (host timers) and whole-step graph builds.

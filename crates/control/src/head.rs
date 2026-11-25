@@ -133,6 +133,9 @@ struct State {
     next: ReqId,
     kv_formats: Vec<String>,
     kv_row_bytes: Vec<u64>,
+    /// Replicas a planned drain replaces: between the old one leaving and the new one joining
+    /// they have no replica up, yet requests wait for them (see [`ClusterEngine::drain`]).
+    replacing: Vec<bool>,
 }
 
 struct Inner {
@@ -195,6 +198,7 @@ impl ClusterEngine {
                 next: 1,
                 kv_formats: vec![String::new(); targets.len()],
                 kv_row_bytes: vec![0; targets.len()],
+                replacing: vec![false; targets.len()],
             }),
             front,
             targets,
@@ -273,15 +277,23 @@ impl ClusterEngine {
         self.inner.execute(actions);
     }
 
+    /// The replacement of replica `r` is given up: with no replica up, requests are refused again.
+    pub fn end_replace(&self, r: u32) {
+        lock(&self.inner.state).replacing[r as usize] = false;
+    }
+
     pub fn is_draining(&self, r: u32) -> bool {
         lock(&self.inner.state).router.is_draining(ReplicaId(r))
     }
 
-    /// Drains replica `r`: no new requests, then waits until its in-flight ones have ended, at
-    /// most `timeout`. `true`: nothing is left in flight. The replica stays draining; leaving
-    /// the router (`set_up(r, false)`) or `set_draining(r, false)` ends it.
+    /// Drains replica `r` to replace it: no new requests, then waits until its in-flight ones
+    /// have ended, at most `timeout`. `true`: nothing is left in flight. The replica stays
+    /// draining; leaving the router (`set_up(r, false)`) or `set_draining(r, false)` ends it.
+    /// Until the replacement joins (`set_up(r, true)`) or is given up ([`Self::end_replace`])
+    /// requests wait at the router even while no replica is up, instead of being refused.
     pub fn drain(&self, r: u32, timeout: Duration) -> bool {
         let t0 = std::time::Instant::now();
+        lock(&self.inner.state).replacing[r as usize] = true;
         self.set_draining(r, true);
         let drained = loop {
             if self.outstanding(r) == 0 {
@@ -393,6 +405,9 @@ impl Inner {
         let (actions, n) = {
             let mut st = lock(&self.state);
             let a = st.router.set_up(ReplicaId(r), up);
+            if up {
+                st.replacing[r as usize] = false;
+            }
             (a, st.router.up_count())
         };
         metrics::replicas_up(n);
@@ -684,7 +699,7 @@ impl Engine for ClusterEngine {
             // No replica is up (a draining one still is: a planned drain replaces it and the
             // requests wait for that). Waiting for a cluster that is gone is no answer: the
             // gateway turns this into its overloaded response with a retry hint.
-            if st.router.up_count() == 0 {
+            if st.router.up_count() == 0 && !st.replacing.iter().any(|&r| r) {
                 return Err(EngineError::Overloaded);
             }
             let id = st.next;

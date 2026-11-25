@@ -5,6 +5,7 @@ rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
     phase6_exit_s_summary.py summary RESULTS_DIR      writes RESULTS_DIR/verdict-s.json, prints the tables
     phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml     the analytic pick among the spanning plans
     phase6_exit_s_summary.py span PLAN.toml           the plan computes on both nodes, one node per stage
+    phase6_exit_s_summary.py slots PLAN.toml --vram V --ram R   the plan's expert cache is the slots the anchors ran (V and R)
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
     phase6_exit_s_summary.py gate RESULTS_DIR         the link gate before the download: writes link/gate.json, exit 1 when it fails
     phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
@@ -150,6 +151,19 @@ def gate_check(res: str) -> tuple[dict, list[str]]:
     except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as e:
         why.append(f"no re-priced predictions ({e})")
     return info, why
+
+
+def check_slots(plan_toml: str, vram: int, ram: int) -> list[str]:
+    """The workers take their slots from the plan's `expert_cache` (gpu0: compute tier, cpu0: RAM tier), the anchors from V and R:
+    a stage whose cache differs would be judged on other slots than it was fitted on. A stage without a cache is not checked."""
+    plan = tomllib.loads(open(plan_toml, encoding="utf-8").read())
+    why = []
+    for i, st in enumerate(s_ for r in plan.get("replicas", []) for s_ in r.get("stages", [])):
+        got = {c["device"].rsplit("/", 1)[-1]: c["slots"] for c in st.get("expert_cache", [])}
+        for dev, want in (("gpu0", vram), ("cpu0", ram)):
+            if got and got.get(dev) != want:
+                why.append(f"stage {i}: {dev} has {got.get(dev)} slots in the plan, the anchors ran {want} (V and R)")
+    return why
 
 
 # what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
@@ -557,6 +571,10 @@ def main() -> int:
     p.add_argument("plans_dir")
     p.add_argument("out")
     sub.add_parser("span").add_argument("plan")
+    sl = sub.add_parser("slots")
+    sl.add_argument("plan")
+    sl.add_argument("--vram", type=int, required=True)
+    sl.add_argument("--ram", type=int, required=True)
     lk = sub.add_parser("link")
     lk.add_argument("start")
     lk.add_argument("end")
@@ -593,6 +611,11 @@ def main() -> int:
         why = check_span(a.plan)
         for w in why:
             print(f"GATE FAILED span: {w}")
+        return 1 if why else 0
+    if a.cmd == "slots":
+        why = check_slots(a.plan, a.vram, a.ram)
+        for w in why:
+            print(f"GATE FAILED slots: {w}")
         return 1 if why else 0
     if a.cmd == "link":
         why, rows = check_link(load(a.start), load(a.end), a.band)

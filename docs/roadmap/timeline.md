@@ -131,6 +131,8 @@ gantt
     Readmit host 20210 for verdicts :bench_owner_host_20210, 2026-11-21, 2026-11-21
     Two-GPU cases on a four-GPU box :bench_owner_two_of_four, 2026-11-21, 2026-11-21
     Second two-box cluster session :bench_phase6_rehearsal_2, 2026-11-25, 2026-11-25
+    Case F clock offset between the boxes i… :bench_phase6_clock_offset, 2026-11-25, 2026-11-25
+    phase6_box.sh serve lacks --node-state :bench_phase6_serve_node_state, 2026-11-25, 2026-11-25
     section ops - operations
     Workspace, rules and first ADRs :ops_foundations, 2026-10-29, 2026-10-30
     CI and test infrastructure :ops_ci, 2026-10-30, 2026-11-19
@@ -158,6 +160,7 @@ gantt
     Head learns of a killed replica engine… :cluster_mode1_detection, 2026-11-25, 2026-11-25
     Discovery names the builder disk :cluster_discovery_disk_names, 2026-11-25, 2026-11-25
     Failover bound per Case F mode :cluster_failover_bound, 2026-11-25, 2026-11-25
+    Judged round across two nodes :cluster_judged_round_cmd, 2026-11-25, 2026-11-25
     Harden the cluster planner inputs :cluster_planner_hardening, 2026-11-25, 2026-11-25
     Node list, health and probes :cluster_discovery, 2026-11-24, 2026-11-24
     Nodes join and leave live :cluster_join_leave, 2026-11-24, 2026-11-24
@@ -173,5 +176,5 @@ gantt
     Node drain does not move load without a… :cluster_drain_without_plan, 2026-11-25, 2026-11-25
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-footprint-validator-gap`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `bench-phase6-clock-offset`, `bench-phase6-serve-node-state`, `ops-packages`, `ops-profiling-mode`, `cluster-leader-move`, `cluster-judged-round-cmd`, `cluster-experts-nodes`, `cluster-replica-scaling`, `cluster-prefix-fetch-not-observed`, `cluster-head-led-plan-ignores-segments`, `cluster-second-cold-request-empty`, `cluster-probe-control-idle`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-footprint-validator-gap`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-leader-move`, `cluster-experts-nodes`, `cluster-replica-scaling`, `cluster-prefix-fetch-not-observed`, `cluster-head-led-plan-ignores-segments`, `cluster-second-cold-request-empty`, `cluster-probe-control-idle`
 <!-- END GENERATED: timeline -->

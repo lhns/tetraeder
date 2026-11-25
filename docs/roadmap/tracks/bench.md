@@ -41,6 +41,8 @@ flowchart TB
     bench_235b_segment_confirm_2[/"✔ Rerun the segment<br/>confirmation"/]
     bench_phase6_rehearsal("✔ First two-box<br/>cluster session")
     bench_phase6_rehearsal_2[/"✔ Second two-box<br/>cluster session"/]
+    bench_phase6_clock_offset>"✔ Case F clock offset<br/>between the boxes is 2<br/>to 6 s uncertain"]
+    bench_phase6_serve_node_state>"✔ phase6_box.sh serve<br/>lacks --node-state"]
     bench_30b_c4_gap[/"○ 30B concurrency-4<br/>gap"/]
     bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
     bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
@@ -51,8 +53,6 @@ flowchart TB
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
     bench_open_records("⏸ Box checks for open<br/>design records")
-    bench_phase6_clock_offset>"⚠ Case F clock offset<br/>between the boxes is 2<br/>to 6 s uncertain"]
-    bench_phase6_serve_node_state>"⚠ phase6_box.sh serve<br/>lacks --node-state"]
     bench_harness ~~~ bench_phase2_exit
     bench_phase2_exit ~~~ bench_defect_tuned_cache
     bench_phase2_exit ~~~ bench_phase3b_proxy
@@ -89,9 +89,11 @@ flowchart TB
     bench_235b_segment_confirm ~~~ bench_235b_segment_confirm_2
     bench_235b_segment_confirm_2 ~~~ bench_phase6_rehearsal
     bench_phase6_rehearsal ~~~ bench_phase6_rehearsal_2
-    bench_phase6_rehearsal ~~~ bench_30b_c4_gap
-    bench_phase6_rehearsal ~~~ bench_phase6_exit
-    bench_phase6_rehearsal_2 ~~~ bench_phase7_exit
+    bench_phase6_rehearsal_2 ~~~ bench_phase6_clock_offset
+    bench_phase6_rehearsal_2 ~~~ bench_phase6_serve_node_state
+    bench_phase6_rehearsal_2 ~~~ bench_30b_c4_gap
+    bench_phase6_clock_offset ~~~ bench_phase6_exit
+    bench_phase6_serve_node_state ~~~ bench_phase7_exit
     bench_30b_c4_gap ~~~ bench_phase8_exit
     bench_phase6_exit ~~~ bench_phase9_exit
     bench_phase7_exit ~~~ bench_spec_rerun
@@ -99,10 +101,6 @@ flowchart TB
     bench_phase9_exit ~~~ bench_strata_pairing
     bench_spec_rerun ~~~ bench_d1_session
     bench_magnitude_q36 ~~~ bench_open_records
-    bench_strata_pairing ~~~ bench_phase6_clock_offset
-    bench_d1_session ~~~ bench_phase6_serve_node_state
-    bench_open_records ~~~ bench_phase6_serve_node_state
-    bench_phase6_clock_offset ~~~ bench_phase6_serve_node_state
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -124,15 +122,15 @@ flowchart TB
     bench_harness --> bench_strata_q36
     bench_235b_segment_confirm --> bench_235b_segment_confirm_2
     bench_235b_segment_confirm_2 --> bench_phase6_rehearsal
+    bench_phase6_rehearsal_2 --> bench_phase6_clock_offset
+    bench_phase6_rehearsal_2 --> bench_phase6_serve_node_state
     bench_v2_verdict --> bench_30b_c4_gap
     bench_v4a_verdict --> bench_30b_c4_gap
     bench_ab30b --> bench_30b_c4_gap
     bench_phase6_rehearsal --> bench_phase6_exit
     bench_strata_q36 --> bench_magnitude_q36
     bench_ttft --> bench_open_records
-    bench_phase6_rehearsal_2 --> bench_phase6_clock_offset
-    bench_phase6_rehearsal_2 --> bench_phase6_serve_node_state
-    linkStyle 51,62 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 49,60 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -148,7 +146,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class bench_harness,bench_noise_bands,bench_phase4_harness,bench_phase5_harness,bench_pin_confirm,bench_throttle_rules,bench_s3_rehearsal,bench_strata_q36,bench_phase6_rehearsal,bench_phase6_rehearsal_2 unrated
-    class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,bench_v4a_verdict,bench_ab30b,bench_235b_segment_confirm_2 succ
+    class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,bench_v4a_verdict,bench_ab30b,bench_235b_segment_confirm_2,bench_phase6_clock_offset,bench_phase6_serve_node_state succ
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b,bench_regression_gate,bench_235b_segment_confirm mixed
     class bench_v4b_verdict dead
@@ -156,7 +154,6 @@ flowchart TB
     class bench_30b_c4_gap,bench_magnitude_q36 next
     class bench_phase6_exit,bench_phase7_exit blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
-    class bench_phase6_clock_offset,bench_phase6_serve_node_state finding
 ```
 <!-- END GENERATED: track-bench -->
 
@@ -216,8 +213,8 @@ flowchart TB
 | `bench-owner-host-20210` | Readmit host 20210 for verdicts | owner-decision | owner | done | n/a | 2026-11-21 | 2026-11-21 |  |  |  |  | docs/notes/phase5-rule-changes.md; docs/box-driver.md |
 | `bench-owner-two-of-four` | Two-GPU cases on a four-GPU box | owner-decision | owner | done | n/a | 2026-11-21 | 2026-11-21 |  |  |  |  | docs/notes/phase5-rule-changes.md; docs/adr/0068-phase5-verdict-rules.md |
 | `bench-phase6-rehearsal-2` | Second two-box cluster session | experiment | box-later | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal, cluster-rejoin-after-restore, cluster-drain-without-plan |  |  | Case F nine trials: rejoin holds in all, summary fails on the clock offset only; 30B split tg within 6 percent | bench/results/phase6-rehearsal-2-20261125/README.md; bench/results/phase6-rehearsal-2-20261125/verdict-f.json; bench/results/phase6-rehearsal-2-20261125/link/drift.txt; bench/results/phase6-rehearsal-2-20261125/predictions/predict-cluster.json |
-| `bench-phase6-clock-offset` | Case F clock offset between the boxes is 2 to 6 s uncertain | defect | ci | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | the offset by ssh round trips misses the 0.5 s rule and moved a fault out of its window | bench/results/phase6-rehearsal-2-20261125/README.md |
-| `bench-phase6-serve-node-state` | phase6_box.sh serve lacks --node-state | defect | ci | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | the head replica registers its prefix listener where the daemon does not look | bench/results/phase6-rehearsal-2-20261125/README.md |
+| `bench-phase6-clock-offset` | Case F clock offset between the boxes is 2 to 6 s uncertain | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | the fault goes over a direct connection to B and the offset is read there, not through ssh | scripts/phase6_trigger.py; scripts/phase6_exit_f.sh; scripts/phase6_loopback_check.py; docs/box-driver.md |
+| `bench-phase6-serve-node-state` | phase6_box.sh serve lacks --node-state | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | serve passes --node-state and the head replica registers its prefix listener where the daemon looks | scripts/phase6_box.sh; scripts/phase6_loopback_check.py; .github/workflows/ci.yml; docs/box-driver.md |
 
 ### Details per node
 
@@ -274,8 +271,8 @@ flowchart TB
 | `bench-owner-host-20210` | Readmit host 20210 for verdicts |  |  | Host 20210 had no thermal throttle samples in its last two sessions and was the only usable four-GPU host on offer, so the owner allowed it for the verdicts at up to 1.22 USD/h. |  |  |  |  |  |
 | `bench-owner-two-of-four` | Two-GPU cases on a four-GPU box |  |  | With no two-GPU host at default power on offer, cases D2 and M2 ran on GPUs 2 and 3 of the V4a box, both engines on the same pair and only that pair judged; chosen over a looser power gate, by delegation to the advisor, to be confirmed with the M2 report. |  |  |  |  |  |
 | `bench-phase6-rehearsal-2` | Second two-box cluster session | Status: rehearsal 2, no verdict. Case F by scripts/phase6_exit_f.sh end to end (nine trials): the summary says fail, on the clock offset (uncertainty 2.3 to 6.3 s against 0.5 s) and daemon trial 2 (the fault hit no request in flight); rejoin holds in all nine. | Case F nine trials: rejoin holds in all, summary fails on the clock offset only; 30B split tg within 6 percent | Two rented boxes ran the Case F script end to end with the rejoin fix (rejoin 5.3 to 9.6 s in all nine trials), then a drain without a plan (holds), a prefix fetch attempt (not shown working) and a 30B split over the WAN link against a frozen prediction (tg within 6 percent, pp 55 to 64 percent low because the start probe was unlike the later ones). |  |  |  |  |  |
-| `bench-phase6-clock-offset` | Case F clock offset between the boxes is 2 to 6 s uncertain | clock_offset FAIL offset 0.2872 s, uncertainty 2.5298 s against 0.5 (bench/results/phase6-rehearsal-2-20261125/verdict-f.json) | the offset by ssh round trips misses the 0.5 s rule and moved a fault out of its window | taxameter ssh latency of 1 to 3 s makes the three-exchange offset uncertain by 2.3 to 6.3 s, so the clock_offset rule fails and daemon trial 2 had no request in flight at its fault; the offset needs a better source. |  |  |  |  |  |
-| `bench-phase6-serve-node-state` | phase6_box.sh serve lacks --node-state | node a: a prefix connection arrived and no replica listens for it; closed (bench/results/phase6-rehearsal-2-20261125/README.md, step 2) | the head replica registers its prefix listener where the daemon does not look | The serve stage starts the head from the repo directory, so its in-process replica registers in ./node-state while the daemon reads /root/p6/node-state; a fetch from the head replica is closed. |  |  |  |  |  |
+| `bench-phase6-clock-offset` | Case F clock offset between the boxes is 2 to 6 s uncertain | P6_LOOPBACK_REAL fault time known within 0.059 s at most, clock rule ok (offset 0.0001 s, worst uncertainty 0.0004 s over 9 measurement(s) against 0.5) (CI run 45646670539, loopback on one machine) | the fault goes over a direct connection to B and the offset is read there, not through ssh | The load generator on A fires the fault on B through a small trigger service and the clock offset is measured over that connection; on loopback the fault time is known within 59 ms, a WAN pair is not yet measured, and attempts that hit nothing in flight on B are repeated. |  |  |  |  |  |
+| `bench-phase6-serve-node-state` | phase6_box.sh serve lacks --node-state | P6_LOOPBACK_REAL serve --node-state wired, prefix-head registered in the daemon's node-state (CI run 45646670539, step phase 6 loopback) | serve passes --node-state and the head replica registers its prefix listener where the daemon looks | The serve stage now passes --node-state, and a CI step runs a real head and two real daemons through the box commands and checks that the head registered its prefix listener in the daemon directory; the prefix fetch itself is still open (cluster-prefix-fetch-not-observed). |  |  |  |  |  |
 
 ### Folded items per node
 

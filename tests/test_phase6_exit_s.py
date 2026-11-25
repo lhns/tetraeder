@@ -286,18 +286,6 @@ def test_the_link_cli_reports_raw_points_and_never_fails(tmp_path):
     assert r.returncode == 0 and "OUTSIDE THE BAND" in r.stdout and "not gated" in r.stdout
 
 
-def test_swapping_the_link_changes_nothing_else():
-    sys.path.insert(0, str(ROOT / "scripts"))
-    import phase6_exit_s_merge as m
-
-    hw = {"devices": [{"id": "a/gpu0"}], "links": [{"id": "net-a-b", "kind": "network", "alpha_s": {"value": 1}}, {"id": "a/pcie"}],
-          "collectives": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "points": [[1, 1]]}, {"op": "all_reduce", "ranks": ["a/gpu0", "a/gpu1"], "points": []}]}
-    out = m.swap_link(hw, {"curves": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "points": [[1, 9]]}], "links": [{"id": "net-a-b", "kind": "network", "alpha_s": {"value": 2}}]})
-    assert [c["points"] for c in out["collectives"] if c["op"] == "copy"] == [[[1, 9]]] and any(c["op"] == "all_reduce" for c in out["collectives"])
-    assert next(x for x in out["links"] if x["id"] == "net-a-b")["alpha_s"]["value"] == 2 and any(x["id"] == "a/pcie" for x in out["links"])
-    assert out["devices"] == [{"id": "a/gpu0"}]
-
-
 def test_the_interpolation_is_the_cost_models_curve_time():
     assert s6.curve_time(POINTS, 16 * 1024 * 1024) == pytest.approx(0.324)
     mid = s6.curve_time(POINTS, 32 * 1024 * 1024)
@@ -438,6 +426,18 @@ def test_the_cli_writes_the_verdict(tmp_path):
     assert r.returncode == 0 and "status: pass" in r.stdout
     assert json.loads((res / "verdict-s.json").read_text())["verdict"] == "pass"
 
+
+def test_the_plans_slots_must_be_the_anchors(tmp_path):
+    plan = tmp_path / "p.toml"
+    plan.write_text(
+        '[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n'
+        '[[replicas.stages.expert_cache]]\ndevice = "a/gpu0"\nslots = 32\n[[replicas.stages.expert_cache]]\ndevice = "a/cpu0"\nslots = 96\n'
+    )
+    assert s6.check_slots(str(plan), 32, 96) == []
+    why = s6.check_slots(str(plan), 32, 64)
+    assert len(why) == 1 and "cpu0 has 96 slots" in why[0]
+    plan.write_text('[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n')
+    assert s6.check_slots(str(plan), 1, 1) == []  # no cache, nothing to compare
 
 # ---- the link gate before the download -----------------------------------------------------------------------------------------
 

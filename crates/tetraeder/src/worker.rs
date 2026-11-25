@@ -64,6 +64,32 @@ pub fn segment_spec(a: &ServeArgs) -> anyhow::Result<Option<SegmentSpec>> {
     Ok(Some(spec))
 }
 
+/// The expert slots per layer a segment plan gives: the `expert_cache` of its stages, `gpu0` for
+/// the compute tier and `cpu0` for the RAM tier (the shape `planner::lower` reads as a builder
+/// placement). `None` for a plan without an expert cache. The slot counts of a cluster plan are
+/// the plan's own: no flag or environment variable repeats them.
+pub fn plan_slots(plan_toml: &str) -> anyhow::Result<Option<(usize, Option<usize>)>> {
+    let plan = tetraeder_plan::Plan::from_toml(plan_toml)
+        .map_err(|e| anyhow::anyhow!("not a plan: {e}"))?;
+    let caches: Vec<&tetraeder_plan::SlotCache> = plan
+        .replicas
+        .iter()
+        .flat_map(|r| &r.stages)
+        .flat_map(|s| &s.expert_cache)
+        .collect();
+    let slots = |d: &str| {
+        let mut it = caches.iter().filter(|c| c.device == d).map(|c| c.slots);
+        let first = it.next();
+        anyhow::ensure!(
+            it.all(|s| Some(s) == first),
+            "the stages of a segment disagree on the slots of {d}"
+        );
+        Ok(first.map(|s| s as usize))
+    };
+    let (gpu, cpu) = (slots("gpu0")?, slots("cpu0")?);
+    Ok(gpu.map(|g| (g, cpu)))
+}
+
 /// The arguments of the child for the command line of `serve --worker`: `serve` becomes
 /// `worker`, `--worker` is dropped.
 pub fn child_args(argv: impl Iterator<Item = String>) -> anyhow::Result<Vec<std::ffi::OsString>> {
@@ -78,8 +104,23 @@ pub fn child_args(argv: impl Iterator<Item = String>) -> anyhow::Result<Vec<std:
         .collect())
 }
 
-pub fn run(a: &WorkerArgs) -> anyhow::Result<()> {
+pub fn run(mut a: WorkerArgs) -> anyhow::Result<()> {
     let segment = segment_spec(&a.serve)?;
+    // A segment plan with an expert cache sets the slots, unless the flags already did.
+    if segment.is_some()
+        && a.serve.expert_slots.is_none()
+        && a.serve.ram_slots.is_none()
+        && let Some(f) = a
+            .serve
+            .plan
+            .clone()
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os(SEGMENT_PLAN_ENV).map(PathBuf::from))
+        && let Some((vram, ram)) = plan_slots(&std::fs::read_to_string(&f)?)?
+    {
+        a.serve.expert_slots = Some(vram);
+        a.serve.ram_slots = ram;
+    }
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
     let mut backend: Box<dyn BatchBackend> = if a.serve.fake {
@@ -107,4 +148,29 @@ pub fn run(a: &WorkerArgs) -> anyhow::Result<()> {
         std::process::exit(code);
     }
     res.map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plan_slots;
+
+    fn plan(caches: &str) -> String {
+        format!(
+            "model = \"m\"\n[[replicas]]\n[[replicas.stages]]\nlayers = [0, 4]\ndevices = [\"gpu0\"]\ntp = 1\nep = 1\n{caches}"
+        )
+    }
+
+    /// hardware: none. A segment plan's expert cache is the worker's slots: gpu0 the compute
+    /// tier, cpu0 the RAM tier.
+    #[test]
+    fn the_slots_are_the_plans_expert_cache() {
+        let p = plan(
+            "[[replicas.stages.expert_cache]]\ndevice = \"gpu0\"\nslots = 32\n\
+             [[replicas.stages.expert_cache]]\ndevice = \"cpu0\"\nslots = 96\n",
+        );
+        assert_eq!(plan_slots(&p).unwrap(), Some((32, Some(96))));
+        let gpu_only = plan("[[replicas.stages.expert_cache]]\ndevice = \"gpu0\"\nslots = 8\n");
+        assert_eq!(plan_slots(&gpu_only).unwrap(), Some((8, None)));
+        assert_eq!(plan_slots(&plan("")).unwrap(), None);
+    }
 }

@@ -20,14 +20,14 @@
 #   fetch     the 142 GB model on both boxes (REQUIRE_ONE_NUMA=1); refuses unless the link gate passed
 #   budget    per node, sc_box.sh: env, disk (the NVMe curve and the one-thread copy rate), balloon: the RAM budget under
 #             EMULATE_RAM_GB is measured before anything is profiled (ADR 0092 section 4)
-#   plan      `cluster profile` and the start link probe (band 0.08 later); the graph gets what a judged session adds (each node's
-#             builder disk `nvme0` from the committed prior, its measured RAM budget on the CPU: phase6_exit_s_merge.py), then
+#   plan      the start link probe (band 0.08 later) and `cluster profile --ram-budget` (each node's measured RAM budget on its CPU;
+#             discovery names the models volume `nvme0`, ADR 0091 History 2026-11-25), then
 #             `tetraeder-plan candidates --cluster`, the analytic pick among plans that compute on both nodes (a plan on one node is
 #             never a candidate), its stages checked to partition the layers one node each; its spans are what the anchors run
 #   calib     the whole-model trace on the leader (routing trace, and the hidden rows entering the cut), the trace and the rows to node
 #             b, anchors of each node's own segment truncated to a quarter and a half (real hidden rows; layer 0 takes tokens), two
 #             rounds, the fit (band limit 0.10, refused above)
-#   predict   the fitted node graphs merged into the cluster graph, `tetraeder-plan predict --cluster --judged` (routing trace only),
+#   predict   the fitted node graphs merged into the cluster graph (`tetraeder cluster merge`, on node a), `tetraeder-plan predict --cluster --judged` (routing trace only),
 #             SHA256SUMS and FROZEN.sha256 of everything it used; refuses on any failed pre-freeze rule. With SECOND_PREDICT_CMD (runs
 #             on node a, writes $PRED_OUT) a report-only prediction priced from a second prompt's routing trace, recorded before the
 #             judged runs, is kept as predictions/predict-cluster-p2.json (not frozen, not the judged prompt)
@@ -40,17 +40,18 @@
 #             tg each move by at most 0.08, else the session is not clean; the verdict must hold against the frozen and the end-priced
 #             prediction. The link is also probed before every judged round (link/probe-<round>.json); raw points are reported only
 #   summary   session.json and the verdict
-# THE JUDGED ROUND: no Rust command runs pp2048 then tg128 across the two nodes with the warm request, no prefix reuse and each
-# segment's counters in an exit_regime-shaped JSON (tree node cluster-exit-round). Until it exists the judged and aalast stages refuse
-# unless JUDGED_ROUND_CMD names a command that runs on BOTH boxes (env NODE=a|b, ROUND_DIR, PLAN, FROZEN_SHA, HIDDEN) and writes, on
-# node a, ROUND_DIR/cluster.json ({"runs": [{prefill_tok_s, decode_tok_s, prompt: {tokens, fnv1a64}}]}) and on each node
-# ROUND_DIR/seg-<node>.json (exit_regime shape: warm, prefill_io, decode_layers, balloon_ok, cotenant_ok) with seg-<node>.gpu.txt
-# (the `before:`/`after:` nvidia-smi lines of sc_box.sh run_one). REFERENCE_CMD (optional, node a, env ROUND_FILE) writes the report-only
-# single-node round.
+# THE JUDGED ROUND is `tetraeder cluster judged-round` (ADR 0091, 0092 owner answer 1), run once on node a with the head's key: it assigns the
+# plan's segments to both daemons, runs the warm request, then a timed pp2048 and tg128 request that computes every prompt token (the
+# prompt is the frozen one, read from the hidden-row dump), with each segment's counters read from its worker, and writes on node a
+# ROUND_DIR/cluster.json ({"runs": [{prefill_tok_s, decode_tok_s, prompt: {tokens, fnv1a64}, ...}]}) and ROUND_DIR/seg-<node>.json
+# (exit_regime shape: warm, prefill_io, decode_layers, the segment's own rates and times). The slot counts are the plan's own
+# (`expert_cache` of the segment plan the worker reads). This script adds what only a box knows: seg-<node>.gpu.txt (the `before:` and
+# `after:` nvidia-smi lines of sc_box.sh run_one) and balloon_ok and cotenant_ok in each seg file. REFERENCE_CMD (optional, node a, env
+# ROUND_FILE) writes the report-only single-node round.
 #
-# Env: LINK_GATE_WAIT_S (600), GATE_LAYOUT, RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, JUDGED_ROUND_CMD, REFERENCE_CMD, RESULTS_ROOT,
-# V and R (the slots of both segments: 32 VRAM and 96 RAM, the covering regime the confirmation validated; the plan's own slot counts
-# are not read, so check the pick's notes in plans/candidates.json), A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first),
+# Env: LINK_GATE_WAIT_S (600), GATE_LAYOUT, RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
+# V and R (the slots the anchors run: 32 VRAM and 96 RAM, the covering regime the confirmation validated; the judged workers run the plan's
+# own `expert_cache`, and the plan stage refuses a pick whose slots differ), A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first),
 # MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94" instead of the pick's).
 # LOOPBACK=1: the dry run with the stand-in tools of scripts/phase6_loopback.py (LB_SCENARIO breaks one rule on purpose); no GPU.
 cd "$(dirname "$0")/.." || exit 1
@@ -169,8 +170,9 @@ st_setup() {
   else
     sess t_created "{\"a\": ${T_CREATED_A:?set T_CREATED_A}, \"b\": ${T_CREATED_B:?set T_CREATED_B}}"
   fi
-  bx b 60 "bash scripts/phase6_box.sh node"
-  bx a 60 "bash scripts/phase6_box.sh node"
+  # the workers compute the experts outside their slots on the CPU (the exit harness's MissPolicy::Cpu); the slot counts are the plan's;
+  # one sequence of ctx tokens (2048 prompt and 128 generated need 2176)
+  for b in b a; do bx "$b" 60 "CTX=${S_CTX:-4096} PAR=1 WORKER_EXTRA='--miss cpu' bash scripts/phase6_box.sh node"; done
   sess band_source '"bench/spec/phase0.toml"'
   sess boxes "{\"a\": {\"id\": \"${ID_A:-loopback}\"}, \"b\": {\"id\": \"${ID_B:-loopback}\"}}"
   say "setup done"
@@ -199,11 +201,8 @@ st_linkgate() {
   say "link gate: the first full probe"
   probe_link gate1 || die "the first full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
   gate_time gate1
-  bx a 300 "$(tet) cluster profile $cl --probe $P/probe-gate1.json -o $P/hw-gate1.json" | tail -n 2
-  get a hw-gate1.json "$out/link/gate/hw-gate1.json"
-  python3 -I scripts/phase6_exit_s_merge.py "$out/link/gate/hw-gate1.json" --builder-disk crates/planner/fixtures/rtx3090_prior.toml \
-    --ram-budget "a=$ram" --ram-budget "b=$ram" -o "$out/link/gate/hw-gate1-builder.json"
-  put a "$out/link/gate/hw-gate1-builder.json" hw-gate1-builder.json
+  bx a 300 "$(tet) cluster profile $cl --probe $P/probe-gate1.json --ram-budget a=$ram --ram-budget b=$ram -o $P/hw-gate1-builder.json" | tail -n 2
+  get a hw-gate1-builder.json "$out/link/gate/hw-gate1-builder.json"
   put a "${GATE_LAYOUT:-$repo/bench/results/segment-confirm-20261125b/layout.json}" gate-layout.json
   bx a 300 "rm -rf $P/gate-candidates; $(tplan) candidates --cluster --hw $P/hw-gate1-builder.json --layout $P/gate-layout.json --plans-dir $P/gate-candidates --out $P/gate-candidates.json --prompt 2048" | tail -n 3
   get a gate-candidates.json "$out/link/gate/candidates.json"
@@ -220,8 +219,8 @@ st_linkgate() {
   sleep "$gate_wait"
   probe_link gate2 || die "the second full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
   gate_time gate2
-  python3 -I scripts/phase6_exit_s_merge.py "$out/link/gate/hw-gate1-builder.json" --swap-link "$out/link/probe-gate2.json" -o "$out/link/gate/hw-gate2-builder.json"
-  put a "$out/link/gate/hw-gate2-builder.json" hw-gate2-builder.json
+  bx a 300 "$(tet) cluster merge $P/hw-gate1-builder.json --swap-link $P/probe-gate2.json -o $P/hw-gate2-builder.json" | tail -n 1
+  get a hw-gate2-builder.json "$out/link/gate/hw-gate2-builder.json"
   gate_price hw-gate2-builder.json predict-gate2.json
   summ gate "$out" || die "the link gate failed: destroy both boxes, nothing was downloaded (the 142 GB model comes only after this gate)"
   say "linkgate done: the pair passes, the download may start"
@@ -262,19 +261,16 @@ st_plan() {
   bx a 600 "$(tet) plan layout .hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf --out $P/layout.json" | tail -n 1
   local cl="--cluster $P/cluster.toml --key $P/keys/key.pem --cert $P/keys/cert.pem"
   bx a 900 "$(tet) cluster probe $cl --repeats 20 -o $P/probe-start.json" | tail -n 2
-  bx a 300 "$(tet) cluster profile $cl --probe $P/probe-start.json -o $P/hw.json" | tail -n 2
-  get a probe-start.json "$out/link/probe-start.json"
-  get a hw.json "$out/link/hw.json"
-  get a layout.json "$out/layout.json"
-  say "the graph a judged session adds to: builder disks and the measured RAM budgets"
+  # the cluster graph carries each node's measured RAM budget on its CPU (ADR 0092 section 4); discovery names the models volume nvme0
   local ra rb
   ra=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/a/env.json")
   rb=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/b/env.json")
-  python3 -I scripts/phase6_exit_s_merge.py "$out/link/hw.json" --builder-disk crates/planner/fixtures/rtx3090_prior.toml \
-    --ram-budget "a=$ra" --ram-budget "b=$rb" -o "$out/link/hw-builder.json"
-  put a "$out/link/hw-builder.json" hw-builder.json
+  bx a 300 "$(tet) cluster profile $cl --probe $P/probe-start.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw.json" | tail -n 2
+  get a probe-start.json "$out/link/probe-start.json"
+  get a hw.json "$out/link/hw.json"
+  get a layout.json "$out/layout.json"
   say "candidates across the nodes, then the pick"
-  bx a 300 "rm -rf $P/candidates; $(tplan) candidates --cluster --hw $P/hw-builder.json --layout $P/layout.json --plans-dir $P/candidates --out $P/candidates.json --prompt 2048" | tail -n 3
+  bx a 300 "rm -rf $P/candidates; $(tplan) candidates --cluster --hw $P/hw.json --layout $P/layout.json --plans-dir $P/candidates --out $P/candidates.json --prompt 2048" | tail -n 3
   get a candidates.json "$out/plans/candidates.json"
   mkdir -p "$out/plans/candidates"
   local f
@@ -283,6 +279,7 @@ st_plan() {
   done
   summ pick "$out/plans/candidates.json" "$out/plans/candidates" "$out/plans/judged-plan.toml" || die "no plan that computes on both nodes: Case S has no judged candidate"
   summ span "$out/plans/judged-plan.toml" || die "the pick does not compute on both nodes"
+  summ slots "$out/plans/judged-plan.toml" --vram "$vs" --ram "$rs" || die "the pick's slots are not the anchors' (V and R): the workers run the plan's, so set V and R to the pick's or pick again"
   local nl
   nl=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["n_layer"])' "$out/layout.json")
   summ spans "$out/plans/judged-plan.toml" --n-layer "$nl" > "$out/plans/spans.raw" || die "the pick's stages do not cut the $nl layers one node each, leader first"
@@ -371,11 +368,13 @@ st_predict() {
   need_spans
   P=$(p6dir a)
   [ "$LOOPBACK" = 1 ] && [ ! -x "$lb/tetraeder-plan" ] && loopback_tools
-  python3 -I scripts/phase6_exit_s_merge.py "$out/link/hw-builder.json" --node "a=$out/calib/a/fitted.toml" --node "b=$out/calib/b/fitted.toml" \
-    -o "$out/predictions/hw-cluster.json"
   tsha=$(awk '{ print $1 }' "$out/trace/routing.sha256")
   ph=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["prompt"]["fnv1a64"])' "$out/session.json")
-  put a "$out/predictions/hw-cluster.json" hw-cluster.json
+  # the fitted node graphs go into the cluster graph on node a (`tetraeder cluster merge`, a Rust reader)
+  put a "$out/calib/a/fitted.toml" fitted-a.toml
+  put a "$out/calib/b/fitted.toml" fitted-b.toml
+  bx a 300 "$(tet) cluster merge $P/hw.json --node a=$P/fitted-a.toml --node b=$P/fitted-b.toml -o $P/hw-cluster.json" | tail -n 2
+  get a hw-cluster.json "$out/predictions/hw-cluster.json"
   put a "$out/calib/a/replay.json" replay-a.json
   put a "$out/calib/b/replay.json" replay-b.json
   # the prediction is judged: routing from the trace only, the sha256 of the trace it was priced from, one replay per segment
@@ -386,7 +385,7 @@ st_predict() {
     bx a 3600 "env PRED_OUT=$P/predict-cluster-p2.json bash -c '$SECOND_PREDICT_CMD'" > /dev/null \
       && get a predict-cluster-p2.json "$out/predictions/predict-cluster-p2.json" || say "the second-prompt prediction was not written (report only)"
   fi
-  (cd "$out" && sha256sum layout.json link/probe-start.json link/hw.json link/hw-builder.json predictions/hw-cluster.json predictions/predict-cluster.json \
+  (cd "$out" && sha256sum layout.json link/probe-start.json link/hw.json predictions/hw-cluster.json predictions/predict-cluster.json \
     plans/judged-plan.toml plans/candidates.json plans/spans.txt trace/routing.sha256 trace/hidden.sha256 calib/a/pred.json calib/b/pred.json \
     calib/a/replay.json calib/b/replay.json calib/a/fitted.toml calib/b/fitted.toml > predictions/SHA256SUMS \
     && (cd predictions && sha256sum SHA256SUMS > FROZEN.sha256))
@@ -398,22 +397,55 @@ st_predict() {
 }
 
 # one judged round into $out/judged/<label>: on both boxes, then the files back
+gpu_line() { # gpu_line NODE before|after: the nvidia-smi line of sc_box.sh run_one (clock-event reasons, power draw and limits)
+  bx "$1" 60 "nvidia-smi --query-gpu=clocks_event_reasons.active,power.draw,power.limit,power.default_limit --format=csv,noheader 2>&1 | tail -n 1" | tail -n 1 | sed "s/^/$2: /"
+}
+
+# the exit code of sc_balloon.sh check on a node: 0 while the balloon holds the emulated RAM
+balloon_rc() { bx "$1" 60 "bash scripts/sc_balloon.sh check > /dev/null 2>&1; echo \$?" | tail -n 1; }
+
+# the flags only a box knows, into a segment file: balloon_ok (sc_balloon.sh check before and after the round) and cotenant_ok (the
+# gates stage's reading; no single engine process exists to sample during a round)
+box_flags() { # box_flags NODE JSON PRE_RC POST_RC
+  python3 -I - "$out/gates/$1/cotenant.json" "$2" "$3" "$4" << 'EOF'
+import json, sys
+gate, path, pre, post = sys.argv[1:5]
+d = json.load(open(path, encoding="utf-8"))
+ok = pre == "0" and post == "0"
+d["balloon_ok"] = ok
+if not ok:
+    d["balloon_reason"] = f"sc_balloon.sh check rc {pre} before, {post} after the round"
+c = json.load(open(gate, encoding="utf-8"))
+d["cotenant_ok"] = c.get("ok") is True
+if c.get("ok") is not True:
+    d["cotenant_reason"] = f"gates reading {c}"
+json.dump(d, open(path, "w", encoding="utf-8"), indent=2)
+EOF
+}
+
+# one judged round into $out/judged/<label>: `tetraeder cluster judged-round` on node a (the head), then the files back
 run_round() { # run_round LABEL
-  local label=$1 d="$out/judged/$1" n t0 t0x
+  local label=$1 d="$out/judged/$1" n k t0 P
   mkdir -p "$d"
+  P=$(p6dir a)
   if [ "$label" = last ]; then probe_link aalast; else probe_link "$label"; fi # raw points per round: reported, not gated
   if [ "$LOOPBACK" = 1 ]; then
     t0=$(python3 -I -c 'import time; print(time.time())')
-    (cd "$repo" && python3 scripts/phase6_loopback.py judged-round --nodes a,b --round "${label#r}" --out "$d")
+    bx a 300 "$(tet) cluster judged-round --cluster $P/cluster.toml --key $P/keys/key.pem --cert $P/keys/cert.pem --plan $P/judged-plan.toml --out $P/judged/$label" | tail -n 1
+    for k in cluster.json seg-a.json seg-a.gpu.txt seg-b.json seg-b.gpu.txt; do get a "judged/$label/$k" "$d/$k"; done
   else
-    [ -n "${JUDGED_ROUND_CMD:-}" ] || die "no judged-round command exists: the two-node pp2048 and tg128 round with per-segment counters is not built (tree node cluster-exit-round). Set JUDGED_ROUND_CMD (see the header)"
-    for n in a b; do
-      t0x=$(bx "$n" 60 "bash scripts/phase6_box.sh launch judged-$label env NODE=$n ROUND_DIR=$(p6dir "$n")/judged/$label PLAN=$(p6dir "$n")/judged-plan.toml FROZEN_SHA=$FROZEN_SHA HIDDEN=/root/tetraeder/runs/sc/hidden.bin bash -c '$JUDGED_ROUND_CMD'" | head -n 1)
-      [ "$n" = a ] && t0=$t0x
-    done
-    for n in a b; do wait_line "$n" "logs/launch-judged-$label.log" 'ROUND_DONE' 7200 > /dev/null || die "judged round $label did not finish on node $n"; done
-    for k in cluster.json seg-a.json seg-a.gpu.txt; do get a "judged/$label/$k" "$d/$k"; done
-    for k in seg-b.json seg-b.gpu.txt; do get b "judged/$label/$k" "$d/$k"; done
+    local sha pre_a pre_b done_line
+    sha=$(bx a 60 "cat $P/model.sha256" | tail -n 1)
+    [ -n "$sha" ] || die "no model.sha256 on node a"
+    for n in a b; do gpu_line "$n" before > "$d/seg-$n.gpu.txt"; done
+    pre_a=$(balloon_rc a) pre_b=$(balloon_rc b)
+    t0=$(bx a 60 "bash scripts/phase6_box.sh launch judged-$label bash scripts/phase6_box.sh judged-round $label $sha" | head -n 1)
+    done_line=$(wait_line a "logs/launch-judged-$label.log" 'ROUND_DONE' 14400) || die "judged round $label did not finish on node a"
+    case "$done_line" in *"rc=0"*) ;; *) die "judged round $label failed on node a: $done_line (logs/launch-judged-$label.log)" ;; esac
+    for n in a b; do gpu_line "$n" after >> "$d/seg-$n.gpu.txt"; done
+    for k in cluster.json seg-a.json seg-b.json; do get a "judged/$label/$k" "$d/$k"; done
+    box_flags a "$d/seg-a.json" "$pre_a" "$(balloon_rc a)"
+    box_flags b "$d/seg-b.json" "$pre_b" "$(balloon_rc b)"
   fi
   python3 -I -c 'import json, sys; json.dump({"t_start": float(sys.argv[1]), "frozen_sha256": sys.argv[2]}, open(sys.argv[3], "w"))' "$t0" "${FROZEN_SHA:-}" "$d/meta.json"
   if [ -n "${REFERENCE_CMD:-}" ] && [ "$label" != last ]; then
@@ -461,8 +493,8 @@ st_linkend() {
   need_spans
   probe_link end
   # the frozen plan priced again with the end probe's curves: only the link differs from the frozen graph
-  python3 -I scripts/phase6_exit_s_merge.py "$out/predictions/hw-cluster.json" --swap-link "$out/link/probe-end.json" -o "$out/predictions/hw-cluster-end.json"
-  put a "$out/predictions/hw-cluster-end.json" hw-cluster-end.json
+  bx a 300 "$(tet) cluster merge $(p6dir a)/hw-cluster.json --swap-link $(p6dir a)/probe-end.json -o $(p6dir a)/hw-cluster-end.json" | tail -n 1
+  get a hw-cluster-end.json "$out/predictions/hw-cluster-end.json"
   price hw-cluster-end.json predict-cluster-end.json > "$out/predictions/predict-end.log" 2>&1 || { cat "$out/predictions/predict-end.log"; die "the end-priced prediction was refused"; }
   tail -n 2 "$out/predictions/predict-end.log"
   get a predict-cluster-end.json "$out/predictions/predict-cluster-end.json"

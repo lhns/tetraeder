@@ -3,10 +3,11 @@
 their loopback dry run (LOOPBACK=1) with two "boxes" as two sets of processes. It speaks only what the drivers use:
 
     cluster cert --node ID --out DIR          writes key.pem and cert.pem (text, no cryptography)
-    cluster probe ... -o F, cluster profile ... [--probe P] -o F      a link probe and a merged graph of fixed numbers
+    cluster probe ... -o F, cluster profile ... [--probe P] [--ram-budget ID=BYTES] -o F      a link probe and a merged graph of fixed numbers
+    cluster merge HW [--node ID=F] [--swap-link PROBE] [--ram-budget ID=BYTES] -o F      the session's additions (fitted graphs pass through)
+    cluster judged-round ... --out DIR        one judged round of the two-node plan: cluster.json and the segment files
     plan candidates|predict ...               tetraeder-plan: two cluster candidates (one on a single node), a judged prediction
     sc-box --node N --out DIR --stages ...    scripts/sc_box.sh's calibration stages: the files they leave, from fixed numbers
-    judged-round --out DIR --node N           one judged round of the two-node plan: cluster.json and the segment files
     node --cluster F --key K --cert C --state-dir D ...      the daemon of one node: control port, supervises one replica engine
     serve --cluster F --key K --cert C --replicas R --port P --request-log L ...     the head: gateway, router, two replicas
     engine --port P --node ID                 (internal) the replica engine the daemon starts as its child
@@ -403,19 +404,36 @@ def fake_probe(out: str) -> None:
                            {"op": "copy", "ranks": ["b/cpu0", "a/cpu0"], "comm": "tls", "points": POINTS}]})
 
 
-def fake_profile(out: str, probe: str | None) -> None:
+def ram_budgets(specs: list[str]) -> dict[str, int]:
+    return {k: int(v) for k, v in (x.split("=", 1) for x in specs)}
+
+
+def fake_profile(out: str, probe: str | None, ram: dict[str, int] | None = None) -> None:
+    """The graph discovery gives (the models volume is `nvme0`), with each node's RAM budget on its CPU when given."""
     devs, links = [], []
     for n in "ab":
-        devs += [{"id": f"{n}/cpu0", "kind": "cpu", "tier": "ram", "node": n, "capacity_bytes": 64_000_000_000, "threads": 16},
+        devs += [{"id": f"{n}/cpu0", "kind": "cpu", "tier": "ram", "node": n, "capacity_bytes": (ram or {}).get(n, 64_000_000_000), "threads": 16},
                  {"id": f"{n}/gpu0", "kind": "gpu", "tier": "vram", "node": n, "capacity_bytes": 25769803776},
-                 {"id": f"{n}/disk0", "kind": "disk", "tier": "nvme", "node": n, "capacity_bytes": 2_000_000_000_000}]
+                 {"id": f"{n}/nvme0", "kind": "disk", "tier": "nvme", "node": n, "capacity_bytes": 2_000_000_000_000}]
         links += [{"id": f"{n}/pcie", "a": f"{n}/gpu0", "b": f"{n}/cpu0", "kind": "pcie", "alpha_s": {"value": 1e-5}, "beta_bytes_per_s": {"value": 1e10}},
-                  {"id": f"{n}/storage", "a": f"{n}/disk0", "b": f"{n}/cpu0", "kind": "storage", "alpha_s": {"value": 1e-4}, "beta_bytes_per_s": {"value": 3e9}}]
+                  {"id": f"{n}/nvme-cpu0", "a": f"{n}/nvme0", "b": f"{n}/cpu0", "kind": "storage", "alpha_s": {"value": 1e-4}, "beta_bytes_per_s": {"value": 3e9}}]
     hw = {"devices": devs, "links": links, "lane_groups": [], "notes": [], "collectives": []}
     if probe:
         pr = json.load(open(probe, encoding="utf-8"))
         hw["collectives"] = pr["curves"]
     wjson(out, hw)
+
+
+def fake_merge(a: argparse.Namespace) -> int:
+    hw = json.load(open(a.hw, encoding="utf-8"))
+    for d in hw["devices"]:
+        if d.get("kind") == "cpu" and d.get("node") in ram_budgets(a.ram_budget):
+            d["capacity_bytes"] = ram_budgets(a.ram_budget)[d["node"]]
+    if a.swap_link:
+        hw["collectives"] = json.load(open(a.swap_link, encoding="utf-8"))["curves"]
+    wjson(a.out, hw)
+    print(f"wrote {a.out}: {len(a.node)} fitted node graph(s)")
+    return 0
 
 
 def fake_plan(argv: list[str]) -> int:
@@ -514,23 +532,36 @@ def main() -> int:
     argv = sys.argv[1:]
     if argv[:1] == ["plan"]:
         return fake_plan(argv[1:])
-    if argv[:1] == ["sc-box"] or argv[:1] == ["judged-round"]:
+    if argv[:1] == ["sc-box"]:
         ap = argparse.ArgumentParser(allow_abbrev=False)
         ap.add_argument("cmd")
         ap.add_argument("--node")
-        ap.add_argument("--nodes")
         ap.add_argument("--out", required=True)
         ap.add_argument("--stages")
         ap.add_argument("--span", default="0..47")
-        ap.add_argument("--round", default="1")
         a = ap.parse_args(argv)
-        return fake_sc_box(a) if a.cmd == "sc-box" else fake_judged_round(a)
+        return fake_sc_box(a)
+    if argv[:2] == ["cluster", "judged-round"]:
+        ap = argparse.ArgumentParser(allow_abbrev=False)
+        ap.add_argument("--out", required=True)
+        a, _ = ap.parse_known_args(argv[2:])
+        label = os.path.basename(os.path.normpath(a.out))  # r1, r2, ... or last
+        return fake_judged_round(argparse.Namespace(out=a.out, nodes="a,b", round=label[1:] if label.startswith("r") else label))
+    if argv[:2] == ["cluster", "merge"]:
+        ap = argparse.ArgumentParser(allow_abbrev=False)
+        ap.add_argument("hw")
+        ap.add_argument("--node", action="append", default=[])
+        ap.add_argument("--swap-link")
+        ap.add_argument("--ram-budget", action="append", default=[])
+        ap.add_argument("-o", "--out", required=True)
+        return fake_merge(ap.parse_args(argv[2:]))
     if argv[:2] in (["cluster", "probe"], ["cluster", "profile"]):
         ap = argparse.ArgumentParser(allow_abbrev=False)
         ap.add_argument("-o", "--out", required=True)
         ap.add_argument("--probe")
+        ap.add_argument("--ram-budget", action="append", default=[])
         a, _ = ap.parse_known_args(argv[2:])
-        fake_probe(a.out) if argv[1] == "probe" else fake_profile(a.out, a.probe)
+        fake_probe(a.out) if argv[1] == "probe" else fake_profile(a.out, a.probe, ram_budgets(a.ram_budget))
         return 0
     if argv[:1] == ["cluster"] and argv[1:2] == ["cert"]:
         ap = argparse.ArgumentParser()

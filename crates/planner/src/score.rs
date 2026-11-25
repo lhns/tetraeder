@@ -2248,13 +2248,17 @@ mod tests {
         }
         let mut n = 0;
         for dir in dirs.iter().filter(|d| d.join("candidates.json").is_file()) {
-            let layout: ModelLayout =
-                serde_json::from_str(&std::fs::read_to_string(dir.join("layout.json")).unwrap())
-                    .unwrap();
-            let cands: CandidatesFile = serde_json::from_str(
-                &std::fs::read_to_string(dir.join("candidates.json")).unwrap(),
-            )
-            .unwrap();
+            // Phase 6 sessions commit candidates.json files of other shapes (cluster
+            // candidates), and some have no layout; only a directory that reads as a Phase 2-5
+            // session is scored.
+            let read = |f: &str| std::fs::read_to_string(dir.join(f)).ok();
+            let (Some(Ok(layout)), Some(Ok(cands))) = (
+                read("layout.json").map(|t| serde_json::from_str::<ModelLayout>(&t)),
+                read("candidates.json").map(|t| serde_json::from_str::<CandidatesFile>(&t)),
+            ) else {
+                eprintln!("skip {}: not a Phase 2-5 session directory", dir.display());
+                continue;
+            };
             let Ok(s) = score_dir(dir) else { continue };
             let hw = s.calibrated.clone();
             for e in &cands.candidates {
