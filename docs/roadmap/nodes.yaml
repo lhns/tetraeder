@@ -4644,7 +4644,7 @@ nodes:
   end: ''
   folded: []
   overview: false
-  plain: 'Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Fixed as a bulk deadline (120 s) for snapshots, restores and prefill steps, with tests and logging; not proven, so the node stays open until a box run shows it.'
+  plain: 'Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Not confirmed, because the leader log of that window was not kept. Hardened with a bulk deadline (120 s) for snapshots, restores and prefill steps, a loopback eviction test and logging; the node stays open until a box run shows it.'
   notes: 'Not reproduced on CPU with the tiny MoE: cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node (cluster_integration.rs) sends three cold prompts of about 2000 tokens, then three streamed with ignore_eos, through serve --cluster-plan at 4 micro-batches of 512, ctx 4096 and 4 sequences, and every answer equals one node. What differs from rehearsal 2 is the 30B with expert slots, CUDA and a WAN link, so the cause is still open; the test stays as the guard.'
 
 - id: cluster-sharded-model-id

@@ -569,13 +569,11 @@ const BIG_ARGS: [&str; 10] = [
     "4",
 ];
 
-/// hardware: cpu. Two different cold prompts, each longer than the plan's step (ubatch 512 times
-/// 4 micro-batches), one after the other through the real head and a replica across two nodes:
-/// both answer with tokens, and the same ones as one node (rehearsal 2: the second cold request
-/// after a head start came back as an empty 200).
-#[test]
-fn cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node() {
-    let mut c = Cluster::new("it-cold2", &["a", "b", "c"], "tiny-qwen3moe-f16.gguf");
+/// A split plan of the MoE fixture over nodes b and c (ubatch 512, 4 micro-batches, a 4096-row
+/// pool of four sequences) behind a real head, and one node serving the same model: the
+/// rehearsal's shape. Returns the cluster, the processes, and the two HTTP ports.
+fn cold_cluster(tag: &str) -> (Cluster, Procs, u16, u16) {
+    let mut c = Cluster::new(tag, &["a", "b", "c"], "tiny-qwen3moe-f16.gguf");
     for n in ["a", "b", "c"] {
         c.spawn_daemon(n, &BIG_ARGS, &BIG_ARGS);
     }
@@ -608,6 +606,16 @@ fn cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_
             .unwrap(),
     );
     wait_healthy(ref_port, &mut guard.0[1]);
+    (c, guard, port, ref_port)
+}
+
+/// hardware: cpu. Two different cold prompts, each longer than the plan's step (ubatch 512 times
+/// 4 micro-batches), one after the other through the real head and a replica across two nodes:
+/// both answer with tokens, and the same ones as one node (rehearsal 2: the second cold request
+/// after a head start came back as an empty 200).
+#[test]
+fn cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node() {
+    let (mut c, _guard, port, ref_port) = cold_cluster("it-cold2");
     for tag in ["alpha", "bravo", "charlie"] {
         let prompt = format!("{tag} the quick brown fox jumps over the lazy dog. ").repeat(40);
         let got = chat(port, &prompt, ",\"max_tokens\":8").unwrap();
@@ -629,6 +637,40 @@ fn cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_
             chunks >= 6,
             "streamed prompt {tag}: {chunks} chunks in {text}"
         );
+    }
+    for p in &mut c.procs.0 {
+        assert!(p.try_wait().unwrap().is_none(), "a daemon exited");
+    }
+}
+
+/// hardware: cpu. The rehearsal's eviction: each prompt (about 2100 tokens) fits the 4096-row
+/// pool, two do not, so every cold prompt after the first must evict the idle sequence of the one
+/// before it (a snapshot of its KV through the segment workers) and still answer, with the
+/// tokens one node gives, streamed with ignore_eos as the round script asks.
+#[test]
+fn cpu_cold_prompts_that_do_not_fit_together_evict_the_idle_one_and_answer_like_one_node() {
+    let (mut c, _guard, port, ref_port) = cold_cluster("it-evict");
+    let long =
+        |tag: &str| format!("{tag} the quick brown fox jumps over the lazy dog. ").repeat(45);
+    for tag in ["alpha", "bravo", "charlie"] {
+        let got = chat(port, &long(tag), ",\"max_tokens\":8").unwrap();
+        let want = chat(ref_port, &long(tag), ",\"max_tokens\":8").unwrap();
+        assert!(!want.is_empty());
+        assert_eq!(got, want, "cold prompt {tag}");
+    }
+    for tag in ["delta", "echo"] {
+        let body = format!(
+            "{{\"messages\":[{{\"role\":\"user\",\"content\":{}}}],\"temperature\":0,\"max_tokens\":12,\"stream\":true,\"ignore_eos\":true}}",
+            serde_json::Value::String(long(tag))
+        );
+        let (status, text) = http(port, "/v1/chat/completions", Some(&body));
+        assert_eq!(status, 200, "{text}");
+        let chunks = text.matches("\"content\"").count();
+        assert!(
+            chunks >= 6,
+            "streamed prompt {tag}: {chunks} chunks in {text}"
+        );
+        assert!(!text.contains("\"error\""), "{text}");
     }
     for p in &mut c.procs.0 {
         assert!(p.try_wait().unwrap().is_none(), "a daemon exited");

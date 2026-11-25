@@ -356,7 +356,7 @@ flowchart TB
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
 | Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
-| Second cold request through a split plan returns an empty stream | ⚠ open | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Fixed as a bulk deadline (120 s) for snapshots, restores and prefill steps, with tests and logging; not proven, so the node stays open until a box run shows it. |
+| Second cold request through a split plan returns an empty stream | ⚠ open | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Not confirmed, because the leader log of that window was not kept. Hardened with a bulk deadline (120 s) for snapshots, restores and prefill steps, a loopback eviction test and logging; the node stays open until a box run shows it. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now

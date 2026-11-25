@@ -158,8 +158,12 @@ pub fn judged_round(a: &JudgedArgs) -> Result<()> {
         distinct.len()
     );
     let node_ids: Vec<NodeId> = segs.iter().map(|s| s.peer.id.clone()).collect();
-    client::check_model(t.as_ref(), &cfg, &node_ids, &a.model_sha256)
+    let unreached = client::check_model(t.as_ref(), &cfg, &node_ids, &a.model_sha256)
         .map_err(anyhow::Error::msg)?;
+    anyhow::ensure!(
+        unreached.is_empty(),
+        "cannot reach node(s) {unreached:?} to check the model"
+    );
     let remote = start_remote_segments(&t, 0, &segs, &a.model_sha256, &|c| {
         c.startup_timeout = Duration::from_secs(a.startup_timeout_s);
         c.deadline_floor = Duration::from_secs(a.deadline_s);

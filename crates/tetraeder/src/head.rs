@@ -542,8 +542,12 @@ pub fn start(
             }
         }
         for r in &resolved {
-            client::check_model(transport.as_ref(), &cfg, &nodes, &r.spec.model_sha256)
-                .map_err(anyhow::Error::msg)?;
+            let unreached =
+                client::check_model(transport.as_ref(), &cfg, &nodes, &r.spec.model_sha256)
+                    .map_err(anyhow::Error::msg)?;
+            for n in unreached {
+                tracing::warn!(node = %n, "model not checked: the node is not reachable yet");
+            }
         }
     }
 

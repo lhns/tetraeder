@@ -44,7 +44,7 @@ pub enum ClusterCommand {
 pub struct ModelIdArgs {
     /// The GGUF file, or the first shard of a split one.
     pub path: PathBuf,
-    /// A node's models folder: the model is linked (else copied) there as `<id>.gguf`, or as
+    /// A node's models folder: the model is linked (never copied) there as `<id>.gguf`, or as
     /// `<id>/` with its manifest and shards.
     #[arg(long, value_name = "DIR")]
     pub install: Option<PathBuf>,

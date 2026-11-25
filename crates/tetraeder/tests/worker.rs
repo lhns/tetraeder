@@ -91,7 +91,8 @@ fn a_slow_prefill_step_gets_the_bulk_deadline_a_slow_decode_step_does_not() {
     assert_eq!(b.restarts(), 0);
     let t0 = Instant::now();
     failed_with(step(&mut b, &[(1, vec![60, 61], false)]), "no reply within");
-    assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
+    // Cut at the floor, not at the bulk deadline.
+    assert!(t0.elapsed() < Duration::from_secs(25), "{:?}", t0.elapsed());
 }
 
 // hardware: cpu

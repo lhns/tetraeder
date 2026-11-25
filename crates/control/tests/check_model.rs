@@ -66,11 +66,27 @@ fn the_head_learns_which_node_lacks_the_model_before_anything_starts() {
     let cfg = config(1000, &["a", "b"], &[1, 2]);
     let head = board.node(&id("a"));
     // Node a holds it: fine on its own.
-    client::check_model(&head, &cfg, &[id("a")], SPLIT).unwrap();
+    assert!(
+        client::check_model(&head, &cfg, &[id("a")], SPLIT)
+            .unwrap()
+            .is_empty()
+    );
     // Node b does not: the error names the node, the model and the shard.
     let e = client::check_model(&head, &cfg, &[id("a"), id("b")], SPLIT).unwrap_err();
     assert!(
         e.contains("node `b`") && e.contains(SPLIT) && e.contains("shard 3 of 5"),
         "{e}"
     );
+}
+
+// hardware: none
+#[test]
+fn a_node_that_is_not_up_yet_is_reported_not_failed() {
+    let board = MemTransport::switchboard();
+    let _a = daemon(&board, "a", vec![SPLIT]);
+    let cfg = config(1000, &["a", "b"], &[1, 2]);
+    let head = board.node(&id("a"));
+    // Node b has no daemon: the join loop of the head retries it, the check does not stop the start.
+    let unreached = client::check_model(&head, &cfg, &[id("a"), id("b")], SPLIT).unwrap();
+    assert_eq!(unreached, vec![id("b")]);
 }

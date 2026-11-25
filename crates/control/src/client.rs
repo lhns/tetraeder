@@ -42,27 +42,37 @@ pub fn request(
 }
 
 /// Asks each of `nodes` whether it holds model `model_sha256` whole (every shard of a split
-/// one); the first node that does not answers with its reason.
+/// one). The first node that answers that it does not fails with its reason; nodes that cannot
+/// be reached are returned (`Ok`), for the caller to decide (the head's join loop retries them).
 pub fn check_model(
     t: &dyn Transport,
     cfg: &ClusterConfig,
     nodes: &[NodeId],
     model_sha256: &str,
-) -> Result<(), String> {
+) -> Result<Vec<NodeId>, String> {
+    let mut unreached = Vec::new();
     for n in nodes {
-        let (r, _) = request(
-            t,
-            &peer_of(cfg, n)?,
+        let peer = peer_of(cfg, n)?;
+        let Ok(mut c) = t.connect(&peer, Purpose::Probe { session: 0 }) else {
+            unreached.push(n.clone());
+            continue;
+        };
+        let r = proto::call(
+            &mut c,
             &NodeRequest::CheckModel {
                 model_sha256: model_sha256.to_owned(),
             },
             &[],
-        )?;
-        if !matches!(r, NodeReply::Model { .. }) {
-            return Err(format!("node `{n}`: unexpected reply {r:?}"));
+        );
+        (c.close)();
+        match r {
+            Err(_) => unreached.push(n.clone()),
+            Ok((NodeReply::Error { msg }, _)) => return Err(format!("node `{n}`: {msg}")),
+            Ok((NodeReply::Model { .. }, _)) => {}
+            Ok((other, _)) => return Err(format!("node `{n}`: unexpected reply {other:?}")),
         }
     }
-    Ok(())
+    Ok(unreached)
 }
 
 fn peer_of(cfg: &ClusterConfig, id: &NodeId) -> Result<Peer, String> {

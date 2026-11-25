@@ -260,14 +260,15 @@ pub fn identify(path: &Path) -> io::Result<Identity> {
     })
 }
 
-/// Links (else copies) the model into `models` under its id, as `resolve` reads it; returns the
-/// path `resolve` will give.
+/// Links the model into `models` under its id (a hard link, else a symbolic link on Unix, never
+/// a copy), as `resolve` reads it; returns the path `resolve` will give.
 pub fn install(i: &Identity, models: &Path) -> io::Result<PathBuf> {
     let place = |from: &Path, to: &Path| -> io::Result<()> {
         if to.exists() {
             return Ok(());
         }
-        std::fs::hard_link(from, to).or_else(|_| std::fs::copy(from, to).map(|_| ()))
+        // Never a copy: the 235B is 142 GB and the disk of a node 230 GB.
+        std::fs::hard_link(from, to).or_else(|e| link_across(from, to, e))
     };
     std::fs::create_dir_all(models)?;
     match &i.manifest {
@@ -287,6 +288,22 @@ pub fn install(i: &Identity, models: &Path) -> io::Result<PathBuf> {
             Ok(dir.join(shard_file_name(&i.id, 1, count)))
         }
     }
+}
+
+#[cfg(unix)]
+fn link_across(from: &Path, to: &Path, _: io::Error) -> io::Result<()> {
+    // Another file system: a symbolic link to the absolute path.
+    std::os::unix::fs::symlink(std::fs::canonicalize(from)?, to)
+}
+
+#[cfg(not(unix))]
+fn link_across(_: &Path, _: &Path, e: io::Error) -> io::Result<()> {
+    Err(io::Error::new(
+        e.kind(),
+        format!(
+            "cannot link the model files into the models folder (it must be on the same disk): {e}"
+        ),
+    ))
 }
 
 /// The model id a path stands for: its stem when that is an id (`<id>.gguf`), or the name of the
