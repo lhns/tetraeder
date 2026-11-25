@@ -24,6 +24,16 @@ impl HwSource {
     /// The graph and notes about what could not be filled. Discovery probes RAM bandwidth only
     /// at startup (`probe`).
     pub fn read(&self, probe: bool) -> Result<(HardwareGraph, Vec<String>), String> {
+        self.read_in(probe, None)
+    }
+
+    /// As `read`, with the node's models dir: discovery names the disk holding it `nvme0`, the
+    /// builder disk (ADR 0091).
+    pub fn read_in(
+        &self,
+        probe: bool,
+        models_dir: Option<&std::path::Path>,
+    ) -> Result<(HardwareGraph, Vec<String>), String> {
         match self {
             Self::File(p) => {
                 let text = std::fs::read_to_string(p)
@@ -40,6 +50,7 @@ impl HwSource {
             Self::Discover => {
                 let mut hw = discover(&DiscoverOpts {
                     probe_ram: probe,
+                    models_dir: models_dir.map(PathBuf::from),
                     ..DiscoverOpts::default()
                 });
                 let mut notes = hw.notes.clone();
