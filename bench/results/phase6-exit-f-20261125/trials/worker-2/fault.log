@@ -1,0 +1,4 @@
+1795633547.185706308 armed mode=worker delay=0 target=none
+1795633547.188911384 fault kill -9 children of node 29266: 29728 
+1795633547.196232518 fault done
+1795633550.063420880 restore child-up 30226

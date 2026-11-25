@@ -1,0 +1,5 @@
+1795635217.336294681 armed mode=stop delay=0 target=none
+1795635217.343076722 fault SIGSTOP daemon 32611 and children: 32620 
+1795635217.344140153 fault done
+1795635277.346884570 restore SIGCONT
+1795635277.348330302 restore done

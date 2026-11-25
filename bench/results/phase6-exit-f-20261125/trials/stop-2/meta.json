@@ -1,0 +1,27 @@
+{
+  "mode": "stop",
+  "trial": 2,
+  "t_fault": 1795635483.2712,
+  "t_fault_source": "trigger send/ack midpoint, A's clock",
+  "fault": {
+    "source": "trigger",
+    "t_send": 1795635483.2383032,
+    "t_ack": 1795635483.3040938,
+    "t_fault": 1795635483.2712,
+    "uncertainty_s": 0.0329,
+    "live_b": 3,
+    "step_age_s": 0.005,
+    "t_b_fault": 1795635483.2828476,
+    "t_b_done": 1795635483.2838833,
+    "mode": "stop",
+    "label": "stop-t2-1795635378",
+    "waited_s": 0.119
+  },
+  "t_restore": 1795635543.277,
+  "t_fault_b_clock": 1795635483.2828476,
+  "t_restore_source": "restore SIGCONT",
+  "load_label": "stop-t2-1795635378",
+  "load_end": 1795635606.9109085,
+  "clock_b_minus_a_s": 0.0096,
+  "clock_uncertainty_s": 0.0248
+}

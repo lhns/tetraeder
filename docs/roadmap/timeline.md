@@ -131,6 +131,7 @@ gantt
     Readmit host 20210 for verdicts :bench_owner_host_20210, 2026-11-21, 2026-11-21
     Two-GPU cases on a four-GPU box :bench_owner_two_of_four, 2026-11-21, 2026-11-21
     Second two-box cluster session :bench_phase6_rehearsal_2, 2026-11-25, 2026-11-25
+    Phase 6 exit Case F, judged :bench_phase6_exit_f, 2026-11-25, 2026-11-25
     Case F clock offset between the boxes i… :bench_phase6_clock_offset, 2026-11-25, 2026-11-25
     phase6_box.sh serve lacks --node-state :bench_phase6_serve_node_state, 2026-11-25, 2026-11-25
     section ops - operations

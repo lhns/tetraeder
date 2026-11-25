@@ -1,0 +1,14 @@
+{
+  "source": "trigger",
+  "t_send": 1795635744.3784719,
+  "t_ack": 1795635744.4466112,
+  "t_fault": 1795635744.4125,
+  "uncertainty_s": 0.0341,
+  "live_b": 3,
+  "step_age_s": 0.004,
+  "t_b_fault": 1795635744.4240863,
+  "t_b_done": 1795635744.4251502,
+  "mode": "stop",
+  "label": "stop-t3-1795635645",
+  "waited_s": 0.121
+}

@@ -1,0 +1,27 @@
+{
+  "mode": "worker",
+  "trial": 3,
+  "t_fault": 1795633861.4275,
+  "t_fault_source": "trigger send/ack midpoint, A's clock",
+  "fault": {
+    "source": "trigger",
+    "t_send": 1795633861.3904228,
+    "t_ack": 1795633861.4645207,
+    "t_fault": 1795633861.4275,
+    "uncertainty_s": 0.037,
+    "live_b": 0,
+    "step_age_s": 0.003,
+    "t_b_fault": 1795633861.4337406,
+    "t_b_done": 1795633861.4420323,
+    "mode": "worker",
+    "label": "worker-t3-1795633760",
+    "waited_s": 0.123
+  },
+  "t_restore": 1795633866.144,
+  "t_fault_b_clock": 1795633861.4337406,
+  "t_restore_source": "restore child-up",
+  "load_label": "worker-t3-1795633760",
+  "load_end": 1795633984.2604704,
+  "clock_b_minus_a_s": 0.0073,
+  "clock_uncertainty_s": 0.0247
+}
