@@ -1,0 +1,14 @@
+{
+  "source": "trigger",
+  "t_send": 1795634687.100772,
+  "t_ack": 1795634687.169669,
+  "t_fault": 1795634687.1352,
+  "uncertainty_s": 0.0344,
+  "live_b": 3,
+  "step_age_s": 0.007,
+  "t_b_fault": 1795634687.1435816,
+  "t_b_done": 1795634687.1506648,
+  "mode": "daemon",
+  "label": "daemon-t2-1795634580",
+  "waited_s": 0.12
+}

@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 50 rated nodes are confirmed by the owner.
+0 of 51 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `bench-235b-segment-confirm-2`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `bench-235b-segment-confirm-2`, `planner-ep-prefill-recheck`, `bench-phase6-exit-f`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -422,7 +422,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 149 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 150 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -840,6 +840,7 @@ Generated on 2026-11-25.
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 - `bench-235b-segment-confirm-2`: Rerun the segment confirmation (✔ done · successful). Rerun of the one-segment confirmation on a one-NUMA-node host (EPYC 7542, RTX A6000 planned against 24 GiB) with real-hidden anchors and the gates as code. The prediction (pp 445.08, tg 17.426 tok/s, fit band 0.050) was frozen and pushed before the judged rounds; the median of the three clean rounds is pp 452.46 and tg 17.761, within 2%, the routing gate held and the A/A (early and last) are inside 0.08. Two of the first three rounds were unclean (co-tenant over the limit), so two more rounds were run on the same frozen prediction; the five-round median agrees (e_pp -0.013, e_tg +0.008).
 - `bench-phase6-clock-offset`: Case F clock offset between the boxes is 2 to 6 s uncertain (✔ fixed). The load generator on A fires the fault on B through a small trigger service and the clock offset is measured over that connection; on loopback the fault time is known within 59 ms, a WAN pair is not yet measured, and attempts that hit nothing in flight on B are repeated.
+- `bench-phase6-exit-f`: Phase 6 exit Case F, judged (✔ done · successful). Two rented RTX 3090 boxes (about 25 ms apart) ran the judged Case F: three fault modes, three valid trials each, every pass rule held; one attempt hit no request in flight and was repeated.
 - `bench-phase6-rehearsal`: First two-box cluster session (✔ done · unrated). Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).
 - `bench-phase6-rehearsal-2`: Second two-box cluster session (✔ done · unrated). Two rented boxes ran the Case F script end to end with the rejoin fix (rejoin 5.3 to 9.6 s in all nine trials), then a drain without a plan (holds), a prefix fetch attempt (not shown working) and a 30B split over the WAN link against a frozen prediction (tg within 6 percent, pp 55 to 64 percent low because the start probe was unlike the later ones).
 - `bench-phase6-serve-node-state`: phase6_box.sh serve lacks --node-state (✔ fixed). The serve stage now passes --node-state, and a CI step runs a real head and two real daemons through the box commands and checks that the head registered its prefix listener in the daemon directory; the prefix fetch itself is still open (cluster-prefix-fetch-not-observed).
@@ -891,7 +892,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 53 nodes (40 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 54 nodes (41 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 33 nodes (27 done, 3 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

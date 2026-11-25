@@ -3049,7 +3049,7 @@ nodes:
   folded: []
   overview: true
   plain: 'The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load.'
-  notes: 'Rules fixed in ADR 0091 before any measurement. Case S, Qwen3-235B-A22B Q4_K_M over two one-GPU nodes of 24 GB VRAM and a 64 GB RAM budget each, pp2048 and tg128 within 15% of the frozen prediction. Case F, two replicas of Qwen3-30B-A3B with node B killed, killed whole and stopped, three trials each.'
+  notes: 'Rules fixed in ADR 0091 before any measurement. Case S, Qwen3-235B-A22B Q4_K_M over two one-GPU nodes of 24 GB VRAM and a 64 GB RAM budget each, pp2048 and tg128 within 15% of the frozen prediction. Case F, two replicas of Qwen3-30B-A3B with node B killed, killed whole and stopped, three trials each. Case F result (2026-11-25, node bench-phase6-exit-f): pass, nine of nine valid trials, worst in-flight error delay 2.09 s, worst rejoin 3.82 s; Case S is still open.'
 - id: bench-m3-report
   title: Report milestone M3
   track: bench
@@ -4544,6 +4544,27 @@ nodes:
   folded: []
   overview: false
   plain: 'Two rented boxes ran the Case F script end to end with the rejoin fix (rejoin 5.3 to 9.6 s in all nine trials), then a drain without a plan (holds), a prefix fetch attempt (not shown working) and a 30B split over the WAN link against a frozen prediction (tg within 6 percent, pp 55 to 64 percent low because the start probe was unlike the later ones).'
+
+- id: bench-phase6-exit-f
+  title: Phase 6 exit Case F, judged
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/phase6-exit-f-20261125/README.md
+  - bench/results/phase6-exit-f-20261125/verdict-f.json
+  verdict_quote: 'Status: pass: every rule holds in every mode (verdict-f.json, scripts/phase6_exit_f_summary.py; ADR 0091 Case F, judged). Nine valid trials, one invalid attempt repeated (worker attempt 3, no request in flight on B), no manual action.'
+  headline: 'Case F passes: worst in-flight error 2.09 s against 3 s, rejoin at most 3.82 s against 60 s, nine of nine'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: box-later
+  start: '2026-11-25'
+  end: '2026-11-25'
+  folded: []
+  overview: false
+  plain: 'Two rented RTX 3090 boxes (about 25 ms apart) ran the judged Case F: three fault modes, three valid trials each, every pass rule held; one attempt hit no request in flight and was repeated.'
 
 - id: bench-phase6-clock-offset
   title: Case F clock offset between the boxes is 2 to 6 s uncertain
