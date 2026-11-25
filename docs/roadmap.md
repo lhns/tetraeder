@@ -348,6 +348,7 @@ flowchart TB
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
 | Move a replica's leader | ⏸ parked | A replan that moves a replica's leader node replaces the replica (drain the old one, start a new id on the new leader, no prefix carried), as ADR 0091 decides; ClusterControl::restart refuses such a plan today. Parked until after the exit, which needs no leader move. |
+| Judged round across two nodes | ○ next | A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI. |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
@@ -367,6 +368,7 @@ flowchart TB
 **ci**
 
 - `planner-footprint-validator-gap`: Planner footprint against the validator
+- `cluster-judged-round-cmd`: Judged round across two nodes
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
@@ -876,5 +878,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (37 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 25 nodes (22 done, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 26 nodes (22 done, 1 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

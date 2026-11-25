@@ -28,6 +28,7 @@ flowchart TB
     cluster_prefix_fetch_not_triggered>"✔ No prefix fetch<br/>between replicas on<br/>two GPU nodes"]
     cluster_plan_source_gpu_segments>"✔ Planner proposes no<br/>plan for two real GPU<br/>boxes"]
     cluster_drain_without_plan>"✔ Node drain does not<br/>move load without a<br/>cluster plan"]
+    cluster_judged_round_cmd["○ Judged round across<br/>two nodes"]
     cluster_leader_move["⏸ Move a replica's<br/>leader"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
@@ -49,9 +50,12 @@ flowchart TB
     cluster_step_tokens_from_plan ~~~ cluster_prefix_fetch_not_triggered
     cluster_mode1_detection ~~~ cluster_plan_source_gpu_segments
     cluster_rejoin_after_restore ~~~ cluster_drain_without_plan
-    cluster_prefix_fetch_not_triggered ~~~ cluster_leader_move
-    cluster_plan_source_gpu_segments ~~~ cluster_experts_nodes
-    cluster_drain_without_plan ~~~ cluster_replica_scaling
+    cluster_prefix_fetch_not_triggered ~~~ cluster_judged_round_cmd
+    cluster_plan_source_gpu_segments ~~~ cluster_leader_move
+    cluster_drain_without_plan ~~~ cluster_experts_nodes
+    cluster_judged_round_cmd ~~~ cluster_replica_scaling
+    cluster_leader_move ~~~ cluster_replica_scaling
+    cluster_experts_nodes ~~~ cluster_replica_scaling
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
     cluster_transport --> cluster_mtls
@@ -68,6 +72,7 @@ flowchart TB
     cluster_planner --> cluster_planner_hardening
     cluster_pipeline_nodes --> cluster_pipeline_prefill
     cluster_pipeline_prefill --> cluster_step_tokens_from_plan
+    cluster_pipeline_prefill --> cluster_judged_round_cmd
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -84,6 +89,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_pipeline_prefill unrated
     class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan succ
+    class cluster_judged_round_cmd next
     class cluster_leader_move,cluster_experts_nodes parked
     class cluster_replica_scaling blocked
 ```
@@ -104,6 +110,7 @@ flowchart TB
 | `cluster-step-tokens-from-plan` | Replica step size from the plan | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-pipeline-prefill |  |  | a replica steps the tokens its plan priced | docs/adr/0091-phase6-multi-node.md; crates/tetraeder/src/replica.rs |
 | `cluster-mode1-detection` | Head learns of a killed replica engine at once | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | a slow reap of a killed engine no longer delays the in-flight errors | bench/results/phase6-rehearsal-20261125/README.md; docs/adr/0091-phase6-multi-node.md; crates/control/tests/case_f.rs |
 | `cluster-leader-move` | Move a replica's leader | feature | ci | parked | unrated |  |  | bench-phase6-exit |  |  |  |  |
+| `cluster-judged-round-cmd` | Judged round across two nodes | tooling | ci | next | unrated |  |  | cluster-pipeline-prefill |  |  |  |  |
 | `cluster-planner-hardening` | Harden the cluster planner inputs | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-planner |  |  | inputs refused, not panicked | docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster_hardening.rs |
 | `cluster-discovery` | Node list, health and probes | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-transport |  |  | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | docs/adr/0091-phase6-multi-node.md; crates/control/tests/sim.rs; crates/control/tests/tls_loopback.rs; crates/transport/tests/hardening.rs |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-discovery, cluster-replicas |  |  | a node whose replica answers one probe step joins the router, a node that goes down or a broken connection takes it out, and a restored node or a restarted engine rejoins without manual action, on simulated nodes and two real node processes; the drain and restart of a pipeline over nodes is not built | docs/adr/0091-phase6-multi-node.md; crates/control/tests/case_f.rs; crates/control/tests/router_props.rs; crates/control/tests/replica_daemon.rs; crates/tetraeder/tests/replica_smoke.rs |
@@ -134,6 +141,7 @@ flowchart TB
 | `cluster-step-tokens-from-plan` | Replica step size from the plan | the_step_is_the_plans_micro_batches_times_its_ubatch gave 4 micro-batches at ubatch 2048 give 8192, at ubatch 512 give 2048 (CI of branch cluster-preexit) | a replica steps the tokens its plan priced | The replica now sets its scheduler step tokens from the plan's micro-batches times its ubatch (an explicit --step-tokens still wins), so pipelined prefill runs the flow shop the planner priced; the Case S pick of 4 micro-batches at ubatch 2048 steps 8192 tokens. |  |  |  |  |  |
 | `cluster-mode1-detection` | Head learns of a killed replica engine at once | case_f_a_child_that_is_slow_to_be_reaped_does_not_delay_the_errors gave errors under 500 ms with a 3 s reap, 3.002 s before the fix (CI of branch cluster-preexit) | a slow reap of a killed engine no longer delays the in-flight errors | The daemon waited for the killed engine to be reaped before it dropped the head's connection, and a process with a CUDA context takes seconds to leave (rehearsal mode 1 took 2.79 s against 1 ms simulated); it now drops the connection first. The cause on the real box is inferred from the code and the logs, not measured. |  |  |  |  |  |
 | `cluster-leader-move` | Move a replica's leader |  |  | A replan that moves a replica's leader node replaces the replica (drain the old one, start a new id on the new leader, no prefix carried), as ADR 0091 decides; ClusterControl::restart refuses such a plan today. Parked until after the exit, which needs no leader move. |  |  |  |  |  |
+| `cluster-judged-round-cmd` | Judged round across two nodes |  |  | A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI. |  |  |  |  |  |
 | `cluster-planner-hardening` | Harden the cluster planner inputs | CI run 45527752415 ubuntu and windows - test a_node_name_is_one_path_segment ... ok; test forbid_node_also_rules_out_kv_workspace_and_slot_caches ... ok | inputs refused, not panicked | Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors. | From the read-only review of 81d4ecc4..51738939 (2026-11-24); none reachable without a malformed cluster.toml or layout. The transport findings of the same review went to cluster-discovery. |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | test a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat ... ok (CI run 45305038491, ubuntu and windows, with the membership fault tests and two loopback TLS daemons profiling and probing each other) | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live | case_f mode=Blackhole requests=185 in_flight_errors=3 max_error_s=1.030 bound_s=2.0 moved=2 ok_after_bound=18 rejoin_s=0.739 (CI run 45424566387, ubuntu and windows) | a node whose replica answers one probe step joins the router, a node that goes down or a broken connection takes it out, and a restored node or a restarted engine rejoins without manual action, on simulated nodes and two real node processes; the drain and restart of a pipeline over nodes is not built | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). | Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. Done as built (ADR 0091 History, step 5) for replicas of one node; since step 6 (cluster-integration) a node change replans the replicas that span it and a planned change drains the replica first (its requests finish), while a node that goes down still fails the requests in flight on it. |  |  |  |  |
