@@ -155,7 +155,7 @@ scbox() { # scbox NODE TAG "STAGES"
     w="$w SPLIT=$s END=$e A1_END=$a1 A2_END=$a2 HIDDEN_AT=$cut V=$v R=$r"
   fi
   if [ "$TINY" = 1 ]; then
-    w="$w MODEL=$(tiny_first "$n") PROMPT_FILE= UBATCH=16 PREFILL=64 DECODE=16 DUMP_V=4 DUMP_R=4 FIT_BAND_MAX=${FIT_BAND_MAX:-1000}"
+    w="$w MODEL=$(tiny_first "$n") PROMPT_FILE= UBATCH=16 PREFILL=64 DECODE=16 DUMP_V=4 DUMP_R=4 DISK_CHUNK=16384 DISK_SECONDS=1 FIT_BAND_MAX=${FIT_BAND_MAX:-1000}"
   fi
   [ "$LOOPBACK" = 1 ] && w="$w RESULTS_ROOT=$P/results SC_LOCK=$P/sc_box.lock SC_RUN_DIR=$P/sc"
   bx "$n" 60 "bash scripts/phase6_box.sh launch sc-$n-$name-$tag env $w STAGES='$st' bash scripts/sc_box.sh" | head -n 2

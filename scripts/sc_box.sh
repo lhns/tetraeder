@@ -203,7 +203,7 @@ st_disk() {
   fi
   "$tet" plan layout "$model" --out "$out/layout.json" || die "layout"
   # the box's NVMe queue curve and one reader thread's copy rate, beside nothing else (ADR 0092 section 2)
-  "$bench" disk-curve --file "$shard" --depths 1,2,4,8,16,32 --seconds 4 --out "$out/disk/disk-curve.json" || die "disk-curve"
+  "$bench" disk-curve --file "$shard" --depths 1,2,4,8,16,32 --seconds "${DISK_SECONDS:-4}" --chunk-bytes "${DISK_CHUNK:-1048576}" --out "$out/disk/disk-curve.json" || die "disk-curve"
   python3 -I scripts/sp_make_hw.py --prior "$prior" --ram-bytes "$ramb" --gpu-bytes 25769803776 \
     --threads "$threads" --disk-curve "$out/disk/disk-curve.json" --out "$p/hw.toml" || die "hw graph"
   python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); print('copy_bytes_per_s', d.get('copy_bytes_per_s'))" "$out/disk/disk-curve.json"
