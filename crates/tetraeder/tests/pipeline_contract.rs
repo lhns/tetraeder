@@ -551,14 +551,12 @@ fn prefill_rows(micro: u32, tokens: &[i32], all: bool) -> (Vec<f32>, usize) {
 #[test]
 fn a_pipelined_prefill_returns_the_rows_of_the_walk() {
     let tokens: Vec<i32> = (1..=11).collect();
-    for all in [false, true] {
-        let (walk, n) = prefill_rows(1, &tokens, all);
-        assert_eq!(n, tokens.len());
-        for micro in [2, 3, 4, 20] {
-            let (piped, n) = prefill_rows(micro, &tokens, all);
-            assert_eq!(piped, walk, "micro {micro} all_logits {all}");
-            assert_eq!(n, tokens.len(), "micro {micro}: KV rows of every segment");
-        }
+    let (walk, n) = prefill_rows(1, &tokens, false);
+    assert_eq!(n, tokens.len());
+    for micro in [2, 3, 4, 20] {
+        let (piped, n) = prefill_rows(micro, &tokens, false);
+        assert_eq!(piped, walk, "micro {micro}");
+        assert_eq!(n, tokens.len(), "micro {micro}: KV rows of every segment");
     }
 }
 
@@ -579,12 +577,15 @@ fn a_pipelined_prefill_steps_every_segment_once_per_micro_batch() {
         assert_eq!(steps_of(s), 3);
         assert_eq!(s.lock().unwrap().lens[0], 7);
     }
-    // A decode step and a step of several inputs walk the segments once.
+    // A decode step, a step of several inputs and an input that wants every row (a speculative
+    // verification) walk the segments once.
     p.decode(&[input(0, &[8], false)]).unwrap();
     p.decode(&[input(0, &[9, 10], false), input(1, &[1, 2, 3], false)])
         .unwrap();
+    let out = p.decode(&[input(0, &[11, 12, 13, 14], true)]).unwrap();
+    assert_eq!(out.rows(0).len(), 4 * N_VOCAB);
     for s in &states {
-        assert_eq!(steps_of(s), 5);
+        assert_eq!(steps_of(s), 6);
     }
 }
 
@@ -659,5 +660,9 @@ fn a_pipelined_prefill_records_the_segment_duration_of_every_micro_batch() {
             }
         }
     }
-    assert_eq!(counts, vec![4, 4, 4], "a sample per micro-batch and segment");
+    assert_eq!(
+        counts,
+        vec![4, 4, 4],
+        "a sample per micro-batch and segment"
+    );
 }

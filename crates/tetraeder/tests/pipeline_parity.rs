@@ -703,25 +703,20 @@ fn pipelined_case(nodes: &Nodes, c: &Case, cut: u32, head_apart: bool, micro: u3
     );
     let toks = prompt(n);
     let nv = reference.n_vocab();
-    let want = step(reference.as_mut(), 0, &toks, true);
+    // The last row only (ADR 0077 pipelines such inputs); the greedy steps below read every
+    // layer's KV rows of both sequences, so a wrong micro-batch shows there too.
+    let want = step(reference.as_mut(), 0, &toks, false);
     pipe.set_prefill_micro_batches(1);
-    let walk = step(&mut pipe, 0, &toks, true);
+    let walk = step(&mut pipe, 0, &toks, false);
     pipe.set_prefill_micro_batches(micro);
-    let piped = step(&mut pipe, 1, &toks, true);
-    assert_eq!(piped.len(), n * nv, "{what}");
+    let piped = step(&mut pipe, 1, &toks, false);
+    assert_eq!(piped.len(), nv, "{what}");
     let mut run = Run {
         max_diff: 0.0,
         bit_equal: true,
     };
-    for (i, ((g, w), k)) in piped
-        .chunks(nv)
-        .zip(want.chunks(nv))
-        .zip(walk.chunks(nv))
-        .enumerate()
-    {
-        check_row(&mut run, g, w, &format!("{what} row {i} against one node"));
-        check_row(&mut run, g, k, &format!("{what} row {i} against the walk"));
-    }
+    check_row(&mut run, &piped, &want, &format!("{what} against one node"));
+    check_row(&mut run, &piped, &walk, &format!("{what} against the walk"));
     let mut t = argmax(&want[want.len() - nv..]) as i32;
     assert_eq!(t as usize, argmax(&piped[piped.len() - nv..]), "{what}");
     for i in 0..N_GREEDY {

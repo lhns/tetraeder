@@ -374,10 +374,14 @@ fn exchange(
     receive_reply(child, deadline)
 }
 
+fn reply_of(msg: Result<Frame, String>) -> Result<(Reply, Vec<u8>), String> {
+    let frame = msg?;
+    Ok((parse_header(&frame)?, frame.payload))
+}
+
 fn receive_reply(child: &Child, deadline: Duration) -> Result<(Reply, Vec<u8>), String> {
     match child.rx.recv_timeout(deadline) {
-        Ok(Ok(frame)) => Ok((parse_header(&frame)?, frame.payload)),
-        Ok(Err(e)) => Err(e),
+        Ok(msg) => reply_of(msg),
         Err(RecvTimeoutError::Timeout) => Err(format!("no reply within {deadline:?}")),
         Err(RecvTimeoutError::Disconnected) => Err("worker exited".into()),
     }
@@ -427,6 +431,8 @@ pub struct RemoteBackend {
     last_step: Option<Duration>,
     /// Steps sent by `start_step` and not yet finished, oldest first: (sent at, inputs).
     pending: VecDeque<(Instant, usize)>,
+    /// A reply `reply_ready` took off the channel, with its arrival time, for the next finish.
+    stash: Option<(Instant, Result<Frame, String>)>,
 }
 
 /// `tetraeder.link.latency` of one link, by what the call carries.
@@ -519,6 +525,7 @@ impl RemoteBackend {
             link,
             last_step: None,
             pending: VecDeque::new(),
+            stash: None,
         })
     }
 
@@ -530,6 +537,7 @@ impl RemoteBackend {
     /// Kills the worker; its sequences are gone.
     fn kill(&mut self) {
         self.pending.clear();
+        self.stash = None;
         if let Some(c) = self.child.take() {
             c.kill();
         }
@@ -614,7 +622,7 @@ impl RemoteBackend {
         match send_request(child, req, payload) {
             Ok(()) => Ok(t0),
             Err(e) => {
-                self.record_call(req.name(), t0);
+                self.record_call(req.name(), t0, Instant::now());
                 self.kill();
                 Err(BackendError::Failed(format!("worker {}: {e}", req.name())))
             }
@@ -623,9 +631,10 @@ impl RemoteBackend {
 
     /// The call as `tetraeder.ipc` and, for a worker on a node, `tetraeder.link.latency`: one
     /// sample per call, so one per micro-batch of a pipelined prefill.
-    fn record_call(&self, name: &'static str, t0: Instant) {
-        let took = t0.elapsed().as_secs_f64();
-        self.ipc.record(took, &[KeyValue::new("tetraeder.call", name)]);
+    fn record_call(&self, name: &'static str, t0: Instant, t1: Instant) {
+        let took = t1.duration_since(t0).as_secs_f64();
+        self.ipc
+            .record(took, &[KeyValue::new("tetraeder.call", name)]);
         if let Some(l) = &self.link {
             let logits = self.info.segment.is_none_or(|s| s.head);
             l.record(name, took, logits);
@@ -639,11 +648,19 @@ impl RemoteBackend {
         name: &'static str,
         t0: Instant,
     ) -> Result<(Reply, Vec<u8>), BackendError> {
-        let Some(child) = self.child.as_ref() else {
-            return Err(BackendError::Failed(format!("worker {name}: worker exited")));
+        // A reply that `reply_ready` already took off the channel keeps its arrival time.
+        let (res, t1) = match self.stash.take() {
+            Some((at, msg)) => (reply_of(msg), at),
+            None => {
+                let Some(child) = self.child.as_ref() else {
+                    return Err(BackendError::Failed(format!(
+                        "worker {name}: worker exited"
+                    )));
+                };
+                (receive_reply(child, self.cfg.deadline()), Instant::now())
+            }
         };
-        let res = receive_reply(child, self.cfg.deadline());
-        self.record_call(name, t0);
+        self.record_call(name, t0, t1);
         match res {
             Err(e) => {
                 self.kill();
@@ -928,16 +945,41 @@ impl SegmentBackend for RemoteBackend {
         true
     }
 
-    fn start_step(
-        &mut self,
-        inputs: &[SeqInput<'_>],
-        feed: Feed<'_>,
-    ) -> Result<(), BackendError> {
+    fn start_step(&mut self, inputs: &[SeqInput<'_>], feed: Feed<'_>) -> Result<(), BackendError> {
         let hidden = match feed {
             Feed::Tokens => None,
             Feed::Hidden(h) => Some(h),
         };
         self.start_feed(inputs, hidden)
+    }
+
+    fn reply_ready(&mut self, wait: Duration) -> bool {
+        if self.stash.is_some() {
+            return true;
+        }
+        let Some(&(t0, _)) = self.pending.front() else {
+            return true;
+        };
+        let Some(child) = self.child.as_ref() else {
+            return true;
+        };
+        let deadline = self.cfg.deadline();
+        // A reply that does not come is the finish's error, after the same deadline as a call.
+        if t0.elapsed() >= deadline {
+            self.stash = Some((Instant::now(), Err(format!("no reply within {deadline:?}"))));
+            return true;
+        }
+        match child.rx.recv_timeout(wait) {
+            Ok(msg) => {
+                self.stash = Some((Instant::now(), msg));
+                true
+            }
+            Err(RecvTimeoutError::Timeout) => false,
+            Err(RecvTimeoutError::Disconnected) => {
+                self.stash = Some((Instant::now(), Err("worker exited".into())));
+                true
+            }
+        }
     }
 
     fn finish_step(&mut self) -> Result<StepOut<'_>, BackendError> {

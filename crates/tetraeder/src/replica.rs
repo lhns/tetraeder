@@ -139,8 +139,15 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
         let metrics = telemetry.metrics().clone();
         // The plan's prefill micro-batches (ADR 0077): the replica's plan file, when it reads.
         let micro = std::env::var_os("TETRAEDER_REPLICA_PLAN")
-            .and_then(|f| std::fs::read_to_string(f).ok())
-            .and_then(|t| tetraeder_plan::Plan::from_toml(&t).ok())
+            .and_then(|f| {
+                let read = std::fs::read_to_string(&f).map_err(|e| e.to_string());
+                let plan = read
+                    .and_then(|t| tetraeder_plan::Plan::from_toml(&t).map_err(|e| e.to_string()));
+                plan.map_err(|e| {
+                    eprintln!("warning: prefill is not pipelined, the plan is unreadable: {e}")
+                })
+                .ok()
+            })
             .map_or(1, |p| p.knobs.prefill_micro_batches);
         // The backend is built on the scheduler's thread: it is not `Send`.
         let (s, p) = scheduler_over(&a.serve, &telemetry, move || {

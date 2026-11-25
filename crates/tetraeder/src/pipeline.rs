@@ -30,7 +30,7 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::ops::Range;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tetraeder_scheduler::{
     BackendError, BatchBackend, Feed, Outputs, SegmentBackend, SegmentInfo, SeqId, SeqInput,
     StepOut,
@@ -172,16 +172,20 @@ impl PipelineBackend {
     }
 
     /// Sizes of the micro-batches of this step, when it is a prefill that is worth pipelining:
-    /// one input of at least two tokens, two or more segments, and `micro` above one.
+    /// one input of at least two tokens that returns its last row only (ADR 0077: a speculative
+    /// verification wants every row and walks), two or more segments, and `micro` above one.
     fn micro_sizes(&self, inputs: &[SeqInput<'_>]) -> Option<Vec<usize>> {
         let [one] = inputs else { return None };
-        if self.micro < 2 || self.segs.len() < 2 || one.tokens.len() < 2 {
+        if self.micro < 2 || self.segs.len() < 2 || one.tokens.len() < 2 || one.all_logits {
             return None;
         }
-        Some(tetraeder_plan::micro_batch_sizes(one.tokens.len(), self.micro))
+        Some(tetraeder_plan::micro_batch_sizes(
+            one.tokens.len(),
+            self.micro,
+        ))
     }
 
-    fn record_segment(&self, s: usize, wall: std::time::Duration) {
+    fn record_segment(&self, s: usize, wall: Duration) {
         if let Some(m) = &self.metrics {
             let own = self.segs[s].last_step_time().unwrap_or(wall);
             m.segment_step(s as u32, own.as_secs_f64());
@@ -259,9 +263,9 @@ impl PipelineBackend {
                 }
             }
             // One step on a segment of our own, then back to feeding the others.
-            let ready = (0..n_seg).rev().find(|&s| {
-                !overlap[s] && next[s] < m && (s == 0 || hid[s - 1][next[s]].is_some())
-            });
+            let ready = (0..n_seg)
+                .rev()
+                .find(|&s| !overlap[s] && next[s] < m && (s == 0 || hid[s - 1][next[s]].is_some()));
             if let Some(s) = ready {
                 let k = next[s];
                 let rows = if s == 0 { None } else { hid[s - 1][k].take() };
@@ -274,22 +278,33 @@ impl PipelineBackend {
                 self.record_segment(s, wall);
                 next[s] += 1;
                 if s == last {
-                    self.add_logits(inp.all_logits, data);
+                    self.logits = data;
                     done_last += 1;
                 } else {
                     hid[s][k] = Some(data);
                 }
                 continue;
             }
-            // Wait for the oldest micro-batch in flight, the one furthest along on a tie.
-            let Some(s) = (0..n_seg)
-                .filter(|&s| !flight[s].is_empty())
-                .min_by_key(|&s| (flight[s][0].0, std::cmp::Reverse(s)))
-            else {
-                return Err(BackendError::Failed(
-                    "the pipelined prefill stalled with nothing in flight".into(),
-                ));
-            };
+            // Take the reply of a started step that has come in, the segment furthest along
+            // first; never block on one segment while another one's reply may be waiting.
+            let mut ready = (0..n_seg)
+                .rev()
+                .find(|&s| !flight[s].is_empty() && self.segs[s].reply_ready(Duration::ZERO));
+            if ready.is_none() {
+                // Nothing has come in: wait a moment on the segment of the oldest micro-batch.
+                let Some(s) = (0..n_seg)
+                    .filter(|&s| !flight[s].is_empty())
+                    .min_by_key(|&s| (flight[s][0].0, std::cmp::Reverse(s)))
+                else {
+                    return Err(BackendError::Failed(
+                        "the pipelined prefill stalled with nothing in flight".into(),
+                    ));
+                };
+                if self.segs[s].reply_ready(Duration::from_millis(1)) {
+                    ready = Some(s);
+                }
+            }
+            let Some(s) = ready else { continue };
             let Some((k, t)) = flight[s].pop_front() else {
                 continue;
             };
@@ -298,23 +313,14 @@ impl PipelineBackend {
             let data = own_rows(res?, s, offs[k + 1] - offs[k], s == last)?;
             self.record_segment(s, wall);
             if s == last {
-                self.add_logits(inp.all_logits, data);
+                // The input returns its last row only: the last micro-batch's row is the result.
+                self.logits = data;
                 done_last += 1;
             } else {
                 hid[s][k] = Some(data);
             }
         }
         Ok(())
-    }
-
-    /// The rows of the last segment for one micro-batch: all of them when the input wants every
-    /// row, else only the last micro-batch's row counts.
-    fn add_logits(&mut self, all: bool, rows: Vec<f32>) {
-        if all {
-            self.logits.extend(rows);
-        } else {
-            self.logits = rows;
-        }
     }
 
     /// Segments that hold layers, so a KV cache.

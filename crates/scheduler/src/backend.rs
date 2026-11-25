@@ -241,6 +241,13 @@ pub trait SegmentBackend: BatchBackend {
             "this segment cannot start a step apart from its finish".into(),
         ))
     }
+    /// Whether the oldest started step has its result, waiting up to `wait` for it (a worker's
+    /// reply, read off the link). A step that cannot come (the worker is gone, its deadline is
+    /// over) counts as ready: [`finish_step`](Self::finish_step) then returns the error. Lets the
+    /// caller serve whichever segment answers first. Default: ready.
+    fn reply_ready(&mut self, _wait: std::time::Duration) -> bool {
+        true
+    }
     /// The result of the oldest started step, as `step` returns it.
     fn finish_step(&mut self) -> Result<StepOut<'_>, BackendError> {
         Err(BackendError::Failed("no step was started".into()))
