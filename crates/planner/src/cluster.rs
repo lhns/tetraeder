@@ -51,14 +51,25 @@ pub struct ClusterCandidate {
 /// Key of a cached segment choice: node index, first and last layer, embed, head, ubatch (plus
 /// one when the leader's GPU also holds the head's worker).
 type ChoiceKey = (usize, u32, u32, bool, bool, u32);
-/// A plan found: request seconds, order of the nodes, head placement, plan, prediction, note.
-type Found = (f64, Vec<usize>, HeadAt, Plan, ClusterPrediction, String);
+/// A plan found: request seconds, order of the nodes, head placement, plan, prediction, note and
+/// the placements its segments skipped as unpriced.
+type Found = (
+    f64,
+    Vec<usize>,
+    HeadAt,
+    Plan,
+    ClusterPrediction,
+    String,
+    Vec<String>,
+);
 
 /// What a segment runs on its node.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct Choice {
     placement: Placement,
     request_s: f64,
+    /// Feasible placements the graph could not price and `choose` left out, with the reason.
+    skipped: Vec<String>,
 }
 
 /// The ids and capacities of one node, as the planner sees them.
@@ -255,23 +266,29 @@ fn choose(
     // placement with experts outside VRAM needs) is left out; the others still compete. Only
     // when none prices is that the reason.
     let mut best: Option<Choice> = None;
-    let mut unpriced: Option<String> = None;
+    let mut skipped: Vec<String> = Vec::new();
     for p in feasible {
         match time(p) {
             Ok(request_s) => {
-                if best.is_none_or(|b| request_s < b.request_s) {
+                if best.as_ref().is_none_or(|b| request_s < b.request_s) {
                     best = Some(Choice {
                         placement: p,
                         request_s,
+                        skipped: Vec::new(),
                     });
                 }
             }
-            Err(e) => unpriced = Some(e),
+            Err(e) => skipped.push(format!(
+                "node {label}: placement {p:?} skipped, not priced: {e}"
+            )),
         }
     }
-    if best.is_none()
-        && let Some(e) = unpriced
-    {
+    if let Some(b) = &mut best {
+        skipped.dedup();
+        b.skipped = skipped;
+        return Ok(b.clone());
+    }
+    if let Some(e) = skipped.first() {
         return Err(format!("node {label}: no placement is priced: {e}"));
     }
     best.ok_or_else(|| {
@@ -425,7 +442,7 @@ fn assemble(
             span,
             j == 0,
             head_here,
-            choices[j],
+            choices[j].clone(),
             ubatch,
             w,
         );
@@ -920,7 +937,7 @@ pub fn enumerate_cluster(
                             choose(ns[j], &sub, ubatch, extra, &w)
                         });
                         match c {
-                            Ok(c) => choices.push(*c),
+                            Ok(c) => choices.push(c.clone()),
                             Err(e) => {
                                 pruned.push((
                                     format!("{tag} head {head:?} cut {cut:?} ub {ubatch}"),
@@ -945,7 +962,10 @@ pub fn enumerate_cluster(
                                 "{tag}, cuts {cut:?}, head {head:?}, ubatch {ubatch}, micro {}: pp {:.1} tg {:.2} tok/s",
                                 plan.knobs.prefill_micro_batches, p.pp_tps, p.tg_tps
                             );
-                            found.push((t, perm.clone(), head, plan, p, note));
+                            let mut skipped: Vec<String> =
+                                choices.iter().flat_map(|c| c.skipped.clone()).collect();
+                            skipped.dedup();
+                            found.push((t, perm.clone(), head, plan, p, note, skipped));
                         }
                         None => pruned.push((
                             format!("{tag} head {head:?} cut {cut:?} ub {ubatch}"),
@@ -984,7 +1004,7 @@ pub fn enumerate_cluster(
         hints: Some(hints),
     };
     let mut out = Vec::new();
-    for (i, (_, _, _, plan, prediction, note)) in found.into_iter().enumerate() {
+    for (i, (_, _, _, plan, prediction, note, skipped)) in found.into_iter().enumerate() {
         if !keep[i] {
             pruned.push((note, format!("thinned to {MAX_CLUSTER_CANDIDATES}")));
             continue;
@@ -993,7 +1013,7 @@ pub fn enumerate_cluster(
             Ok(_) => out.push(ClusterCandidate {
                 id: String::new(),
                 plan,
-                notes: vec![note],
+                notes: std::iter::once(note).chain(skipped).collect(),
                 prediction,
             }),
             Err(issues) => pruned.push((note, format!("invalid: {:?}", issues[0]))),

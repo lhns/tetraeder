@@ -34,6 +34,9 @@ const DOWN_MS: u64 = 1000;
 /// `node_down_after + 1 s`.
 const BOUND: Duration = Duration::from_millis(DOWN_MS + 1000);
 const CAP: u32 = 3;
+/// More clients than the two replicas have slots (6), so requests wait at the router.
+const CLIENTS: usize = 12;
+const MIN_WAITING: usize = 3;
 
 /// An engine that can be made to fail every request, as a replica whose engine survives but
 /// whose steps fail (a sticky device error, a bad model): the replica stays in the router and the
@@ -297,7 +300,7 @@ fn run(mode: Fault) {
     let t0 = Instant::now();
     let stop = Arc::new(AtomicBool::new(false));
     let out = Arc::new(Mutex::new(Vec::new()));
-    let clients: Vec<_> = (0..8)
+    let clients: Vec<_> = (0..CLIENTS)
         .map(|n| {
             let (e, s, o) = (Arc::clone(&rig.engine), Arc::clone(&stop), Arc::clone(&out));
             std::thread::spawn(move || client(&e, n, t0, &s, &o))
@@ -320,6 +323,15 @@ fn run(mode: Fault) {
         });
     }
     std::thread::sleep(Duration::from_millis(1500));
+    // The rule about waiting requests needs some at the fault: with more clients than slots there
+    // are, but a starved client thread can leave the queue empty for a moment, so the fault waits
+    // for several (a gate, not luck).
+    assert!(
+        wait_until(Duration::from_secs(10), || rig.engine.queued()
+            >= MIN_WAITING)
+        .is_some(),
+        "requests wait at the router before the fault"
+    );
 
     let a = id("a");
     let b = id("b");
@@ -534,5 +546,51 @@ fn case_f_the_engine_survives_and_its_requests_fail() {
         "case_f mode=EngineErrors requests={} errors={} replica_left=false",
         recs.len(),
         errors.len()
+    );
+}
+
+// hardware: none
+#[test]
+fn case_f_a_child_that_is_slow_to_be_reaped_does_not_delay_the_errors() {
+    // The rehearsal's mode 1 (kill -9 of a replica engine on a 3090) ended its in-flight
+    // requests 2.79 s after the fault where this simulation took 1 ms. A killed process closes
+    // its pipes first and is reaped last (its GPU context goes in between), and the daemon waited
+    // for the reap before it dropped the head's connection. The pipes are closed here at once and
+    // `kill` returns after 3 s.
+    let rig = rig();
+    *rig.launcher_b.kill_delay.lock().unwrap() = Duration::from_secs(3);
+    let t0 = Instant::now();
+    let stop = Arc::new(AtomicBool::new(false));
+    let out = Arc::new(Mutex::new(Vec::new()));
+    let clients: Vec<_> = (0..CLIENTS)
+        .map(|n| {
+            let (e, s, o) = (Arc::clone(&rig.engine), Arc::clone(&stop), Arc::clone(&out));
+            std::thread::spawn(move || client(&e, n, t0, &s, &o))
+        })
+        .collect();
+    assert!(
+        wait_until(Duration::from_secs(10), || rig.engine.queued()
+            >= MIN_WAITING)
+        .is_some(),
+        "requests wait at the router before the fault"
+    );
+    let t_fault = t0.elapsed();
+    rig.launcher_b.crash();
+    std::thread::sleep(Duration::from_millis(1500));
+    stop.store(true, Ordering::SeqCst);
+    for c in clients {
+        c.join().unwrap();
+    }
+    let recs = out.lock().unwrap();
+    let errors: Vec<&Rec> = recs.iter().filter(|r| r.error.is_some()).collect();
+    assert!(!errors.is_empty(), "requests were in flight on R_B");
+    let late = errors
+        .iter()
+        .map(|r| r.end.saturating_sub(t_fault))
+        .max()
+        .unwrap();
+    assert!(
+        late < Duration::from_millis(500),
+        "the in-flight errors came {late:?} after the kill, with the reap taking 3 s"
     );
 }

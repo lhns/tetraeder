@@ -705,12 +705,15 @@ fn supervise(s: &Arc<Shared>, w: &Arc<Worker>) {
             }
         }
         w.running.store(false, Ordering::SeqCst);
-        kill();
-        *lock(&w.stdin) = None;
-        // The leader sees the failure at once and reconnects after the restart.
+        // The leader sees the failure at once and reconnects after the restart. This comes
+        // before `kill`, which waits for the process to be reaped: a killed engine closes its
+        // pipes first and leaves last (a CUDA context takes seconds to go), and the leader's
+        // in-flight requests must not wait for that (rehearsal mode 1: 2.79 s).
         if let Some(si) = lock(&w.sink).take() {
             (si.close)();
         }
+        *lock(&w.stdin) = None;
+        kill();
     }
 }
 

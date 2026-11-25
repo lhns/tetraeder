@@ -730,14 +730,20 @@ fn vocab_only(model: &Path) -> Result<Arc<Model>, String> {
 }
 
 /// The engine of `a` over a backend that `make` builds on the scheduler's thread (a pipeline
-/// over nodes): the model file is read for its tokenizer only.
-pub(crate) fn scheduler_over(
+/// over nodes): the model file is read for its tokenizer only. `step_tokens` replaces
+/// `--step-tokens` (a plan's micro-batches times its ubatch, `replica::plan_step_tokens`).
+pub(crate) fn scheduler_over_step(
     a: &ServeArgs,
     telemetry: &Arc<Telemetry>,
+    step_tokens: Option<usize>,
     make: impl FnOnce() -> Result<Box<dyn tetraeder_scheduler::BatchBackend>, String> + Send + 'static,
 ) -> anyhow::Result<(Arc<Scheduler>, usize)> {
     let path = a.model.clone().context("-m is required")?;
-    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
+    let mut parts = SchedParts::new(a)?;
+    if let Some(n) = step_tokens {
+        parts.step_tokens = n;
+    }
+    let cfg = parts.config(&path, telemetry.metrics().clone());
     let parallel = cfg.parallel;
     let engine = Scheduler::start(cfg, move || {
         Ok(Loaded {

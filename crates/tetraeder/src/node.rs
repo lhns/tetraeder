@@ -238,7 +238,7 @@ impl Launcher for ChildLauncher {
                 format!("no model {}", model.display()),
             ));
         }
-        std::fs::create_dir_all(&self.state_dir)?;
+        crate::replica::create_private_dir(&self.state_dir)?;
         let mut cmd = Command::new(&self.exe);
         // Set for a replica engine: its prefix listener's entry, removed when the child ends.
         let mut prefix_launch: Option<(u32, u64)> = None;
@@ -429,7 +429,10 @@ pub fn run(a: &NodeArgs) -> Result<()> {
     // daemon relays the authenticated connection to it.
     daemon.set_prefix_handler(Arc::new(move |conn| match prefix.current() {
         Some((addr, token)) => relay_prefix(conn, addr, &token),
-        None => (conn.close)(),
+        None => {
+            tracing::warn!(peer = %conn.peer, "a prefix connection arrived and no replica listens for it; closed");
+            (conn.close)();
+        }
     }));
     // The daemon runs until the process is stopped.
     loop {

@@ -92,10 +92,34 @@ pub struct Priors {
     pub net: Vec<NetClass>,
 }
 
+/// Rate of one CPU core for the compute prior of a discovered CPU: the committed CPU-only
+/// fixture (`fixtures/cpu_only.toml`, 8 cores at 4e11). A placement with experts outside VRAM
+/// computes them on the CPU, so a graph without any CPU rate prices no such placement (Case S
+/// of ADR 0091); anchors replace the prior (`calib::fit`).
+const CPU_FLOPS_PER_CORE: f64 = 5.0e10;
+
 /// Fills the compute and bandwidth a discovered GPU lacks from the class `priors` has for its
-/// name (`Source::Prior`). CPUs are not filled. Returns a note per GPU it could not fill.
+/// name (`Source::Prior`), and a CPU without a compute spec from a per-core prior. Returns a
+/// note per GPU it could not fill and per CPU it filled.
 pub fn fill_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> {
     let mut notes = Vec::new();
+    for d in hw
+        .devices
+        .iter_mut()
+        .filter(|d| d.kind == DeviceKind::Cpu && d.compute.is_none())
+    {
+        let cores = d.cores.or(d.threads.map(|t| t.div_ceil(2))).unwrap_or(1);
+        d.compute = Some(ComputeSpec {
+            flops_per_s: f64::from(cores) * CPU_FLOPS_PER_CORE,
+            c0_graph_s: 2.0e-6,
+            c0_eager_s: 5.0e-6,
+            expert_flops_per_s: None,
+        });
+        notes.push(format!(
+            "{}: compute is a prior of {CPU_FLOPS_PER_CORE:e} flop/s per core; fit it with anchors",
+            d.id
+        ));
+    }
     for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Gpu) {
         if d.compute.is_some() && d.bandwidth_bytes_per_s.is_some() {
             continue;

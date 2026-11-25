@@ -188,6 +188,28 @@ pub fn merge_decode_clocks(hw: &mut HardwareGraph, text: &str) -> Result<bool, S
     Ok(true)
 }
 
+/// A file name for `model` (a layout's model name comes from a file the caller may not control):
+/// letters, digits, `-`, `_` and `.` stay, anything else (path separators included) becomes `_`,
+/// and a name that would be empty or start with a dot gets an `m` in front, so a plan file
+/// never leaves `--plans-dir`.
+pub fn plan_file_stem(model: &str) -> String {
+    let s: String = model
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if s.is_empty() || s.starts_with('.') {
+        format!("m{s}")
+    } else {
+        s
+    }
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -442,4 +464,25 @@ pub fn calibrate(
         hw: f.hw,
         cpu_compute_used: f.cpu_compute_used,
     })
+}
+
+#[cfg(test)]
+mod stem_tests {
+    use super::plan_file_stem;
+
+    #[test]
+    fn a_model_name_cannot_leave_the_plans_dir() {
+        assert_eq!(
+            plan_file_stem("qwen3-30b-a3b.q4_k_m"),
+            "qwen3-30b-a3b.q4_k_m"
+        );
+        assert_eq!(plan_file_stem("../../etc/x"), "m.._.._etc_x");
+        assert_eq!(plan_file_stem(r"a\b/c:d"), "a_b_c_d");
+        assert_eq!(plan_file_stem(".."), "m..");
+        assert_eq!(plan_file_stem(""), "m");
+        for m in ["../x", "/abs", r"C:\x", "a/../b"] {
+            let p = std::path::Path::new("plans").join(format!("{}-c00.toml", plan_file_stem(m)));
+            assert_eq!(p.parent(), Some(std::path::Path::new("plans")), "{m}");
+        }
+    }
 }
