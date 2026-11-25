@@ -54,8 +54,8 @@ def main() -> int:
     # the plan is the pinned one, its slots are the pick's and cover the experts
     check(filecmp.cmp(os.path.join(res, "plans", "judged-plan.toml"), PLAN, shallow=False), "plans/judged-plan.toml is not the pinned plan")
     slots = open(os.path.join(res, "plans", "slots.txt"), encoding="utf-8").read().split()
-    check(slots == ["a", "4", "4", "b", "4", "4"], f"slots {slots}")
-    check([s["slots"] for s in sess["segments"]] == [[4, 4], [4, 4]], f"session segments {sess.get('segments')}")
+    check(slots == ["a", "4", "8", "b", "4", "8"], f"slots {slots}")
+    check([s["slots"] for s in sess["segments"]] == [[4, 8], [4, 8]], f"session segments {sess.get('segments')}")
     check(load("layout.json")["n_expert"] == 8, "layout n_expert")
     # calibration on both nodes: anchors, the fit and the replay, from real exit_regime runs
     for n in ("a", "b"):
@@ -83,7 +83,7 @@ def main() -> int:
         for b in bad:
             print("P6_LOOPBACK_S FAIL " + b)
         return 1
-    print(f"P6_LOOPBACK_S real binaries, tiny MoE in 3 shards under one id {mid[:12]} on 2 nodes, pinned head-led plan with covering slots 4+4")
+    print(f"P6_LOOPBACK_S real binaries, tiny MoE in 3 shards under one id {mid[:12]} on 2 nodes, pinned head-led plan with covering slots 4+8")
     print("P6_LOOPBACK_S per-node calibration (anchors, fit, replay) and cluster merge of the fitted graphs done")
     print(f"P6_LOOPBACK_S one real judged-round accepted by the summary round check, pp {run['prefill_tok_s']:.1f} tg {run['decode_tok_s']:.2f} tok/s (CPU runner, wiring only)")
     return 0

@@ -60,7 +60,7 @@
 # Env: LINK_GATE_WAIT_S (600), GATE_LAYOUT, RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
 # A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first), MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94"
 # instead of the pick's). The slots of the anchors and of the workers are the pick's own, per node (plans/slots.txt): there is no global V and R.
-# TINY=1: the tiny sharded MoE of tests/fixtures (8 layers cut 4 and 4, a pinned plan, 4 + 4 slots over 8 experts) instead of the 235B, with the real
+# TINY=1: the tiny sharded MoE of tests/fixtures (8 layers cut 4 and 4, a pinned plan, 4 + 8 slots over 8 experts) instead of the 235B, with the real
 # binaries; the `dryrun` stage is this on the boxes (DRYRUN_NAME, DRYRUN_STAGES), before the download and before `budget`: it runs one judged round of
 # the real `tetraeder cluster judged-round` and checks it with `phase6_exit_s_summary.py round`; it prices and freezes nothing.
 # LOOPBACK=1: the same dry run on this machine: both "boxes" are directories and processes here, the REAL binaries (TETRAEDER_BIN, default
@@ -368,7 +368,7 @@ st_plan() {
   get a hw-plan.json "$out/plans/hw-plan.json"
   if [ "$TINY" = 1 ]; then
     # the planner prices a placement with a GPU only, and a CI runner has none: the plan is pinned (a head-led two-stage plan of the
-    # tiny MoE, 4 + 4 slots covering its 8 experts), written by hand in tests/fixtures and parsed by a test
+    # tiny MoE, 4 + 8 slots over its 8 experts), written by hand in tests/fixtures and parsed by a test
     say "the pinned plan of the tiny model"
     cp "$repo/$tiny_plan" "$out/plans/judged-plan.toml"
   else

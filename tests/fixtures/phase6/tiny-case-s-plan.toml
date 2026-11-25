@@ -30,7 +30,7 @@ slots = 4
 
 [[replicas.stages.expert_cache]]
 device = "a/cpu0"
-slots = 4
+slots = 8
 
 [[replicas.stages]]
 layers = [4, 8]
@@ -55,4 +55,4 @@ slots = 4
 
 [[replicas.stages.expert_cache]]
 device = "b/cpu0"
-slots = 4
+slots = 8

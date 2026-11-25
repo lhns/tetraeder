@@ -1,7 +1,7 @@
 //! The pinned plan of the Case S dry run (`tests/fixtures/phase6/tiny-case-s-plan.toml`, used by
 //! `scripts/phase6_exit_s.sh` with TINY=1): the eight-layer tiny MoE cut 4 and 4 across nodes `a`
-//! (the leader) and `b`, 4 compute-tier and 4 RAM-tier slots per layer on each, which cover its 8
-//! experts. A CI runner has no GPU, so the planner prices no builder placement for the tiny
+//! (the leader) and `b`, 4 compute-tier and 8 RAM-tier slots per layer on each (the RAM tier alone holds its 8
+//! experts, so a CPU-only run needs no disk read after the warm request). A CI runner has no GPU, so the planner prices no builder placement for the tiny
 //! layout and the plan is written by hand; this test keeps it a plan the rest of the code reads.
 //!
 //! Hardware label: none.
@@ -29,7 +29,7 @@ fn the_pinned_tiny_plan_is_a_head_led_covering_two_stage_plan() {
     // Covering: VRAM plus RAM slots hold every expert of each layer, on both nodes.
     for s in st {
         let slots: u32 = s.expert_cache.iter().map(|c| c.slots).sum();
-        assert_eq!(slots, N_EXPERT, "{:?}", s.expert_cache);
+        assert!(slots >= N_EXPERT, "{:?}", s.expert_cache);
     }
     // The embedding is on the leader, the output head on the last stage.
     let kinds = |i: usize| -> Vec<UnitKind> {
