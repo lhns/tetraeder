@@ -41,6 +41,30 @@ pub fn request(
     }
 }
 
+/// Asks each of `nodes` whether it holds model `model_sha256` whole (every shard of a split
+/// one); the first node that does not answers with its reason.
+pub fn check_model(
+    t: &dyn Transport,
+    cfg: &ClusterConfig,
+    nodes: &[NodeId],
+    model_sha256: &str,
+) -> Result<(), String> {
+    for n in nodes {
+        let (r, _) = request(
+            t,
+            &peer_of(cfg, n)?,
+            &NodeRequest::CheckModel {
+                model_sha256: model_sha256.to_owned(),
+            },
+            &[],
+        )?;
+        if !matches!(r, NodeReply::Model { .. }) {
+            return Err(format!("node `{n}`: unexpected reply {r:?}"));
+        }
+    }
+    Ok(())
+}
+
 fn peer_of(cfg: &ClusterConfig, id: &NodeId) -> Result<Peer, String> {
     cfg.peer(id).ok_or_else(|| format!("`{id}` is not a node"))
 }

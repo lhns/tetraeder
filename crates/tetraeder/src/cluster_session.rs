@@ -15,7 +15,7 @@ use tetraeder::pipeline::{
 };
 use tetraeder_control::client;
 use tetraeder_scheduler::SegmentBackend;
-use tetraeder_transport::{SocketBuffers, Transport};
+use tetraeder_transport::{NodeId, SocketBuffers, Transport};
 
 #[derive(Args)]
 pub struct MergeArgs {
@@ -157,6 +157,9 @@ pub fn judged_round(a: &JudgedArgs) -> Result<()> {
         nodes.len(),
         distinct.len()
     );
+    let node_ids: Vec<NodeId> = segs.iter().map(|s| s.peer.id.clone()).collect();
+    client::check_model(t.as_ref(), &cfg, &node_ids, &a.model_sha256)
+        .map_err(anyhow::Error::msg)?;
     let remote = start_remote_segments(&t, 0, &segs, &a.model_sha256, &|c| {
         c.startup_timeout = Duration::from_secs(a.startup_timeout_s);
         c.deadline_floor = Duration::from_secs(a.deadline_s);

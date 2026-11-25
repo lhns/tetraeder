@@ -64,6 +64,16 @@ fn derived_replicas_cover_the_model_once_on_configured_nodes() {
                     spec.segments[0].peer.id, leader,
                     "replica {r}: leader first"
                 );
+                // The leader's engine reads the plan's knobs (prefill micro-batches, ubatch): the
+                // replica's plan travels with a split replica too (rehearsal 2: it was empty, so
+                // the leader warned "prefill is not pipelined" and ran its defaults).
+                let sent = Plan::from_toml(&spec.plan)
+                    .unwrap_or_else(|e| panic!("replica {r}: the plan is not sent: {e}"));
+                assert_eq!(
+                    sent.knobs.prefill_micro_batches,
+                    c.plan.knobs.prefill_micro_batches
+                );
+                assert_eq!(sent.knobs.ubatch, c.plan.knobs.ubatch);
                 let (mut next, mut embeds, mut heads) = (0u32, 0, 0);
                 for seg in &spec.segments {
                     assert!(

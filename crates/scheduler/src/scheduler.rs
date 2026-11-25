@@ -1330,6 +1330,17 @@ impl Worker {
         };
         let Seq { mut req, fed, .. } = *seq;
         self.finalize(&mut req);
+        // Rehearsal 2 ended requests with nothing: a request that ends by length before its
+        // first token leaves this line, so a log shows which path it was.
+        if reason == FinishReason::Length && req.stats.generated_tokens == 0 {
+            tracing::warn!(
+                seq = id,
+                prompt = req.stats.prompt_tokens,
+                fed,
+                n_ctx_seq = self.n_ctx_seq,
+                "request ended by length before its first token"
+            );
+        }
         // A shifted sequence is no prefix of anything a client sends: freed, not kept.
         let toks = if req.shifted {
             Vec::new()

@@ -195,6 +195,9 @@ pub enum Endpoint {
     },
 }
 
+/// A step with more tokens than this is a prefill step: its reply deadline is `bulk_deadline`.
+pub const BULK_STEP_TOKENS: usize = 64;
+
 /// How to start and supervise the worker.
 pub struct RemoteConfig {
     pub endpoint: Endpoint,
@@ -202,6 +205,12 @@ pub struct RemoteConfig {
     pub predicted_step: Option<Duration>,
     /// Shortest reply deadline (5 s).
     pub deadline_floor: Duration,
+    /// Reply deadline of a call that moves a lot of bytes: a KV snapshot or restore, and a
+    /// prefill step (more than `BULK_STEP_TOKENS` tokens, whose hidden rows cross the link).
+    /// Over a slow link these take far longer than a decode step, so the floor would kill a
+    /// healthy worker (rehearsal 2: a 2177-token snapshot hit exactly 5 s). A dead node is
+    /// caught by the membership heartbeats, not by this. Never below `deadline()`.
+    pub bulk_deadline: Duration,
     /// How long a (re)started worker may take to load and answer `Info`.
     pub startup_timeout: Duration,
     /// Restart delays are `backoff_base` times 1, 2, 4, 4, ... (1 s base).
@@ -236,6 +245,7 @@ impl RemoteConfig {
             endpoint,
             predicted_step: None,
             deadline_floor: Duration::from_secs(5),
+            bulk_deadline: Duration::from_secs(120),
             startup_timeout: Duration::from_secs(30 * 60),
             backoff_base: Duration::from_secs(1),
             max_restarts: 5,
@@ -251,6 +261,15 @@ impl RemoteConfig {
     pub fn deadline(&self) -> Duration {
         self.predicted_step
             .map_or(self.deadline_floor, |p| (p * 10).max(self.deadline_floor))
+    }
+
+    /// The reply deadline of a call: `deadline()`, or `bulk_deadline` for a bulk call.
+    pub fn deadline_for(&self, bulk: bool) -> Duration {
+        if bulk {
+            self.deadline().max(self.bulk_deadline)
+        } else {
+            self.deadline()
+        }
     }
 }
 
@@ -436,7 +455,8 @@ pub struct RemoteBackend {
     /// The worker's own time for the last `decode` (`Reply::step_s`).
     last_step: Option<Duration>,
     /// Steps sent by `start_step` and not yet finished, oldest first: (sent at, inputs).
-    pending: VecDeque<(Instant, usize)>,
+    /// Steps sent and not answered: when, how many inputs, and whether it is a bulk (prefill) step.
+    pending: VecDeque<(Instant, usize, bool)>,
     /// A reply `reply_ready` took off the channel, with its arrival time, for the next finish.
     stash: Option<(Instant, Result<Frame, String>)>,
 }
@@ -616,7 +636,11 @@ impl RemoteBackend {
     /// One call. `Ok` only for a reply without an error; a sticky error kills the worker.
     fn call(&mut self, req: &Request, payload: &[u8]) -> Result<(Reply, Vec<u8>), BackendError> {
         let t0 = self.send_call(req, payload)?;
-        self.recv_call(req.name(), t0)
+        let bulk = matches!(
+            req,
+            Request::SeqSnapshot { .. } | Request::SeqRestore { .. }
+        );
+        self.recv_call(req.name(), t0, self.cfg.deadline_for(bulk))
     }
 
     /// Sends one request without waiting; `recv_call` takes its reply. Replies come in the order
@@ -653,6 +677,7 @@ impl RemoteBackend {
         &mut self,
         name: &'static str,
         t0: Instant,
+        deadline: Duration,
     ) -> Result<(Reply, Vec<u8>), BackendError> {
         // A reply that `reply_ready` already took off the channel keeps its arrival time.
         let (res, t1) = match self.stash.take() {
@@ -663,12 +688,18 @@ impl RemoteBackend {
                         "worker {name}: worker exited"
                     )));
                 };
-                (receive_reply(child, self.cfg.deadline()), Instant::now())
+                (receive_reply(child, deadline), Instant::now())
             }
         };
         self.record_call(name, t0, t1);
         match res {
             Err(e) => {
+                tracing::warn!(
+                    call = name,
+                    took_ms = t1.duration_since(t0).as_millis() as u64,
+                    deadline_ms = deadline.as_millis() as u64,
+                    "worker call failed, the worker is killed and starts again: {e}"
+                );
                 self.kill();
                 Err(BackendError::Failed(format!("worker {name}: {e}")))
             }
@@ -869,16 +900,18 @@ impl RemoteBackend {
             trace: current_traceparent(),
         };
         let t0 = self.send_call(&req, &payload)?;
-        self.pending.push_back((t0, inputs.len()));
+        let tokens: usize = inputs.iter().map(|i| i.tokens.len()).sum();
+        self.pending
+            .push_back((t0, inputs.len(), tokens > BULK_STEP_TOKENS));
         Ok(())
     }
 
     /// The reply to the oldest `start_feed`.
     fn finish_feed(&mut self) -> Result<Outputs<'_>, BackendError> {
-        let Some((t0, n_inputs)) = self.pending.pop_front() else {
+        let Some((t0, n_inputs, bulk)) = self.pending.pop_front() else {
             return Err(BackendError::Failed("no step was started".into()));
         };
-        let (reply, payload) = self.recv_call("decode", t0)?;
+        let (reply, payload) = self.recv_call("decode", t0, self.cfg.deadline_for(bulk))?;
         self.last_step = reply.step_s.map(Duration::from_secs_f64);
         let nv = self.out_width();
         if reply.spans.len() != n_inputs || nv == 0 {
@@ -967,13 +1000,13 @@ impl SegmentBackend for RemoteBackend {
         if self.stash.is_some() {
             return true;
         }
-        let Some(&(t0, _)) = self.pending.front() else {
+        let Some(&(t0, _, bulk)) = self.pending.front() else {
             return true;
         };
         let Some(child) = self.child.as_ref() else {
             return true;
         };
-        let deadline = self.cfg.deadline();
+        let deadline = self.cfg.deadline_for(bulk);
         // A reply that does not come is the finish's error, after the same deadline as a call.
         if t0.elapsed() >= deadline {
             self.stash = Some((Instant::now(), Err(format!("no reply within {deadline:?}"))));

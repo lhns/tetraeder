@@ -356,9 +356,7 @@ flowchart TB
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
 | Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
-| A plan led by the head runs the whole model in process | ⚠ open | The planner picked a plan whose leader is the head; the head started its in-process engine for the whole model and never used node b; the plan source should refuse or serve it. |
-| Second cold request through a split plan returns an empty stream | ⚠ open | Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read. |
-| cluster probe to 64 MiB dies on the daemon control-idle limit | ⚠ open | On a link with bulk 2 to 15 s per 4 to 32 MiB the probe to 64 MiB with 10 repeats is cut by the control connection idle limit, so no start probe could be taken at the specified sizes. |
+| Second cold request through a split plan returns an empty stream | ⚠ open | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Fixed as a bulk deadline (120 s) for snapshots, restores and prefill steps, with tests and logging; not proven, so the node stays open until a box run shows it. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -388,9 +386,7 @@ flowchart TB
 
 - `cluster-remote-kv`: KV cache on another machine
 - `cluster-prefix-fetch-not-observed`: Prefix fetch between real processes not demonstrated
-- `cluster-head-led-plan-ignores-segments`: A plan led by the head runs the whole model in process
 - `cluster-second-cold-request-empty`: Second cold request through a split plan returns an empty stream
-- `cluster-probe-control-idle`: cluster probe to 64 MiB dies on the daemon control-idle limit
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -430,7 +426,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 144 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 147 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -852,13 +848,16 @@ Generated on 2026-11-25.
 - `cluster-discovery-disk-names`: Discovery names the builder disk (✔ fixed). Discovery named every disk disk0 and gave the device no read rate, so the planner homed every 235B expert in RAM and the validator rejected all candidates; the volume that holds the node's models dir is now nvme0 with its link prior as the rate, and the test builds the graph from recorded volumes with no edit. The RAM budget of a judged session is still a graph edit unless the box's RAM is the budget.
 - `cluster-drain-without-plan`: Node drain does not move load without a cluster plan (✔ fixed). With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.
 - `cluster-failover-bound`: Failover bound per Case F mode (✔ done · unrated). The worst time from a node fault to the in-flight error on the head, from the code, a killed engine or daemon closes the connection with no timer, a partition costs node_down_after plus the tick plus one pause step, 2.13 s at 2 s, plus one one-way delay on a real link. Simulated nodes confirm each mode within its bound. Findings, an engine that hangs with its daemon alive has no timer, and a receiver that does not drain delays the errors by up to 60 s each.
+- `cluster-head-led-plan-ignores-segments`: A plan led by the head runs the whole model in process (✔ fixed). A replica the head leads that spans nodes now runs as a child of the head own daemon with its segments on the other nodes; only a whole model replica on the head node runs in process. The 235B pick leads from node a, the head, so it needed this. The plan of a split replica also reaches the leader now (it was sent empty).
 - `cluster-judged-round-cmd`: Judged round across two nodes (✔ done · unrated). A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI.
 - `cluster-mode1-detection`: Head learns of a killed replica engine at once (✔ fixed). The daemon waited for the killed engine to be reaped before it dropped the head's connection, and a process with a CUDA context takes seconds to leave (rehearsal mode 1 took 2.79 s against 1 ms simulated); it now drops the connection first. The cause on the real box is inferred from the code and the logs, not measured.
 - `cluster-pipeline-prefill`: Prefill pipelined across stages (✔ done · unrated). A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes).
 - `cluster-plan-source-gpu-segments`: Planner proposes no plan for two real GPU boxes (✔ fixed). An all-GPU segment is read as every expert resident and a placement that the graph cannot price no longer aborts the whole search, so the rehearsal profile now gives the hand split a price and 40 candidates; tetraeder-plan candidates --cluster writes them, and a replan that changes a replica leader is still refused by the control.
 - `cluster-planner-hardening`: Harden the cluster planner inputs (✔ fixed). Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors.
 - `cluster-prefix-fetch-not-triggered`: No prefix fetch between replicas on two GPU nodes (✔ fixed). The head process never gave the router its own replica snapshot format and size, never set the grants for fetches from it, and nothing served its cache to other nodes; now it does all three and a remote replica fetches from the head replica with equal tokens; the head replica as the fetcher stays unreachable and a real-process run of the relay is open.
+- `cluster-probe-control-idle`: cluster probe to 64 MiB dies on the daemon control-idle limit (✔ fixed). Every byte received restarts the clock of another node probe connection and the limit is 300 s, so a 64 MiB frame on a slow link arrives; the MemTransport slow-link test fails with the old limit and passes with the new one.
 - `cluster-rejoin-after-restore`: Head does not restart a replica after its node is restored (✔ fixed). The join call waited for the replica forever once the head had cut the connection while the engine was still loading (11 s on the 30B), so a restored node never rejoined and the cold start stalled; the link now ends the wait, each try is logged and counted, and the head rejoins an engine that takes 6.5 s to load within 7.2 s of the restore in both kill modes.
+- `cluster-sharded-model-id`: One model id for a split GGUF on every node (✔ done · unrated). The 235B is five GGUF shards while the daemon named a model by the sha256 of one file. The id of a split model is now the sha256 of a manifest of its shards, kept as a folder with the shards beside it; the daemon checks the manifest and the shard sizes and the head asks every node before it starts (serve and judged-round); tetraeder cluster model-id makes the id and the layout. The exit scripts still name sha256.gguf for the 235B and need cluster model-id --install.
 - `cluster-step-tokens-from-plan`: Replica step size from the plan (✔ fixed). The replica now sets its scheduler step tokens from the plan's micro-batches times its ubatch (an explicit --step-tokens still wins), so pipelined prefill runs the flow shop the planner priced; the Case S pick of 4 micro-batches at ubatch 2048 steps 8192 tokens.
 - `ops-review-phase6-serving`: Review the cluster serving code (✔ done · unrated). A read-only review of Phase 6 steps 3 to 5 and cluster-integration found 9 issues; 7 are fixed (per-IP handshake cap and TLS deadline, leader-only segment use, single-use prefix grants, request frame caps, snapshot checks, tokened prefix relay, bounded outbox, key required for a public cluster head) and 2 partly (snapshots served whole, no per-peer rate limit beyond grants; probe frames stay at 64 MiB for the link probe).
 - `planner-costmodel-v6-rest`: Cost model 6 remaining parts (✔ done · unrated). The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test.
@@ -896,5 +895,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 53 nodes (38 done, 4 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 32 nodes (24 done, 5 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 33 nodes (27 done, 3 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

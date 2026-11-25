@@ -35,7 +35,7 @@ use tetraeder_control::{ClusterConfig, Config, PlanSource, Proposal, Replanner, 
 use tetraeder_control::{Trigger, client};
 use tetraeder_costmodel::cluster::hop_time;
 use tetraeder_gateway::engine::{Engine, GenEvent, GenerateRequest, SamplingParams};
-use tetraeder_model::{BackendChoice, LoadOptions};
+use tetraeder_model::{BackendChoice, Gguf, LoadOptions};
 use tetraeder_plan::Plan;
 use tetraeder_profiler::HardwareGraph;
 use tetraeder_scheduler::{Scheduler, SchedulerConfig, load_moe};
@@ -420,6 +420,136 @@ fn cpu_serve_cluster_plan_runs_a_pipeline_replica_across_two_nodes_like_one_node
     println!(
         "cluster plan pipeline replica dense4 segments 2 processes 3 transport tls greedy_equal_one_node true prompts {checked}"
     );
+    for p in &mut c.procs.0 {
+        assert!(p.try_wait().unwrap().is_none(), "a daemon exited");
+    }
+}
+
+/// hardware: cpu. A plan whose replica the head's own node leads (rehearsal 2: it used to run the
+/// whole model in the head's process and leave node b idle). With exactly two nodes the head
+/// serves a two-segment plan through its own daemon: the greedy answers equal one node's, and
+/// both daemons run a worker (a: the replica engine and its segment, b: its segment).
+#[test]
+fn cpu_a_plan_led_by_the_head_computes_on_both_nodes_like_one_node() {
+    let mut c = Cluster::new("it-headled", &["a", "b"], "tiny-qwen3-l4-f16.gguf");
+    for n in ["a", "b"] {
+        c.spawn_daemon(n, &DENSE_ARGS, &DENSE_ARGS);
+    }
+    let plan = two_stage_plan("tiny", 4, 2, "a/cpu0", "b/cpu0", None);
+    std::fs::write(c.dir.join("plan.toml"), plan.to_toml().unwrap()).unwrap();
+    let port = free_port();
+    let mut cmd = serve_args(&c, port, &c.model.clone());
+    cmd.arg("--cluster-plan").arg(c.dir.join("plan.toml"));
+    let mut guard = Procs(vec![cmd.spawn().unwrap()]);
+    wait_healthy(port, &mut guard.0[0]);
+    let ref_port = free_port();
+    guard.0.push(ref_serve(&c.model, ref_port));
+    wait_healthy(ref_port, &mut guard.0[1]);
+
+    for prompt in ["Hello there", "What is two plus two?"] {
+        let got = chat(port, prompt, ",\"max_tokens\":16").unwrap();
+        let want = chat(ref_port, prompt, ",\"max_tokens\":16").unwrap();
+        assert!(!want.is_empty());
+        assert_eq!(got, want, "prompt {prompt:?}");
+    }
+    // Both nodes compute: each daemon runs the workers of its segment (node a also the engine).
+    let (cfg, t) = (c.cfg(), c.head_transport());
+    let workers = |n: &str| -> u32 {
+        let (r, _) = client::request(
+            t.as_ref(),
+            &cfg.peer(&NodeId::new(n)).unwrap(),
+            &NodeRequest::Heartbeat { n: 0 },
+            &[],
+        )
+        .unwrap();
+        match r {
+            tetraeder_control::proto::NodeReply::Alive { workers, .. } => workers,
+            other => panic!("{other:?}"),
+        }
+    };
+    let (wa, wb) = (workers("a"), workers("b"));
+    println!("head-led plan dense4 segments 2 nodes 2 workers_a {wa} workers_b {wb}");
+    assert!(
+        wa >= 2,
+        "node a runs the replica engine and its segment: {wa}"
+    );
+    assert!(wb >= 1, "node b runs its segment: {wb}");
+    for p in &mut c.procs.0 {
+        assert!(p.try_wait().unwrap().is_none(), "a daemon exited");
+    }
+}
+
+/// The model of a split fixture: the 4-layer dense model cut in three shards, installed on every
+/// node as the folder `models/<id>/` (manifest and shards), as `tetraeder cluster model-id
+/// --install` does. Returns the first shard's path.
+fn install_split_model(c: &Cluster) -> PathBuf {
+    use tetraeder_model::gguf_write::write_split;
+    let src = Gguf::open(&c.model).unwrap();
+    let names: Vec<String> = src.tensors.iter().map(|t| t.name.clone()).collect();
+    let n = names.len();
+    let groups = vec![
+        names[n / 3..2 * n / 3].to_vec(),
+        names[2 * n / 3..].to_vec(),
+    ];
+    let parts = c.dir.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    let shards = write_split(&src, &parts.join("tiny"), &groups).unwrap();
+    assert_eq!(shards.len(), 3);
+    let id = tetraeder_model::model_id::identify(&shards[0]).unwrap();
+    let models = c.dir.join("models");
+    std::fs::remove_file(&c.model).unwrap();
+    tetraeder_model::model_id::install(&id, &models).unwrap()
+}
+
+/// hardware: cpu. A split GGUF (three shards, as the 235B ships) is one model on every node: it is
+/// kept as `models/<id>/`, the head checks both nodes hold it whole, the daemons start the
+/// workers from its first shard, and the greedy answers equal those of the unsplit file on one
+/// node. A node that lacks a shard fails the head's start with its name.
+#[test]
+fn cpu_a_split_model_runs_through_the_daemons_like_the_whole_file() {
+    let mut c = Cluster::new("it-shards", &["a", "b"], "tiny-qwen3-l4-f16.gguf");
+    let whole = c.dir.join("whole.gguf");
+    std::fs::copy(&c.model, &whole).unwrap();
+    let first = install_split_model(&c);
+    for n in ["a", "b"] {
+        c.spawn_daemon(n, &DENSE_ARGS, &DENSE_ARGS);
+    }
+    let plan = two_stage_plan("tiny", 4, 2, "a/cpu0", "b/cpu0", None);
+    std::fs::write(c.dir.join("plan.toml"), plan.to_toml().unwrap()).unwrap();
+
+    // Node b loses the middle shard: the head refuses to start and names the node.
+    let id = tetraeder_model::model_id::id_of_path(&first).unwrap();
+    let shard2 = c
+        .dir
+        .join("models")
+        .join(&id)
+        .join(tetraeder_model::model_id::shard_file_name(&id, 2, 3));
+    let kept = c.dir.join("shard2.keep");
+    std::fs::rename(&shard2, &kept).unwrap();
+    let mut cmd = serve_args(&c, free_port(), &first);
+    cmd.arg("--cluster-plan").arg(c.dir.join("plan.toml"));
+    cmd.stderr(Stdio::piped());
+    let out = cmd.output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "the head started without a shard");
+    assert!(err.contains("shard 2 of 3"), "{err}");
+    std::fs::rename(&kept, &shard2).unwrap();
+
+    let port = free_port();
+    let mut cmd = serve_args(&c, port, &first);
+    cmd.arg("--cluster-plan").arg(c.dir.join("plan.toml"));
+    let mut guard = Procs(vec![cmd.spawn().unwrap()]);
+    wait_healthy(port, &mut guard.0[0]);
+    let ref_port = free_port();
+    guard.0.push(ref_serve(&whole, ref_port));
+    wait_healthy(ref_port, &mut guard.0[1]);
+    for prompt in ["Hello there", "What is two plus two?"] {
+        let got = chat(port, prompt, ",\"max_tokens\":16").unwrap();
+        let want = chat(ref_port, prompt, ",\"max_tokens\":16").unwrap();
+        assert!(!want.is_empty());
+        assert_eq!(got, want, "prompt {prompt:?}");
+    }
+    println!("split model dense4 shards 3 nodes 2 greedy_equal_whole_file true");
     for p in &mut c.procs.0 {
         assert!(p.try_wait().unwrap().is_none(), "a daemon exited");
     }
