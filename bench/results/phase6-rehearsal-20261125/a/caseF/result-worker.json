@@ -1,0 +1,112 @@
+{
+ "t_fault": 1795579519.49,
+ "bound_s": 3.0,
+ "requests": 294,
+ "ok": 290,
+ "error": 4,
+ "ambiguous": 0,
+ "in_flight_at_fault": 8,
+ "in_flight_ok": 4,
+ "in_flight_errors": 4,
+ "in_flight_error_delay_s": [
+  2.786,
+  2.786,
+  2.786,
+  2.786
+ ],
+ "in_flight_error_messages": [
+  "{\"message\": \"engine error: the connection to replica 1 was lost\", \"type\": \"server_error\", \"param\": null, \"code\": 500}"
+ ],
+ "submitted_in_bound": 8,
+ "submitted_in_bound_failed": 0,
+ "submitted_after_bound": 134,
+ "submitted_after_bound_failed": 0,
+ "failed_before_fault": 0,
+ "other_failures": 0,
+ "tokens_after_error": 0,
+ "rules": {
+  "inflight_errors_in_bound": true,
+  "one_clean_error_each": true,
+  "none_after_bound_failed": true,
+  "other_failures_zero": true,
+  "exactly_once": true
+ },
+ "ends_per_10s_ok_failed": {
+  "-60": [
+   28,
+   0
+  ],
+  "-50": [
+   24,
+   0
+  ],
+  "-40": [
+   20,
+   0
+  ],
+  "-30": [
+   24,
+   0
+  ],
+  "-20": [
+   24,
+   0
+  ],
+  "-10": [
+   24,
+   0
+  ],
+  "0": [
+   12,
+   4
+  ],
+  "10": [
+   13,
+   0
+  ],
+  "20": [
+   12,
+   0
+  ],
+  "30": [
+   10,
+   0
+  ],
+  "40": [
+   11,
+   0
+  ],
+  "50": [
+   14,
+   0
+  ],
+  "60": [
+   10,
+   0
+  ],
+  "70": [
+   11,
+   0
+  ],
+  "80": [
+   12,
+   0
+  ],
+  "90": [
+   12,
+   0
+  ],
+  "100": [
+   13,
+   0
+  ],
+  "110": [
+   12,
+   0
+  ],
+  "120": [
+   4,
+   0
+  ]
+ }
+}

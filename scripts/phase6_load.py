@@ -70,7 +70,8 @@ def one_request(host, port, key, model, text, max_tokens, timeout):
             for ch in ev.get("choices", []):
                 if ch.get("finish_reason"):
                     rec["finish"] = ch["finish_reason"]
-                if (ch.get("delta") or {}).get("content"):
+                d = ch.get("delta") or {}
+                if d.get("content") or d.get("reasoning_content"):
                     rec["chunks"] += 1
                     if rec["t_first"] is None:
                         rec["t_first"] = time.time()
