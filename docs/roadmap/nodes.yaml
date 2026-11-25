@@ -2673,7 +2673,7 @@ nodes:
   evidence:
   - docs/adr/0091-phase6-multi-node.md
   - crates/planner/tests/cluster_hardening.rs
-  verdict_quote: 'cluster_hardening 6 passed 0 failed; plan cluster 15 passed 0 failed'
+  verdict_quote: 'CI run 45527752415 ubuntu and windows - test a_node_name_is_one_path_segment ... ok; test forbid_node_also_rules_out_kv_workspace_and_slot_caches ... ok'
   headline: 'inputs refused, not panicked'
   depends_on:
   - cluster-planner
@@ -3909,7 +3909,7 @@ nodes:
   - docs/adr/0092-costmodel-6-streamed-moe-segments.md
   - crates/planner/tests/cluster_judged.rs
   - crates/model/tests/replay_segments.rs
-  verdict_quote: 'cluster_judged 6 passed 0 failed; replay_segments 1 passed (per layer pairs 80, shares equal to 1e-12); budget property 4 passed'
+  verdict_quote: 'CI run 45527752415 ubuntu and windows - test a_judged_segment_is_bit_identical_to_segment_predict ... ok; test cpu_replay_of_a_span_matches_the_segment_run_per_layer ... ok'
   headline: 'seven ADR 0092 parts built'
   depends_on:
   - planner-costmodel-stream-terms
