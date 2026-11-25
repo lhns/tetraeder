@@ -169,7 +169,8 @@ jobs:
           THREADS: "2"
           STAGES: "gates setup budget plan fetch calib merge judged"
         run: |
-          cargo build -p tetraeder-planner --bin tetraeder-plan -p tetraeder-bench
+          cargo build -p tetraeder-planner --bin tetraeder-plan
+          cargo build -p tetraeder-bench
           bash scripts/phase6_exit_s.sh
           python3 -I scripts/phase6_loopback_check_s.py "$RESULTS_ROOT/$RESULTS_NAME" "$LB_DIR"
       - name: phase 6 Case S loopback cleanup
