@@ -85,7 +85,7 @@ class Server(ThreadingHTTPServer):
 # ---- the replica engine (a child of the node daemon) -----------------------------------------------------------------------
 
 
-def run_engine(port: int) -> None:
+def run_engine(port: int, load_s: float | None = None) -> None:
     seq = [0]
     lock = threading.Lock()
 
@@ -114,7 +114,7 @@ def run_engine(port: int) -> None:
             except OSError:
                 pass
 
-    time.sleep(LOAD_S)  # the model load: the daemon reports the engine ready only after it
+    time.sleep(LOAD_S if load_s is None else load_s)  # the model load: the daemon reports the engine ready only after it
     srv = Server(("127.0.0.1", port), H)
     log(f"{iso_now()}  INFO engine listening on {port}")
     srv.serve_forever()
@@ -196,7 +196,7 @@ def run_head(a: argparse.Namespace) -> None:
     # R_A, the head's own replica: an engine of this process's own (a thread-served port)
     def start_local():
         p = free_port()
-        threading.Thread(target=run_engine, args=(p,), daemon=True).start()
+        threading.Thread(target=run_engine, args=(p, 0.0), daemon=True).start()
         local_engine["port"] = p
 
     start_local()
@@ -536,6 +536,14 @@ def main() -> int:
     ap.add_argument("--node")
     a, _ = ap.parse_known_args(rest)  # the real flags the drivers pass (--models-dir, --worker-arg=..., -m ...) are ignored
     if cmd == "engine":
+        parent = os.getppid()
+
+        def watch_parent():  # a killed daemon leaves no engine behind (the real engine ends with its stdin)
+            while os.getppid() == parent:
+                time.sleep(0.5)
+            os._exit(0)
+
+        threading.Thread(target=watch_parent, daemon=True).start()
         run_engine(a.port)
     elif cmd == "node":
         run_node(a)
