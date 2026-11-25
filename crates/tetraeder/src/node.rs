@@ -109,6 +109,13 @@ fn prefix_port_file(state_dir: &std::path::Path, replica: u32) -> PathBuf {
     state_dir.join(format!("prefix-port-{replica}"))
 }
 
+/// Where `serve --cluster` writes the prefix listener of the replica it leads in process, as
+/// `<port> <token>`: the head's replica is not a child of this daemon, so the daemon finds it
+/// here (both default to the same `--state-dir`).
+pub(crate) fn head_prefix_file(state_dir: &std::path::Path) -> PathBuf {
+    state_dir.join("prefix-head")
+}
+
 /// The prefix listener of one launch of a replica engine: its port file and the token the
 /// daemon must present (a fresh one per launch, passed to the child by environment).
 struct PrefixTarget {
@@ -124,9 +131,28 @@ struct PrefixTarget {
 struct PrefixTargets {
     by_replica: Mutex<HashMap<u32, PrefixTarget>>,
     launches: AtomicU64,
+    /// The head process's own listener (`head_prefix_file`), used when no child has one.
+    head_file: Option<PathBuf>,
 }
 
 impl PrefixTargets {
+    fn with_head_file(file: PathBuf) -> Self {
+        Self {
+            head_file: Some(file),
+            ..Self::default()
+        }
+    }
+
+    /// The head process's listener: `<port> <token>` in its file.
+    fn head(&self) -> Option<(std::net::SocketAddr, String)> {
+        let text = std::fs::read_to_string(self.head_file.as_ref()?).ok()?;
+        let (port, token) = text.trim().split_once(' ')?;
+        Some((
+            std::net::SocketAddr::from(([127, 0, 0, 1], port.parse::<u16>().ok()?)),
+            token.to_owned(),
+        ))
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u32, PrefixTarget>> {
         self.by_replica
             .lock()
@@ -160,20 +186,23 @@ impl PrefixTargets {
 
     /// The loopback address and token of the newest listener that has written its port.
     fn current(&self) -> Option<(std::net::SocketAddr, String)> {
-        let m = self.lock();
-        let mut all: Vec<&PrefixTarget> = m.values().collect();
-        all.sort_by_key(|t| std::cmp::Reverse(t.launch));
-        all.into_iter().find_map(|t| {
-            let port = std::fs::read_to_string(&t.file)
-                .ok()?
-                .trim()
-                .parse::<u16>()
-                .ok()?;
-            Some((
-                std::net::SocketAddr::from(([127, 0, 0, 1], port)),
-                t.token.clone(),
-            ))
-        })
+        let child = {
+            let m = self.lock();
+            let mut all: Vec<&PrefixTarget> = m.values().collect();
+            all.sort_by_key(|t| std::cmp::Reverse(t.launch));
+            all.into_iter().find_map(|t| {
+                let port = std::fs::read_to_string(&t.file)
+                    .ok()?
+                    .trim()
+                    .parse::<u16>()
+                    .ok()?;
+                Some((
+                    std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                    t.token.clone(),
+                ))
+            })
+        };
+        child.or_else(|| self.head())
     }
 }
 
@@ -367,7 +396,9 @@ pub fn run(a: &NodeArgs) -> Result<()> {
         }
         Ok(c.clone().unwrap_or_default())
     });
-    let prefix = Arc::new(PrefixTargets::default());
+    let prefix = Arc::new(PrefixTargets::with_head_file(head_prefix_file(
+        &a.state_dir,
+    )));
     let launcher = Arc::new(ChildLauncher {
         exe: std::env::current_exe()?,
         models_dir: a.models_dir.clone(),
@@ -403,5 +434,32 @@ pub fn run(a: &NodeArgs) -> Result<()> {
     // The daemon runs until the process is stopped.
     loop {
         std::thread::park();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// hardware: none. The daemon relays `Prefix` connections to the head process's listener when
+    /// no child replica has one: the head's replica runs in `serve`, not under the daemon.
+    #[test]
+    fn the_daemon_finds_the_head_processs_prefix_listener() {
+        let dir =
+            std::env::temp_dir().join(format!("tetraeder-prefix-head-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = head_prefix_file(&dir);
+        let targets = PrefixTargets::with_head_file(file.clone());
+        assert!(targets.current().is_none(), "no listener yet");
+        std::fs::write(&file, "40123 abc123\n").unwrap();
+        let (addr, token) = targets.current().expect("the head's listener");
+        assert_eq!((addr.port(), token.as_str()), (40123, "abc123"));
+        // A child replica's listener wins over the head's.
+        let child = dir.join("prefix-port-1");
+        std::fs::write(&child, "40999").unwrap();
+        let (t, _) = targets.add(1, child);
+        let (addr, token) = targets.current().unwrap();
+        assert_eq!((addr.port(), token), (40999, t));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

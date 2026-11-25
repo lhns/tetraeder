@@ -10,7 +10,7 @@
 //! whoever takes the sender out of its [`Slot`] first (the replica's final event, the loss of the
 //! replica, or a cancel).
 
-use crate::kv::{PrefixGrants, PrefixKey};
+use crate::kv::{PrefixGrants, PrefixKey, PrefixStore};
 use crate::membership::NodeState;
 use crate::metrics;
 use crate::monitor::Monitor;
@@ -212,6 +212,22 @@ impl ClusterEngine {
     /// connection): a fetch from it is announced here instead of over a replica connection.
     pub fn set_local_grants(&self, g: Arc<PrefixGrants>) {
         *lock(&self.inner.local_grants) = Some(g);
+    }
+
+    /// Replica `r` runs on the head's own node, in this process: its snapshot format and size
+    /// reach the fetch policy as a remote replica's do at join (without them a policy that
+    /// prices the fetch has nothing to price and recomputes), and `grants` take the fetches
+    /// announced for it (`set_local_grants`). The caller serves `store` on the node's `Prefix`
+    /// purpose.
+    pub fn set_local_replica(
+        &self,
+        r: u32,
+        store: Arc<dyn PrefixStore>,
+        grants: Arc<PrefixGrants>,
+    ) {
+        self.set_kv_format(r, &store.kv_format());
+        self.set_kv_row_bytes(r, store.row_bytes());
+        self.set_local_grants(grants);
     }
 
     /// A replica joins (`true`) or leaves the router. Leaving ends its in-flight requests with an

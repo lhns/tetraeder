@@ -444,6 +444,16 @@ pub struct ServeArgs {
     /// which prices the plan and the prefix fetches (the probed links).
     #[arg(long, value_name = "FILE", requires = "cluster")]
     pub cluster_hw: Option<PathBuf>,
+    /// With `--cluster`: this node's daemon state directory (`tetraeder node --state-dir`). The
+    /// replica the head leads in process registers its prefix listener there, so the daemon
+    /// relays other nodes' prefix fetches to it.
+    #[arg(
+        long,
+        value_name = "DIR",
+        default_value = "node-state",
+        requires = "cluster"
+    )]
+    pub node_state: PathBuf,
     /// With `--cluster`: the sha256 of the model file, which every node keeps as
     /// `<sha256>.gguf`; default the stem of `-m` when that is 64 hex digits.
     #[arg(long, value_name = "HEX", requires = "cluster")]
