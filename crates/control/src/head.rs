@@ -933,12 +933,12 @@ fn join_loop(
                 crate::client::request(
                     transport.as_ref(),
                     &s.peer,
-                    &NodeRequest::Assign {
+                    &NodeRequest::AssignLed {
                         replica: r,
                         segment: u32::try_from(i).map_err(|e| e.to_string())?,
                         plan: s.plan.clone(),
                         model_sha256: spec.model_sha256.clone(),
-                        leader: Some(remote.peer().id.clone()),
+                        leader: remote.peer().id.clone(),
                     },
                     &[],
                 )?;

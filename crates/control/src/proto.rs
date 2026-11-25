@@ -23,10 +23,15 @@ pub enum NodeRequest {
         segment: u32,
         plan: String,
         model_sha256: String,
-        /// The node that leads the replica: besides the head, only it may connect to the
-        /// segment's worker. Without it only the head may.
-        #[serde(default)]
-        leader: Option<NodeId>,
+    },
+    /// [`NodeRequest::Assign`] naming the node that leads the replica: besides the head, only it
+    /// may connect to the segment's worker (with plain `Assign` only the head may).
+    AssignLed {
+        replica: u32,
+        segment: u32,
+        plan: String,
+        model_sha256: String,
+        leader: NodeId,
     },
     /// A replica engine is released with `segment` `u32::MAX`.
     Release {

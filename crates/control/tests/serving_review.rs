@@ -58,12 +58,12 @@ fn only_the_head_and_the_leader_may_use_a_segment_worker() {
     client::request(
         &head,
         &peer,
-        &NodeRequest::Assign {
+        &NodeRequest::AssignLed {
             replica: 0,
             segment: 0,
             plan: "plan".into(),
             model_sha256: "00".into(),
-            leader: Some(id("c")),
+            leader: id("c"),
         },
         &[],
     )
@@ -103,7 +103,6 @@ fn without_a_leader_only_the_head_may_use_a_segment_worker() {
             segment: 0,
             plan: "plan".into(),
             model_sha256: "00".into(),
-            leader: None,
         },
         &[],
     )

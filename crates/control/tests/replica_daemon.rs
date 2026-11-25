@@ -105,7 +105,6 @@ fn the_replica_purposes_are_open_only_to_who_may_use_them() {
             segment: REPLICA_SEGMENT,
             plan: String::new(),
             model_sha256: "0".repeat(64),
-            leader: None,
         },
         &[],
     );

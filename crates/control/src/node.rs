@@ -449,29 +449,20 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
             segment,
             plan,
             model_sha256,
+        } => assign_segment(s, (*replica, *segment), plan, model_sha256, None),
+        NodeRequest::AssignLed {
+            replica,
+            segment,
+            plan,
+            model_sha256,
             leader,
-        } => {
-            if s.draining.load(Ordering::SeqCst) {
-                return error("the node is draining");
-            }
-            if *segment == REPLICA_SEGMENT {
-                return error("that segment number is reserved for the replica engine");
-            }
-            assign(
-                s,
-                Assignment {
-                    replica: *replica,
-                    segment: *segment,
-                    plan: plan.clone(),
-                    model_sha256: model_sha256.clone(),
-                    segments: Vec::new(),
-                    predicted_s: Vec::new(),
-                    leader: leader.clone(),
-                },
-                false,
-            );
-            reply(NodeReply::Assigned)
-        }
+        } => assign_segment(
+            s,
+            (*replica, *segment),
+            plan,
+            model_sha256,
+            Some(leader.clone()),
+        ),
         NodeRequest::StartReplica {
             replica,
             plan,
@@ -521,6 +512,35 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
             Err(e) => error(format!("probe of {peer} failed: {e}")),
         },
     }
+}
+
+fn assign_segment(
+    s: &Arc<Shared>,
+    (replica, segment): (u32, u32),
+    plan: &str,
+    model_sha256: &str,
+    leader: Option<NodeId>,
+) -> (NodeReply, Vec<u8>) {
+    if s.draining.load(Ordering::SeqCst) {
+        return error("the node is draining");
+    }
+    if segment == REPLICA_SEGMENT {
+        return error("that segment number is reserved for the replica engine");
+    }
+    assign(
+        s,
+        Assignment {
+            replica,
+            segment,
+            plan: plan.to_owned(),
+            model_sha256: model_sha256.to_owned(),
+            segments: Vec::new(),
+            predicted_s: Vec::new(),
+            leader,
+        },
+        false,
+    );
+    (NodeReply::Assigned, Vec::new())
 }
 
 fn median(v: &mut [f64]) -> f64 {
