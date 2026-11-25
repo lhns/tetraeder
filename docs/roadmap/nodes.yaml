@@ -4717,3 +4717,32 @@ nodes:
   folded: []
   overview: false
   plain: 'Every byte received restarts the clock of another node probe connection and the limit is 300 s, so a 64 MiB frame on a slow link arrives; the MemTransport slow-link test fails with the old limit and passes with the new one.'
+
+- id: cluster-case-s-ready
+  title: Case S readiness, covering pick, stage order and a real-binary dry run
+  track: cluster
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - docs/notes/phase6-rule-changes.md
+  - docs/box-driver.md
+  - crates/planner/tests/cluster_discovered_ram_experts.rs
+  - crates/planner/tests/tiny_case_s_plan.rs
+  - crates/tetraeder/tests/model_split.rs
+  - scripts/phase6_exit_s.sh
+  - scripts/phase6_loopback_check_s.py
+  - .github/workflows/ci.yml
+  verdict_quote: 'P6_LOOPBACK_S real binaries, tiny MoE in 3 shards under one id on 2 nodes, pinned head-led plan with covering slots 4+8; one real judged-round accepted by the summary round check (CI run 45704517742, step phase 6 Case S loopback)'
+  headline: 'the judged Case S pick is a covering plan within the measured budgets, a refused pick costs no download, and the real binaries run the dry run'
+  depends_on:
+  - cluster-judged-round-cmd
+  - cluster-sharded-model-id
+  replaced_by: []
+  lane: ci
+  start: '2026-11-25'
+  end: '2026-11-25'
+  folded: []
+  overview: false
+  plain: 'On two 3090 nodes at 59.4 GB the planner now picks a covering 0..44 and 44..94 split at 32 + 96 slots; the driver measures the budget and plans before the link gate and the download, prices that pick in the gate, takes each node slots from it, and a CI step runs the real model split, model id, calibration, merge and one judged round on a tiny MoE (the same code is the dryrun stage on the boxes); no verdict was measured.'
