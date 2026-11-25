@@ -1,0 +1,2 @@
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         230G  143G   88G  63% /

@@ -28,17 +28,22 @@ done
 """
 
 
-def run(tmp_path, pre=(), hang="", ms="0", hf="0", extra=None):
+def run(tmp_path, pre=(), hang="", ms="0", hf="0", extra=None, numa=None):
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     shutil.copy(SCRIPT, root / "scripts" / "fetch_exit_model.sh")
+    for helper in ("sc_gates.py", "cotenant_guard.py"):
+        shutil.copy(SCRIPT.parent / helper, root / "scripts" / helper)
     tax = tmp_path / "tax"
     tax.mkdir()
     box = tax / "box.sh"
     box.write_text(BOX.replace('"${SIZE_OF[$f]:-0}"', '$(case "$f" in *a-1*) echo 100;; *) echo 200;; esac)'), newline="\n")
     fake = tmp_path / "bin"
     fake.mkdir()
-    for name, body in {"flock": "exit 0", "setsid": 'exec "$@"', "pkill": "exit 0"}.items():
+    shims = {"flock": "exit 0", "setsid": 'exec "$@"', "pkill": "exit 0"}
+    if numa is not None:
+        shims["lscpu"] = f'echo "NUMA node(s):                      {numa}"'
+    for name, body in shims.items():
         shim = fake / name
         shim.write_text(f"#!/bin/sh\n{body}\n", newline="\n")
         shim.chmod(shim.stat().st_mode | stat.S_IEXEC)
@@ -81,3 +86,13 @@ def test_stall_switches_mirror(tmp_path):
     log, calls, shard_dir = run(tmp_path, ms="5000", hf="5000", hang="modelscope")
     assert [c.split()[0] for c in calls] == ["modelscope", "huggingface"]
     assert "stall on modelscope" in log and "FETCH_DONE rc=0" in log
+
+
+def test_a_two_node_host_is_refused_before_any_download(tmp_path):
+    log, calls, _ = run(tmp_path, extra={"REQUIRE_ONE_NUMA": "1"}, numa=2)
+    assert calls == [] and "FETCH_DONE rc=3" in log and "2 NUMA nodes" in log
+
+
+def test_a_one_node_host_downloads(tmp_path):
+    log, calls, _ = run(tmp_path, extra={"REQUIRE_ONE_NUMA": "1"}, numa=1, hf="5")
+    assert calls and "FETCH_DONE rc=0" in log

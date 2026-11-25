@@ -150,6 +150,52 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
     },
+    /// One segment of the model (a layer span, no embedding or head) on the one node of `--hw`:
+    /// the cost model fitted to truncated anchors of the span, then the segment priced from the
+    /// replay of its own span (ADR 0092 section 6, tree node `bench-235b-segment-confirm`).
+    /// Always a judged prediction: it refuses to run without the replay.
+    SegmentPredict {
+        #[arg(long)]
+        hw: PathBuf,
+        /// Model layout JSON (`tetraeder plan layout`) of the whole model.
+        #[arg(long)]
+        layout: PathBuf,
+        /// The segment's half-open layer span, `a..b`.
+        #[arg(long)]
+        layers: String,
+        /// `VRAM_SLOTS,RAM_SLOTS` of the segment and its anchors.
+        #[arg(long)]
+        pin: String,
+        /// The segment holds the embedding (the first segment of a model).
+        #[arg(long)]
+        embed: bool,
+        /// The segment computes the output head (the last segment of a model).
+        #[arg(long)]
+        head: bool,
+        /// Refuse to write a prediction whose anchor fit band is above this (ADR 0092 section 6).
+        #[arg(long, default_value_t = tetraeder_planner::segment::FIT_BAND_LIMIT)]
+        max_band: f64,
+        #[arg(long, default_value_t = 2048)]
+        ubatch: u32,
+        #[arg(long, default_value_t = 2048)]
+        prompt: u32,
+        #[arg(long, default_value_t = 128)]
+        r#gen: u32,
+        /// `ID:A..B:FILE[,FILE...]`: an anchor's span and the `exit_regime` JSON of its rounds.
+        #[arg(long = "anchor", required = true)]
+        anchors: Vec<String>,
+        /// `tetraeder-bench replay --layers a..b` output for the segment.
+        #[arg(long)]
+        tier_replay: PathBuf,
+        /// sha256 of the routing trace behind `--tier-replay`.
+        #[arg(long)]
+        trace_sha256: Option<String>,
+        #[arg(long)]
+        out: PathBuf,
+        /// The fitted hardware graph, TOML.
+        #[arg(long)]
+        hw_out: Option<PathBuf>,
+    },
     /// The `candidates.json` of a ledger directory (ADR 0056): the builder anchors plus the
     /// session's builder stages as candidates with their own request.
     LedgerDir {
@@ -423,6 +469,133 @@ fn main() -> Result<()> {
                 pick.pp_tps,
                 pick.tg_tps,
                 pick.binding,
+                out.display()
+            );
+            Ok(())
+        }
+        Command::SegmentPredict {
+            hw,
+            layout,
+            layers,
+            pin,
+            embed,
+            head,
+            max_band,
+            ubatch,
+            prompt,
+            r#gen,
+            anchors,
+            tier_replay,
+            trace_sha256,
+            out,
+            hw_out,
+        } => {
+            let span_of = |s: &str| -> Result<tetraeder_plan::Span> {
+                let (a, b) = s.split_once("..").context("a span is a..b")?;
+                Ok(tetraeder_plan::Span(a.trim().parse()?, b.trim().parse()?))
+            };
+            let span = span_of(&layers)?;
+            let hw_text = read(&hw)?;
+            let graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
+            let layout_text = read(&layout)?;
+            let layout = multi_cli::parse_layout(&layout_text).map_err(anyhow::Error::msg)?;
+            let (v, r) = pin
+                .split_once(',')
+                .context("--pin is VRAM_SLOTS,RAM_SLOTS")?;
+            let (v, r) = (v.trim().parse::<u32>()?, r.trim().parse::<u32>()?);
+            let mut list = Vec::new();
+            for spec in &anchors {
+                let mut it = spec.splitn(3, ':');
+                let (id, sp, files) = (it.next(), it.next(), it.next());
+                let (Some(id), Some(sp), Some(files)) = (id, sp, files) else {
+                    anyhow::bail!("--anchor {spec}: want ID:A..B:FILE[,FILE...]");
+                };
+                let mut vals = Vec::new();
+                for f in files.split(',') {
+                    let text = read(std::path::Path::new(f))?;
+                    vals.push(
+                        serde_json::from_str::<serde_json::Value>(&text)
+                            .with_context(|| format!("parse {f}"))?,
+                    );
+                }
+                list.push(tetraeder_planner::SegmentAnchor {
+                    id: id.to_string(),
+                    span: span_of(sp)?,
+                    files: vals,
+                });
+            }
+            let replay =
+                tetraeder_planner::read_tier_replay(&tier_replay).map_err(anyhow::Error::msg)?;
+            let threads = graph
+                .devices
+                .iter()
+                .find(|d| d.kind == tetraeder_profiler::DeviceKind::Cpu)
+                .and_then(|d| d.threads)
+                .context("the CPU of --hw has no thread count")?;
+            let w = Workload { prompt, r#gen };
+            let (pred, fitted) = tetraeder_planner::segment_predict(
+                &graph,
+                &layout,
+                tetraeder_plan::SegmentShape {
+                    layers: span,
+                    embed,
+                    head,
+                },
+                (v, r),
+                &w,
+                threads,
+                ubatch,
+                &list,
+                &replay,
+            )
+            .map_err(anyhow::Error::msg)?;
+            pred.check_fit_band(max_band).map_err(anyhow::Error::msg)?;
+            if let Some(p) = &hw_out {
+                std::fs::write(p, fitted.to_toml()?)
+                    .with_context(|| format!("write {}", p.display()))?;
+            }
+            let rv: serde_json::Value = serde_json::from_str(&read(&tier_replay)?)
+                .with_context(|| format!("parse {}", tier_replay.display()))?;
+            let mut env: BTreeMap<String, String> = BTreeMap::from([
+                ("TETRAEDER_EXIT_GPU".into(), "1".into()),
+                ("TETRAEDER_EXIT_LAYERS".into(), layers.clone()),
+                ("TETRAEDER_EXIT_SLOTS".into(), v.to_string()),
+                ("TETRAEDER_EXIT_RAM_SLOTS".into(), r.to_string()),
+                ("TETRAEDER_EXIT_UBATCH".into(), ubatch.to_string()),
+                ("TETRAEDER_EXIT_OP_OFFLOAD".into(), "1".into()),
+                ("TETRAEDER_EXIT_PREFILL".into(), prompt.to_string()),
+                ("TETRAEDER_EXIT_DECODE".into(), r#gen.to_string()),
+                ("TETRAEDER_EXIT_THREADS".into(), threads.to_string()),
+            ]);
+            if head {
+                env.insert("TETRAEDER_EXIT_HEAD".into(), "1".into());
+            }
+            let doc = serde_json::json!({
+                "kind": "segment-predict",
+                "hw_sha256": multi_cli::sha256_hex(hw_text.as_bytes()),
+                "layout_sha256": multi_cli::sha256_hex(layout_text.as_bytes()),
+                "routing": "trace",
+                "routing_trace": {
+                    "sha256": trace_sha256,
+                    "fnv1a64": rv["trace"]["fnv1a64"],
+                    "replay_version": rv["replay_version"],
+                    "scope": rv["scope"],
+                },
+                "judged": true,
+                "workload": {"prompt": prompt, "gen": r#gen},
+                "prediction": pred,
+                "exit_regime_env": env,
+            });
+            std::fs::write(&out, serde_json::to_string_pretty(&doc)?)
+                .with_context(|| format!("write {}", out.display()))?;
+            println!(
+                "segment {layers} v{v} r{r} ub{ubatch}: pp {:.2} tok/s, tg {:.3} tok/s (uncalibrated {:.2}, {:.3}), band {:.3}, binding {} -> {}",
+                pred.pp_tps,
+                pred.tg_tps,
+                pred.uncalibrated_pp_tps,
+                pred.uncalibrated_tg_tps,
+                pred.band,
+                pred.binding,
                 out.display()
             );
             Ok(())

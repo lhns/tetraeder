@@ -1,0 +1,14 @@
+SHA256SUMS: OK
+layout.json: OK
+disk/disk-curve.json: OK
+predictions/hw.toml: OK
+predictions/fitted.toml: OK
+predictions/replay.json: OK
+predictions/pred.json: OK
+trace/routing.sha256: OK
+trace/hidden.sha256: OK
+anchors/a1-r1.json: OK
+anchors/a1-r2.json: OK
+anchors/a2-r1.json: OK
+anchors/a2-r2.json: OK
+env.json: OK

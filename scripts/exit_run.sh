@@ -61,6 +61,11 @@ if [ "${RUSTC_WRAPPER:-}" = sccache ]; then sccache --start-server > /dev/null 2
 date_dir="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}"
 mkdir -p "$date_dir" runs/vast
 log=runs/vast/exit_run.log
+# REQUIRE_ONE_NUMA=1 (ADR 0091 answer 8): a judged exit run starts only on a host with one NUMA node, as fetch_exit_model.sh
+if [ "${REQUIRE_ONE_NUMA:-0}" = 1 ]; then
+  lscpu > runs/vast/lscpu.txt 2>&1
+  python3 -I scripts/sc_gates.py numa runs/vast/lscpu.txt >> "$log" 2>&1 || { echo "EXIT_RUN_DONE rc=33 (not a one-NUMA-node host)" >> "$log"; exit 33; }
+fi
 stamp=$(date +%H%M%S)
 # this box's GPU only, as moe_check.sh: another arch list rebuilds ggml-cuda for every arch (an hour, no cache hit)
 if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then

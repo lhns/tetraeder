@@ -899,6 +899,10 @@ fn segment_run(c: &SegmentCtx<'_>) -> Value {
             }
         },
     );
+    // wall clock of the end of the timed decode, for the host sampler's windows (`decode_windows`)
+    let ended_unix_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64());
     drop(refs);
     if let Some(r) = recorder.take() {
         r.finish();
@@ -996,6 +1000,8 @@ fn segment_run(c: &SegmentCtx<'_>) -> Value {
         "decode_profile_per_token": t.decode_profile.as_ref().map(|p| profile_json(p, n_decode.max(1) as f64)),
         "decode_io": decode_io,
         "decode_layers": decode_layers,
+        "decode_windows": [{"start_unix_s": ended_unix_s - t.decode_s, "end_unix_s": ended_unix_s, "tokens": n_decode}],
+        "hot_refresh_s": 0.0,
         // the tokens the decode steps were fed: greedy with the head on a whole-model run
         "decode_fed": t.decode_fed,
         "first_top": specs[specs.len() - 1].head.then(|| top_json(&t.last)),

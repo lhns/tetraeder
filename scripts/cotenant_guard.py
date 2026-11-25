@@ -22,6 +22,11 @@ OUTSIDE_FRAC = 0.15
 SMT_MIN_OUTSIDE = 2.0
 
 
+def limit_of(host_cpus: int) -> float:
+    """Cores busy outside the container above which the host counts as shared: max(4, 15% of the physical cores)."""
+    return max(MIN_OUTSIDE, OUTSIDE_FRAC * host_cpus / 2)
+
+
 def evaluate(decode: dict | None, threads: int | None) -> tuple[bool | None, str]:
     """(cotenant_ok, reason) from a host decode block; ok is None when the inputs are missing."""
     d = decode or {}
@@ -29,7 +34,7 @@ def evaluate(decode: dict | None, threads: int | None) -> tuple[bool | None, str
     if outside is None or not cpus:
         return None, "no host CPU counters for the decode phase"
     reasons = []
-    limit = max(MIN_OUTSIDE, OUTSIDE_FRAC * cpus / 2)
+    limit = limit_of(cpus)
     if outside > limit:
         reasons.append(f"{outside:.1f} cores busy outside the container (limit {limit:.1f} of {cpus // 2} physical)")
     if pairs is not None and threads and outside >= SMT_MIN_OUTSIDE:

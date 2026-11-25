@@ -1,0 +1,228 @@
+{
+  "prediction": {
+    "pp_tps": 1898.965078354056,
+    "tg_tps": 308.651011662205,
+    "routing": "trace",
+    "routing_trace": {
+      "sha256": "7fc16e2fae32293205820d4ec63c726c185aba2c87e032db4ac9ff6c4a53c98e",
+      "fnv1a64": "6a6e530485d1d8db",
+      "replay_version": 2,
+      "scope": {
+        "layers": [
+          4,
+          8
+        ],
+        "warm": 1
+      }
+    },
+    "hw_sha256": "9caa52c421cd2504b8f3c92ca2f2ef2094ac2b306943470215de630c64af71ab",
+    "uncalibrated_pp_tps": 7825.725528280331,
+    "uncalibrated_tg_tps": 671.1582906156742,
+    "band": 0.7468898111965536
+  },
+  "frozen_sha256": "fea0d81127ab235a0b37f0003ad991b1f87b0d42cbc8c265400bd3b7fa52f451",
+  "rounds": [
+    {
+      "file": "judged/r1.json",
+      "pp": 4073.899518796081,
+      "tg": 445.6459306315343,
+      "e_pp": -0.5338704183565042,
+      "e_tg": -0.3074075393781581,
+      "clean": true,
+      "unclean_reasons": [],
+      "vram_pair_share": 0.33203125,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r2.json",
+      "pp": 4009.7343820375927,
+      "tg": 420.60056345228736,
+      "e_pp": -0.5264112538574002,
+      "e_tg": -0.2661659577229307,
+      "clean": true,
+      "unclean_reasons": [],
+      "vram_pair_share": 0.33203125,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r3.json",
+      "pp": 4103.636835321438,
+      "tg": 358.6265383593557,
+      "e_pp": -0.5372482618322851,
+      "e_tg": -0.1393525613742327,
+      "clean": true,
+      "unclean_reasons": [],
+      "vram_pair_share": 0.33203125,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "median": {
+    "pp": 4073.899518796081,
+    "tg": 420.60056345228736,
+    "vram_pair_share": 0.33203125,
+    "full_hit_rate_mean": 0.0,
+    "ram_hit_rate_mean": 1.0
+  },
+  "e_pp": -0.5338704183565042,
+  "e_tg": -0.2661659577229307,
+  "gate": {
+    "vram_share": {
+      "replay": 0.328125,
+      "measured": 0.33203125,
+      "line": 0.02,
+      "diff": 0.00390625,
+      "ok": true
+    },
+    "full_hit_share": {
+      "replay": 0.0,
+      "measured": 0.0,
+      "line": 0.02,
+      "diff": 0.0,
+      "ok": true
+    },
+    "ram_hit_rate": {
+      "replay": 1.0,
+      "measured": 1.0,
+      "line": 0.005,
+      "diff": 0.0,
+      "ok": true
+    }
+  },
+  "gate_held": true,
+  "verdict": "miss",
+  "status": "miss: e_pp -0.534, e_tg -0.266 against 0.15",
+  "anchors": {
+    "fit": [
+      {
+        "id": "a1",
+        "span": [
+          4,
+          5
+        ],
+        "rounds": 2,
+        "pp_tok_s": 4339.225345327588,
+        "tg_tok_s": 967.6357731678594,
+        "pair_share": 0.28125,
+        "full_hit_rate": 0.0,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      },
+      {
+        "id": "a2",
+        "span": [
+          4,
+          6
+        ],
+        "rounds": 2,
+        "pp_tok_s": 6769.26708188621,
+        "tg_tok_s": 572.4739300638489,
+        "pair_share": 0.296875,
+        "full_hit_rate": 0.0,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      }
+    ],
+    "residuals": [
+      [
+        "a1:pp",
+        0.5578369560067734
+      ],
+      [
+        "a1:tg",
+        -0.006432561017155941
+      ],
+      [
+        "a2:pp",
+        -0.536582128419965
+      ],
+      [
+        "a2:tg",
+        -0.01295908210462847
+      ]
+    ]
+  },
+  "whole_model_run": {
+    "pp_tok_s": 109.71986982868931,
+    "tg_tok_s": 37.73618120619873,
+    "peak_rss_bytes": 794103808
+  },
+  "fixed_seed_segment": [
+    {
+      "file": "report/seed-r1.json",
+      "pp": 3837.247005508368,
+      "tg": 318.30393023987403,
+      "bytes": 0,
+      "vram_pair_share": 0.296875,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/seed-r2.json",
+      "pp": 1897.3165747708301,
+      "tg": 203.31608018491391,
+      "bytes": 0,
+      "vram_pair_share": 0.296875,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "fixed_seed_median": {
+    "pp": 2867.2817901395993,
+    "tg": 260.810005212394,
+    "vram_pair_share": 0.296875,
+    "full_hit_rate_mean": 0.0,
+    "ram_hit_rate_mean": 1.0
+  },
+  "refit_real_anchors": {
+    "pp_tps": 1972.8578794503592,
+    "tg_tps": 285.3147822231861,
+    "band": 0.14357702932738636,
+    "e_pp": -0.5157323173171,
+    "e_tg": -0.32164907274178667
+  },
+  "anchor_rounds": [
+    {
+      "file": "anchors/a1-r1.json",
+      "pp": 4601.891118393284,
+      "tg": 424.00752888968674,
+      "bytes": 0,
+      "vram_pair_share": 0.28125,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a1-r2.json",
+      "pp": 4076.559572261892,
+      "tg": 1511.2640174460319,
+      "bytes": 0,
+      "vram_pair_share": 0.28125,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a2-r1.json",
+      "pp": 7105.143579964339,
+      "tg": 283.15340586119055,
+      "bytes": 0,
+      "vram_pair_share": 0.296875,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a2-r2.json",
+      "pp": 6433.39058380808,
+      "tg": 861.7944542665074,
+      "bytes": 0,
+      "vram_pair_share": 0.296875,
+      "full_hit_rate_mean": 0.0,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "gpu_reason_samples": {
+    "0x0000000000000001": 47,
+    "0x0000000000000000": 29
+  }
+}

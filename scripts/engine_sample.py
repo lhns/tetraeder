@@ -8,6 +8,11 @@ sample:     python3 engine_sample.py sample --pid PID --disk MAJ:MIN --out s.jso
             cpus_used, numa_nodes_used and top_node_share (thread samples on the most used node), null without the files.
             Every second until PID exits: disk read bytes and ops, queue depth, major page faults of PID's process tree,
             per-CPU jiffies (/proc/stat), cgroup CPU usage, GPU util and memory, tree RSS, cgroup file and anon memory.
+cotenant:   python3 engine_sample.py cotenant [--seconds 20] [--out F]
+            The SSH-time co-tenant gate (docs/box-driver.md): samples the idle box for N seconds with the readers and the
+            window math of a run (phase()), writes {"source": "engine_sample.py cotenant", outside_cores, limit, ok, ...}
+            and exits 1 when outside_cores is over cotenant_guard's limit, 2 without CPU counters. Never an ad-hoc
+            /proc/stat sum.
 membw:      python3 engine_sample.py membw [--seconds 10] [--threads N]
             Copy bandwidth of N processes (1 by default), each copying its own buffer with bytearray slice assignment;
             prints {"membw_gb_s", "threads", "seconds"}. membw_gb_s = bytes copied (not read plus written) per second.
@@ -502,6 +507,41 @@ def sample(a):
             time.sleep(a.interval)
 
 
+def cotenant_rows(seconds, interval=1.0):
+    """Idle-box samples for the co-tenant gate: the CPU and cgroup counters of a run's sample, nothing else."""
+    rows = []
+    t_end = time.time() + seconds
+    while True:
+        rows.append({"t": time.time(), "cpus": stat_jiffies(), "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": None,
+                     "cg_io": None, "rss_kb": 0})
+        if time.time() + interval > t_end:
+            break
+        time.sleep(interval)
+    return rows
+
+
+def cotenant_reading(rows):
+    """The gate's reading: phase() over the whole window, judged by cotenant_guard's limit."""
+    import cotenant_guard as cg
+    ph = phase(rows, rows[0]["t"], rows[-1]["t"], 0, 1) if len(rows) >= 2 else {}
+    outside, cpus = ph.get("outside_cores"), ph.get("host_cpus")
+    out = {"source": "engine_sample.py cotenant", "seconds": ph.get("seconds"), "host_busy_cores": ph.get("host_busy_cores"),
+           "container_cores": ph.get("container_cores"), "outside_cores": outside, "host_cpus": cpus,
+           "limit": cg.limit_of(cpus) if cpus else None}
+    out["ok"] = None if outside is None or not cpus else outside <= out["limit"]
+    return out
+
+
+def cotenant(a):
+    out = cotenant_reading(cotenant_rows(a.seconds))
+    out["t"] = time.time()
+    if a.out:
+        with open(a.out, "w") as f:
+            json.dump(out, f, indent=2)
+    print(json.dumps(out))
+    return 2 if out["ok"] is None else (0 if out["ok"] else 1)
+
+
 def load_samples(path):
     rows = []
     for line in ds.read(path).splitlines():
@@ -963,6 +1003,9 @@ def main():
     m.add_argument("--curve-dir")
     m.add_argument("--curve")
     m.add_argument("--membw", help="membw probe JSON to store as env.membw")
+    k = sub.add_parser("cotenant")
+    k.add_argument("--seconds", type=float, default=20.0)
+    k.add_argument("--out")
     b = sub.add_parser("membw")
     b.add_argument("--seconds", type=float, default=10.0)
     b.add_argument("--threads", type=int, default=1)
@@ -976,6 +1019,8 @@ def main():
     o.add_argument("--otel-dir", required=True, help="directory of the collector's OTLP JSON-lines files (recursive)")
     o.add_argument("--results", required=True, help="results directory whose JSONs get host_otlp")
     a = ap.parse_args()
+    if a.cmd == "cotenant":  # the only subcommand whose exit code is a verdict
+        return cotenant(a)
     {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
      "otlp-merge": otlp_merge}[a.cmd](a)
 

@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 48 rated nodes are confirmed by the owner.
+0 of 49 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -144,14 +144,14 @@ flowchart TB
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
-        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
-        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
-        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
         bench_phase6_exit("bench · ⛔ Phase 6<br/>exit: multi-node test")
         cluster_experts_nodes["cluster · ⏸ Experts on<br/>other machines"]
         multi_live_reshard["multi · ⛔ Reshard<br/>while serving"]
         planner_advisor_auto["planner · ⛔ Advisor<br/>applies safe changes<br/>itself"]
         bench_phase7_exit("bench · ⛔ Phase 7<br/>exit: day-long trace")
+        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
+        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
+        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
         memory_prefill_misses["memory · ⏸ Stream<br/>expert misses during<br/>prefill"]
     end
     engine_libllama ~~~ memory_prefetch
@@ -197,18 +197,18 @@ flowchart TB
     cluster_pipeline_nodes ~~~ bench_30b_c4_gap
     cluster_failover ~~~ planner_cost_model_v5_host2
     cluster_failover ~~~ engine_dense_amx
-    bench_30b_c4_gap ~~~ engine_backend_parity
-    planner_cost_model_v5_host2 ~~~ engine_backend_parity
-    engine_dense_amx ~~~ engine_backend_parity
-    engine_backend_parity ~~~ bench_phase8_exit
-    engine_backend_parity ~~~ bench_phase9_exit
-    engine_backend_parity ~~~ bench_phase6_exit
-    bench_phase8_exit ~~~ cluster_experts_nodes
-    bench_phase9_exit ~~~ multi_live_reshard
+    bench_30b_c4_gap ~~~ bench_phase6_exit
+    planner_cost_model_v5_host2 ~~~ bench_phase6_exit
+    engine_dense_amx ~~~ bench_phase6_exit
+    bench_phase6_exit ~~~ cluster_experts_nodes
+    bench_phase6_exit ~~~ multi_live_reshard
     bench_phase6_exit ~~~ planner_advisor_auto
     cluster_experts_nodes ~~~ bench_phase7_exit
-    multi_live_reshard ~~~ memory_prefill_misses
-    planner_advisor_auto ~~~ memory_prefill_misses
+    multi_live_reshard ~~~ engine_backend_parity
+    planner_advisor_auto ~~~ engine_backend_parity
+    bench_phase7_exit ~~~ bench_phase8_exit
+    engine_backend_parity ~~~ bench_phase9_exit
+    engine_backend_parity ~~~ memory_prefill_misses
     memory_prefetch --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -230,11 +230,11 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
-    engine_backend_parity --> bench_phase8_exit
     bench_phase6_exit --> cluster_experts_nodes
     bench_phase6_exit --> multi_live_reshard
     bench_phase6_exit --> planner_advisor_auto
     planner_advisor_auto --> bench_phase7_exit
+    engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
     linkStyle 56,63,67 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -341,7 +341,7 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
-| Confirm one exit segment | ○ next | One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions. |
+| Rerun the segment confirmation | ○ next | Rerun of the one-segment confirmation on a one-NUMA-node 3090 host with real-hidden anchors, gates as code and an early A/A abort |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -377,7 +377,7 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
-- `bench-235b-segment-confirm`: Confirm one exit segment
+- `bench-235b-segment-confirm-2`: Rerun the segment confirmation
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -411,13 +411,13 @@ _The queue is empty._
 <!-- BEGIN GENERATED: timeline -->
 [The timeline](roadmap/timeline.md) shows every dated node as a bar from its start to its end.
 
-Generated on 2026-11-24.
+Generated on 2026-11-25.
 <!-- END GENERATED: timeline -->
 
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 128 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 129 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -817,6 +817,7 @@ Generated on 2026-11-24.
 - `serving-parity-sampling`: Sampler parity with llama-server (✔ done · successful). The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
 - `serving-recurrent-reuse`: Recurrent models break slot reuse (✔ fixed). A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
 - `serving-strata-owner-scope`: Which Strata model families to add (✔ done · n/a). The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
+- `bench-235b-segment-confirm`: Confirm one exit segment (✔ done · mixed). One 3090 box under the 64 GB balloon ran the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated on truncated anchors and predicted before measuring. The routing gate held and the medians of three rounds would be within 15% (e_pp +0.077, e_tg -0.044), but the session is not clean (A/A -0.099 against the band 0.08) and prefill of identical rounds spans 45 to 384 tok/s (8.6x, threads unpinned on a two-socket host; the eight-round median is e_pp -0.17), so there is no verdict and the confirmation reruns after thread and memory placement is settled.
 - `bench-235b-stream-predict`: Predict the 235B on one box (✔ done · bad). Before any cluster code, the planner predicted the single-node 235B in two regimes (all experts in RAM with 32 VRAM slots; a 64 GB budget with experts streamed from NVMe), and one A40 box measured both. Neither is within 15% (prefill over-predicted by 34 to 132%, decode under-predicted by 33 to 95%), so the cost-model fix of ADR 0091 comes before the Phase 6 exit. The planner's own pick for 64 GB was not measured (OOM-killed, the harness gave the process under 64 GB); a pinned neighbour of it ran. The predictions are uncalibrated, so part of the error is a prior the exit anchors fit.
 - `bench-regression-gate`: Regression gate on final main (✔ done · mixed). One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).
 - `cluster-discovery`: Node list, health and probes (✔ done · unrated). Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091).
@@ -865,7 +866,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 28 nodes (18 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 49 nodes (35 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 18 nodes (14 done, 2 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

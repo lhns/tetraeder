@@ -2596,7 +2596,7 @@ nodes:
   folded: []
   overview: false
   plain: 'Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).'
-  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session.'
+  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session. The segment confirmation (bench-235b-segment-confirm, 2026-11-24) gave no verdict: the routing gate held and the medians would be within 15%, but the session was not clean (A/A -0.099, prefill rounds spanning 8.6x on a two-socket host), so the confirmation reruns after thread and memory placement is settled; this node waits for that rerun.'
 - id: cluster-mtls
   title: Node certificates and trust rules
   track: cluster
@@ -3897,22 +3897,44 @@ nodes:
   title: Confirm one exit segment
   track: bench
   kind: experiment
+  state: done
+  outcome: mixed
+  evidence:
+  - bench/results/segment-confirm-20261124/README.md
+  - bench/results/segment-confirm-20261124/verdict.json
+  - bench/results/segment-confirm-20261124/predictions/FROZEN.sha256
+  verdict_quote: 'no verdict: the session is not clean. The A/A of the judged plan (ADR 0091 Case S, ADR 0068: first judged round repeated as the last run of the session, band 0.08 on T = 2048 / pp + 128 / tg) reads 13.40 s then 12.07 s, -0.099, outside the band'
+  headline: 'no verdict, A/A -0.099 against 0.08; medians would give e_pp +0.077, e_tg -0.044, gate held'
+  depends_on:
+  - planner-costmodel-stream-terms
+  - memory-ram-tier-complement
+  - engine-exit-segment-harness
+  replaced_by: []
+  lane: box
+  start: 2026-11-24
+  end: 2026-11-24
+  folded: []
+  overview: false
+  plain: One 3090 box under the 64 GB balloon ran the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated on truncated anchors and predicted before measuring. The routing gate held and the medians of three rounds would be within 15% (e_pp +0.077, e_tg -0.044), but the session is not clean (A/A -0.099 against the band 0.08) and prefill of identical rounds spans 45 to 384 tok/s (8.6x, threads unpinned on a two-socket host; the eight-round median is e_pp -0.17), so there is no verdict and the confirmation reruns after thread and memory placement is settled.
+  notes: 'Prediction frozen and committed (4e1ace80, FROZEN de9903b0) before the judged rounds; the replay of the same prompt and span matched the run to 0.003 in VRAM share. Stage 4 used a new tool, tetraeder-plan segment-predict (segment.rs, no test yet, not run through CI), which belongs to planner-costmodel-v6-rest. Anchors with fixed-seed input route very differently from real hidden rows and disagree 5x on prefill per layer (fit band 1.23); the fit on real-hidden anchors has band 0.07 (report only). Pinned to one socket, prefill spread falls to 1.2x but decode drops to 5 to 10 tok/s. Next - place threads and memory (or pick a one-node host), schedule the A/A as the last run, rerun on a new session with a new frozen prediction (ADR 0092 History, step 5). Changed for the rerun (branch cluster-confirm-prep, ADR 0091 answers 7 and 8, ADR 0092 Rerun rules with the 0.15 fit band proposed) - segment-predict has tests (the whole model equals node-predict bit for bit, a cluster segment equals the predict_cluster segment term) and takes --embed and --head; the anchors run on the real hidden rows dumped from the frozen prompt; the freeze is refused when the anchor fit band is above 0.15; scripts/sc_gates.py and sc_summary.py hold every clean rule (one NUMA node checked before the download, the co-tenant reading from engine_sample.py cotenant, frozen hash, fit band, anchors on real rows, early A/A after judged round 2, A/A last as the last stage) and are tested in CI on fixture JSON; no prefill noise band; offers and create carry the real --download-gb (scripts/sc_offers.sh). The rerun is bench-235b-segment-confirm-2.'
+- id: bench-235b-segment-confirm-2
+  title: Rerun the segment confirmation
+  track: bench
+  kind: experiment
   state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
-  - planner-costmodel-stream-terms
-  - memory-ram-tier-complement
-  - engine-exit-segment-harness
+  - bench-235b-segment-confirm
   replaced_by: []
   lane: box-later
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions.
+  plain: Rerun of the one-segment confirmation on a one-NUMA-node 3090 host with real-hidden anchors, gates as code and an early A/A abort
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

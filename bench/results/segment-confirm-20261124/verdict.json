@@ -1,0 +1,393 @@
+{
+  "prediction": {
+    "pp_tps": 199.34965618594427,
+    "tg_tps": 13.581105780628818,
+    "routing": "trace",
+    "routing_trace": {
+      "sha256": "1d27eb4f615933095b4fe23ff898d93cb0abe22d635cfd1bdf9175c15c7d8d2e",
+      "fnv1a64": "da1667be6421923f",
+      "replay_version": 2,
+      "scope": {
+        "layers": [
+          47,
+          94
+        ],
+        "warm": 1
+      }
+    },
+    "hw_sha256": "05f4b11c1fc4927e249e15a984608a14fa09955b734cae6c2c6a87373f5a76cd",
+    "uncalibrated_pp_tps": 516.4219868563791,
+    "uncalibrated_tg_tps": 12.883846559920741,
+    "band": 1.2258409892999729
+  },
+  "frozen_sha256": "de9903b0ea1c3497fdca7fbddc31e52246e26d3c52d07da6d81251a08dc26920",
+  "rounds": [
+    {
+      "file": "judged/r1.json",
+      "pp": 335.87710200945423,
+      "tg": 17.536246752440373,
+      "e_pp": -0.4064803614378779,
+      "e_tg": -0.22554090551110384,
+      "clean": true,
+      "unclean_reasons": [],
+      "numa_top_prefill": 0.9852941176470589,
+      "numa_top_decode": 0.9705882352941176,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r2.json",
+      "pp": 185.16008803381055,
+      "tg": 14.203766348517172,
+      "e_pp": 0.076634053822348,
+      "e_tg": -0.04383770843663293,
+      "clean": true,
+      "unclean_reasons": [],
+      "numa_top_prefill": 0.5,
+      "numa_top_decode": 0.5202205882352942,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r3.json",
+      "pp": 44.56069412217255,
+      "tg": 12.265134828954613,
+      "e_pp": 3.4736658643463922,
+      "e_tg": 0.10729363924867408,
+      "clean": true,
+      "unclean_reasons": [],
+      "numa_top_prefill": 0.5588235294117647,
+      "numa_top_decode": 0.5235294117647059,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "median": {
+    "pp": 185.16008803381055,
+    "tg": 14.203766348517172,
+    "vram_pair_share": 0.3863447473404255,
+    "full_hit_rate_mean": 0.004654255319148936,
+    "ram_hit_rate_mean": 1.0
+  },
+  "e_pp": 0.076634053822348,
+  "e_tg": -0.04383770843663293,
+  "gate": {
+    "vram_share": {
+      "replay": 0.3893783244680851,
+      "measured": 0.3863447473404255,
+      "line": 0.02,
+      "diff": -0.0030335771276596146,
+      "ok": true
+    },
+    "full_hit_share": {
+      "replay": 0.005485372340425532,
+      "measured": 0.004654255319148936,
+      "line": 0.02,
+      "diff": -0.0008311170212765961,
+      "ok": true
+    },
+    "ram_hit_rate": {
+      "replay": 1.0,
+      "measured": 1.0,
+      "line": 0.005,
+      "diff": 0.0,
+      "ok": true
+    }
+  },
+  "gate_held": true,
+  "verdict": "no verdict",
+  "aa": {
+    "start": "judged/r1.json",
+    "end": "report/extra-r5.json",
+    "t_start": 13.396635717999999,
+    "t_end": 12.074394546,
+    "diff": -0.09869949439794112,
+    "band": 0.08,
+    "ok": false,
+    "t_rounds": [
+      13.396635717999999,
+      20.07239328,
+      56.395872613
+    ]
+  },
+  "status": "no verdict: the session is not clean, A/A of the judged plan on T 13.40 -> 12.07 s (-0.099) outside the band 0.08 (on the medians it would be pass: e_pp +0.077, e_tg -0.044 against 0.15)",
+  "anchors": {
+    "fit": [
+      {
+        "id": "a1",
+        "span": [
+          47,
+          58
+        ],
+        "rounds": 2,
+        "pp_tok_s": 393.2109871536844,
+        "tg_tok_s": 72.6408470826264,
+        "pair_share": 0.5276100852272727,
+        "full_hit_rate": 0.013494318181818182,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      },
+      {
+        "id": "a2",
+        "span": [
+          47,
+          70
+        ],
+        "rounds": 2,
+        "pp_tok_s": 932.6755267550074,
+        "tg_tok_s": 45.53368357313829,
+        "pair_share": 0.653702445652174,
+        "full_hit_rate": 0.10529891304347826,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      }
+    ],
+    "residuals": [
+      [
+        "a1:pp",
+        0.8001348169235987
+      ],
+      [
+        "a1:tg",
+        0.013135979086421817
+      ],
+      [
+        "a2:pp",
+        -0.7991544170114967
+      ],
+      [
+        "a2:tg",
+        -0.014001311966500011
+      ]
+    ]
+  },
+  "whole_model_run": {
+    "pp_tok_s": 43.69837547960567,
+    "tg_tok_s": 1.099619881003566,
+    "peak_rss_bytes": 32932843520
+  },
+  "fixed_seed_segment": [
+    {
+      "file": "report/seed-r1.json",
+      "pp": 389.71562167553,
+      "tg": 18.038491731525323,
+      "bytes": 0,
+      "numa_top_prefill": 0.8529411764705882,
+      "numa_top_decode": 0.8529411764705882,
+      "vram_pair_share": 0.8032953789893617,
+      "full_hit_rate_mean": 0.40774601063829785,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/seed-r2.json",
+      "pp": 476.90040900331996,
+      "tg": 29.263826367263658,
+      "bytes": 0,
+      "numa_top_prefill": 0.9852941176470589,
+      "numa_top_decode": 0.9941176470588236,
+      "vram_pair_share": 0.8032953789893617,
+      "full_hit_rate_mean": 0.40774601063829785,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "fixed_seed_median": {
+    "pp": 433.30801533942497,
+    "tg": 23.65115904939449,
+    "vram_pair_share": 0.8032953789893617,
+    "full_hit_rate_mean": 0.40774601063829785,
+    "ram_hit_rate_mean": 1.0
+  },
+  "extra_rounds": [
+    {
+      "file": "report/extra-r1.json",
+      "pp": 288.4820195174085,
+      "tg": 16.02140660590667,
+      "bytes": 0,
+      "numa_top_prefill": 0.8382352941176471,
+      "numa_top_decode": 0.842436974789916,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/extra-r2.json",
+      "pp": 194.06620988570046,
+      "tg": 15.902411583373052,
+      "bytes": 0,
+      "numa_top_prefill": 0.9558823529411765,
+      "numa_top_decode": 0.9301470588235294,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/extra-r3.json",
+      "pp": 366.6425136494858,
+      "tg": 18.810818233712205,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 0.9950980392156863,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/extra-r4.json",
+      "pp": 55.83333387358263,
+      "tg": 12.631097676786144,
+      "bytes": 0,
+      "numa_top_prefill": 0.7400519031141869,
+      "numa_top_decode": 0.5882352941176471,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/extra-r5.json",
+      "pp": 383.5922628338508,
+      "tg": 19.004090131097946,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 0.9873949579831933,
+      "vram_pair_share": 0.3863447473404255,
+      "full_hit_rate_mean": 0.004654255319148936,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "all_rounds_report": {
+    "n": 8,
+    "pp": [
+      44.56069412217255,
+      55.83333387358263,
+      185.16008803381055,
+      194.06620988570046,
+      288.4820195174085,
+      335.87710200945423,
+      366.6425136494858,
+      383.5922628338508
+    ],
+    "tg": [
+      12.265134828954613,
+      12.631097676786144,
+      14.203766348517172,
+      15.902411583373052,
+      16.02140660590667,
+      17.536246752440373,
+      18.810818233712205,
+      19.004090131097946
+    ],
+    "median_pp": 241.27411470155448,
+    "median_tg": 15.96190909463986,
+    "e_pp": -0.1737627700653629,
+    "e_tg": -0.14915529839789254,
+    "pp_max_over_min": 8.608309865689067,
+    "tg_max_over_min": 1.5494399691583098
+  },
+  "anchor_repeat": [
+    {
+      "file": "report/anchor-repeat-a1-r1.json",
+      "pp": 1043.9243474019847,
+      "tg": 60.168260672588964,
+      "bytes": 0,
+      "numa_top_prefill": 0.9264705882352942,
+      "numa_top_decode": 0.9264705882352942,
+      "vram_pair_share": 0.5276100852272727,
+      "full_hit_rate_mean": 0.013494318181818182,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/anchor-repeat-a1-r2.json",
+      "pp": 1951.196217187693,
+      "tg": 80.66144766598818,
+      "bytes": 0,
+      "numa_top_prefill": 0.9852941176470589,
+      "numa_top_decode": 0.9705882352941176,
+      "vram_pair_share": 0.5276100852272727,
+      "full_hit_rate_mean": 0.013494318181818182,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/anchor-repeat-a2-r1.json",
+      "pp": 899.1048380527536,
+      "tg": 42.4393081173973,
+      "bytes": 0,
+      "numa_top_prefill": 0.8529411764705882,
+      "numa_top_decode": 0.8088235294117647,
+      "vram_pair_share": 0.653702445652174,
+      "full_hit_rate_mean": 0.10529891304347826,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "report/anchor-repeat-a2-r2.json",
+      "pp": 572.0761009194221,
+      "tg": 37.190924170930764,
+      "bytes": 0,
+      "numa_top_prefill": 0.8198529411764706,
+      "numa_top_decode": 0.8725490196078431,
+      "vram_pair_share": 0.653702445652174,
+      "full_hit_rate_mean": 0.10529891304347826,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "refit_real_anchors": {
+    "pp_tps": 327.45602496540056,
+    "tg_tps": 17.788304962499353,
+    "band": 0.0712670677289804,
+    "e_pp": 0.768502210398639,
+    "e_tg": 0.25236536042824964
+  },
+  "anchor_rounds": [
+    {
+      "file": "anchors/a1-r1.json",
+      "pp": 378.1732296421583,
+      "tg": 73.83487433378512,
+      "bytes": 0,
+      "numa_top_prefill": 0.7676470588235295,
+      "numa_top_decode": 0.7720588235294118,
+      "vram_pair_share": 0.5276100852272727,
+      "full_hit_rate_mean": 0.013494318181818182,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a1-r2.json",
+      "pp": 408.24874466521055,
+      "tg": 71.44681983146766,
+      "bytes": 0,
+      "numa_top_prefill": 0.8852941176470588,
+      "numa_top_decode": 0.8676470588235294,
+      "vram_pair_share": 0.5276100852272727,
+      "full_hit_rate_mean": 0.013494318181818182,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a2-r1.json",
+      "pp": 897.6522489691127,
+      "tg": 42.06070871956393,
+      "bytes": 0,
+      "numa_top_prefill": 0.9558823529411765,
+      "numa_top_decode": 0.9558823529411765,
+      "vram_pair_share": 0.653702445652174,
+      "full_hit_rate_mean": 0.10529891304347826,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a2-r2.json",
+      "pp": 967.6988045409021,
+      "tg": 49.00665842671265,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.653702445652174,
+      "full_hit_rate_mean": 0.10529891304347826,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "gpu_reason_samples": {
+    "0x0000000000000001": 685,
+    "0x0000000000000004": 25,
+    "0x0000000000000000": 1730
+  }
+}

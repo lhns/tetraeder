@@ -16,9 +16,9 @@ flowchart TB
     multi_decode_toggles["✔ Two decode speedups<br/>made default"]
     multi_defect_capture>"✔ Judged prefill timed<br/>graph capture"]
     multi_prefill_no_capture["✔ Prefill runs without<br/>graph capture"]
-    multi_context_parallel["⏸ Split long contexts<br/>across GPUs"]
     multi_live_reshard["⛔ Reshard while<br/>serving"]
     multi_split_hardware["⛔ Prefill and decode<br/>on different hardware"]
+    multi_context_parallel["⏸ Split long contexts<br/>across GPUs"]
     multi_executor ~~~ multi_sharded
     multi_executor ~~~ multi_graph_views
     multi_executor ~~~ multi_pipelined_prefill
@@ -26,11 +26,11 @@ flowchart TB
     multi_graph_views ~~~ multi_defect_capture
     multi_pipelined_prefill ~~~ multi_defect_capture
     multi_decode_toggles ~~~ multi_prefill_no_capture
-    multi_defect_capture ~~~ multi_context_parallel
     multi_defect_capture ~~~ multi_live_reshard
-    multi_prefill_no_capture ~~~ multi_split_hardware
-    multi_context_parallel ~~~ multi_split_hardware
-    multi_live_reshard ~~~ multi_split_hardware
+    multi_defect_capture ~~~ multi_split_hardware
+    multi_prefill_no_capture ~~~ multi_context_parallel
+    multi_live_reshard ~~~ multi_context_parallel
+    multi_split_hardware ~~~ multi_context_parallel
     multi_executor --> multi_sharded
     multi_executor --> multi_graph_views
     multi_executor --> multi_pipelined_prefill
@@ -53,8 +53,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class multi_executor,multi_sharded,multi_graph_views,multi_pipelined_prefill,multi_prefill_no_capture unrated
     class multi_decode_toggles,multi_defect_capture succ
-    class multi_context_parallel parked
     class multi_live_reshard,multi_split_hardware blocked
+    class multi_context_parallel parked
 ```
 <!-- END GENERATED: track-multi -->
 
