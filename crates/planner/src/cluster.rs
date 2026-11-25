@@ -16,7 +16,10 @@ use crate::candidate::{
     BUILDER_IO, Budget, CPU, CUDA_RESERVE, GPU, HOST_RESERVE, Placement, Workload, footprint,
 };
 use crate::layout::{LayerBytes, ModelLayout};
-use crate::score::{BUILDER_DISK, READER_DEPTH, builder_features, builder_features_tier, features};
+use crate::score::{
+    BUILDER_DISK, READER_DEPTH, Replay, ReplayMeta, RoutingSource, TierOutcome, builder_features,
+    builder_features_tier, check_span_rows, features,
+};
 use crate::serve::uniform_tier;
 use std::collections::BTreeMap;
 use tetraeder_costmodel::cluster::{
@@ -96,17 +99,45 @@ fn node_of(hw: &HardwareGraph, name: Option<&str>) -> Result<Node, String> {
 }
 
 /// The layout of a segment: its layers, the embedding only when `embed`, the output head only
-/// when `head`. The whole model with both is the layout itself.
-pub fn segment_layout(layout: &ModelLayout, layers: Span, embed: bool, head: bool) -> ModelLayout {
+/// when `head`. The whole model with both is the layout itself. An error when the span is empty,
+/// reversed or past the layers the layout holds, or when the layout's layer list does not match
+/// its `n_layer` (a malformed layout file).
+pub fn try_segment_layout(
+    layout: &ModelLayout,
+    layers: Span,
+    embed: bool,
+    head: bool,
+) -> Result<ModelLayout, String> {
     let all: &[LayerBytes] = &layout.layers;
+    if all.len() != layout.n_layer as usize {
+        return Err(format!(
+            "malformed layout: n_layer {} but {} layer entries",
+            layout.n_layer,
+            all.len()
+        ));
+    }
+    if layers.0 > layers.1 || layers.1 as usize > all.len() {
+        return Err(format!(
+            "layers {}..{} are outside the layout's {} layers",
+            layers.0,
+            layers.1,
+            all.len()
+        ));
+    }
     let part = all[layers.0 as usize..layers.1 as usize].to_vec();
-    ModelLayout {
+    Ok(ModelLayout {
         n_layer: part.len() as u32,
         layers: part,
         embed_bytes: if embed { layout.embed_bytes } else { 0 },
         output_bytes: if head { layout.output_bytes } else { 0 },
         ..layout.clone()
-    }
+    })
+}
+
+/// [`try_segment_layout`] for spans known to be inside the layout; panics otherwise. Planner
+/// paths that take a span from a file or a plan use the fallible form.
+pub fn segment_layout(layout: &ModelLayout, layers: Span, embed: bool, head: bool) -> ModelLayout {
+    try_segment_layout(layout, layers, embed, head).expect("a span inside the layout")
 }
 
 /// GPU bytes a head-only segment takes next to the leader's own stage: the output weights, the
@@ -119,15 +150,17 @@ fn head_only_gpu_bytes(layout: &ModelLayout, ubatch: u32) -> u64 {
 
 /// Run features of a segment of `sub` on its node graph (ids as the node's own graph names
 /// them). A builder placement reads its misses from the node's disk when it has one, under the
-/// uniform routing prior; a CPU placement is today's `features`.
+/// uniform routing prior or the routing `tier` of a replay of the span; a CPU placement is
+/// today's `features`.
 fn run_features(
     node: &Node,
     sub: &ModelLayout,
     placement: Placement,
     ubatch: u32,
     threads: u32,
-) -> RunFeatures {
-    match placement {
+    tier: Option<&TierOutcome>,
+) -> Result<RunFeatures, String> {
+    Ok(match placement {
         Placement::Builder {
             vram_slots,
             ram_slots,
@@ -139,7 +172,14 @@ fn run_features(
                     .is_some_and(|d| d.disk_rate(1).is_some());
             let knobs = (threads, ubatch, true);
             if has_disk && !sub.layers.is_empty() {
-                let o = &uniform_tier(sub, &[(vram_slots, ram_slots)])[0];
+                let uniform;
+                let o = match tier {
+                    Some(o) => o,
+                    None => {
+                        uniform = uniform_tier(sub, &[(vram_slots, ram_slots)]).remove(0);
+                        &uniform
+                    }
+                };
                 builder_features_tier(
                     sub,
                     vram_slots,
@@ -148,8 +188,9 @@ fn run_features(
                     ReadPath::Reader,
                     (READER_DEPTH, READER_DEPTH),
                     BUILDER_DISK,
-                )
-                .expect("a uniform tier has no per-layer rows")
+                )?
+            } else if tier.is_some() {
+                return Err("a routing replay needs a node with the builder disk".into());
             } else {
                 let hit = f64::from(vram_slots) / f64::from(sub.n_expert.max(1));
                 builder_features(sub, vram_slots, hit, knobs)
@@ -162,7 +203,7 @@ fn run_features(
             &["-ub".to_string(), ubatch.to_string()],
             &BTreeMap::new(),
         ),
-    }
+    })
 }
 
 /// The best placement of `sub` on `node` for `ubatch`, by predicted request time, with `extra`
@@ -177,7 +218,7 @@ fn choose(
     let label = node.name.as_deref().unwrap_or("local");
     let threads = node.threads;
     let time = |p: Placement| {
-        let f = run_features(node, sub, p, ubatch, threads);
+        let f = run_features(node, sub, p, ubatch, threads, None)?;
         tetraeder_costmodel::predict::predict(&node.graph, &f, w.prompt, w.r#gen)
             .map(|p| p.request_s)
             .map_err(|e| e.to_string())
@@ -422,18 +463,60 @@ fn read_stage(plan: &Plan) -> Result<Placement, String> {
     }
 }
 
-/// The run features of every segment of a plan's replica 0 and the pipeline knobs.
+/// The replay of one segment's layer span (`tetraeder-bench replay --layers a..b`, ADR 0092
+/// section 1): the routing that segment is priced at.
+#[derive(Debug, Clone)]
+pub struct SegmentReplay {
+    pub span: Span,
+    pub replay: Replay,
+}
+
+/// Where one segment's routing came from.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SegmentRouting {
+    pub layers: (u32, u32),
+    pub node: Option<String>,
+    pub routing: RoutingSource,
+    /// `replay` when the replay's prefill (not only its decode) priced the prefill, else `uniform`.
+    pub prefill: &'static str,
+    pub fnv1a64: Option<String>,
+}
+
+/// The run features of every segment of a plan's replica 0 and the pipeline knobs, with the
+/// uniform routing prior.
 pub fn cluster_features(
     hw: &HardwareGraph,
     layout: &ModelLayout,
     plan: &Plan,
 ) -> Result<ClusterFeatures, String> {
+    let w = Workload {
+        prompt: 2048,
+        r#gen: 128,
+    };
+    cluster_features_routed(hw, layout, plan, &w, &[]).map(|(f, _)| f)
+}
+
+/// [`cluster_features`] with the routing of replays of the segments' spans. A builder segment
+/// whose layer span has a replay is priced from it: its decode from the per-layer rows and its
+/// prefill from the replay when the trace header matches `w` and the plan's ubatch
+/// ([`Replay::prefill_matches`]); the others keep the uniform prior. A replay that names another
+/// span, lacks the segment's slot pair or whose rows do not cover exactly the span is an error.
+/// Returns the routing of each builder segment, in segment order.
+pub fn cluster_features_routed(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    plan: &Plan,
+    w: &Workload,
+    replays: &[SegmentReplay],
+) -> Result<(ClusterFeatures, Vec<SegmentRouting>), String> {
     let segs = segments(plan, 0, hw).map_err(|e| e.join("; "))?;
     let ubatch = plan.knobs.ubatch.unwrap_or(512);
     let mut out = Vec::with_capacity(segs.len());
+    let mut routing = Vec::new();
+    let mut used = vec![false; replays.len()];
     for s in &segs {
         let node = node_of(hw, s.node.as_deref())?;
-        let sub = segment_layout(layout, s.layers, s.embed, s.head);
+        let sub = try_segment_layout(layout, s.layers, s.embed, s.head)?;
         let threads = plan.knobs.threads.unwrap_or(node.threads);
         let run = if s.stages.is_empty() {
             // The head alone: the output matmul on the GPU of the node.
@@ -446,7 +529,8 @@ pub fn cluster_features(
                 },
                 ubatch,
                 threads,
-            )
+                None,
+            )?
         } else if s.stages.len() > 1 {
             return Err(format!(
                 "segment on {:?} has {} stages; step 2 prices one stage per node",
@@ -455,7 +539,49 @@ pub fn cluster_features(
             ));
         } else {
             let sp = segment_plan(plan, 0, s);
-            run_features(&node, &sub, read_stage(&sp)?, ubatch, threads)
+            let placement = read_stage(&sp)?;
+            let span = (s.layers.0, s.layers.1);
+            let found = replays.iter().position(|r| r.span == s.layers);
+            let mut tier = None;
+            let (mut source, mut prefill, mut hash) = (RoutingSource::Uniform, "uniform", None);
+            if let (Some(i), Placement::Builder { vram_slots, ram_slots }) = (found, placement) {
+                used[i] = true;
+                let r = &replays[i].replay;
+                if r.meta.layers.is_some_and(|l| l != span) {
+                    return Err(format!(
+                        "the replay of segment {}..{} was made for layers {:?}",
+                        span.0, span.1, r.meta.layers
+                    ));
+                }
+                let o = r.outcome(vram_slots, ram_slots).ok_or_else(|| {
+                    format!(
+                        "segment {}..{}: no lru replay outcome with prefetch for v{vram_slots} r{ram_slots}",
+                        span.0, span.1
+                    )
+                })?;
+                check_span_rows(span, o)?;
+                let prior = uniform_tier(&sub, &[(vram_slots, ram_slots)]).remove(0);
+                tier = Some(r.priced_tier(o, prior, ubatch, w.prompt));
+                (source, hash) = (RoutingSource::Trace, Some(r.meta.fnv1a64.clone()));
+                if r.prefill_matches(ubatch, w.prompt) {
+                    prefill = "replay";
+                }
+            } else if found.is_some() {
+                return Err(format!(
+                    "segment {}..{} is not a builder placement: a routing replay does not apply",
+                    span.0, span.1
+                ));
+            }
+            if matches!(placement, Placement::Builder { .. }) {
+                routing.push(SegmentRouting {
+                    layers: span,
+                    node: s.node.clone(),
+                    routing: source,
+                    prefill,
+                    fnv1a64: hash,
+                });
+            }
+            run_features(&node, &sub, placement, ubatch, threads, tier.as_ref())?
         };
         out.push(SegmentFeatures {
             node: s.node.clone(),
@@ -464,12 +590,22 @@ pub fn cluster_features(
             head: s.head,
         });
     }
-    Ok(ClusterFeatures {
-        segments: out,
-        n_embd: layout.n_embd,
-        n_vocab: layout.n_vocab,
-        prefill_micro_batches: plan.knobs.prefill_micro_batches,
-    })
+    if let Some(i) = used.iter().position(|u| !u) {
+        let sp = replays[i].span;
+        return Err(format!(
+            "the replay of layers {}..{} matches no segment of the plan",
+            sp.0, sp.1
+        ));
+    }
+    Ok((
+        ClusterFeatures {
+            segments: out,
+            n_embd: layout.n_embd,
+            n_vocab: layout.n_vocab,
+            prefill_micro_batches: plan.knobs.prefill_micro_batches,
+        },
+        routing,
+    ))
 }
 
 /// The cost model's prediction for a plan across nodes.
@@ -481,6 +617,60 @@ pub fn predict_cluster_plan(
 ) -> Result<ClusterPrediction, String> {
     let f = cluster_features(hw, layout, plan)?;
     predict_cluster(hw, &f, w.prompt, w.r#gen).map_err(|e| e.to_string())
+}
+
+/// A prediction for a plan across nodes with the routing of its segments (ADR 0092 section 1).
+#[derive(Debug, Clone)]
+pub struct RoutedPrediction {
+    pub prediction: ClusterPrediction,
+    /// `Trace` only when every builder segment was priced from a replay of its span.
+    pub routing: RoutingSource,
+    pub segments: Vec<SegmentRouting>,
+}
+
+/// [`predict_cluster_plan`] priced at the replays of the segments' spans.
+pub fn predict_cluster_routed(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    plan: &Plan,
+    w: &Workload,
+    replays: &[SegmentReplay],
+) -> Result<RoutedPrediction, String> {
+    let (f, segments) = cluster_features_routed(hw, layout, plan, w, replays)?;
+    let prediction = predict_cluster(hw, &f, w.prompt, w.r#gen).map_err(|e| e.to_string())?;
+    let routing = if !segments.is_empty() && segments.iter().all(|s| s.routing == RoutingSource::Trace)
+    {
+        RoutingSource::Trace
+    } else {
+        RoutingSource::Uniform
+    };
+    Ok(RoutedPrediction {
+        prediction,
+        routing,
+        segments,
+    })
+}
+
+/// The judged prediction of Case S (ADR 0091, ADR 0092 section 1): refuses anything but routing
+/// `trace` for every builder segment, as `node-predict --judged` does.
+pub fn predict_cluster_judged(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    plan: &Plan,
+    w: &Workload,
+    replays: &[SegmentReplay],
+) -> Result<RoutedPrediction, String> {
+    let r = predict_cluster_routed(hw, layout, plan, w, replays)?;
+    r.routing.check_judged().map_err(|e| {
+        let bare: Vec<String> = r
+            .segments
+            .iter()
+            .filter(|s| s.routing != RoutingSource::Trace)
+            .map(|s| format!("{}..{}", s.layers.0, s.layers.1))
+            .collect();
+        format!("{e}; no replay for the segments {}", bare.join(", "))
+    })?;
+    Ok(r)
 }
 
 fn reserve_of(hw: &HardwareGraph) -> BTreeMap<String, u64> {
@@ -495,6 +685,39 @@ fn reserve_of(hw: &HardwareGraph) -> BTreeMap<String, u64> {
             (d.id.clone(), r)
         })
         .collect()
+}
+
+/// Node counts up to this are searched in every order; above it the order search is bounded
+/// (see [`node_orders`]).
+pub const MAX_EXHAUSTIVE_NODES: usize = 6;
+/// The most nodes a plan is searched for: the cut grid grows with the node count.
+pub const MAX_SEARCHED_NODES: usize = 16;
+
+/// The orders of the nodes `0..m` the search visits and, when the search is bounded, the rule.
+/// Up to [`MAX_EXHAUSTIVE_NODES`] nodes: every order (m! of them, at most 720). Above: the `m`
+/// rotations of the node list as the hardware graph names it and the `m` rotations of its
+/// reverse, `2m` orders, deterministic. The first node of an order is the leader.
+pub fn node_orders(m: usize) -> (Vec<Vec<usize>>, Option<String>) {
+    let order: Vec<usize> = (0..m).collect();
+    if m <= MAX_EXHAUSTIVE_NODES {
+        return (permutations(&order), None);
+    }
+    let mut out: Vec<Vec<usize>> = Vec::with_capacity(2 * m);
+    for base in [order.clone(), order.iter().rev().copied().collect()] {
+        for k in 0..m {
+            let mut o = base.clone();
+            o.rotate_left(k);
+            if !out.contains(&o) {
+                out.push(o);
+            }
+        }
+    }
+    let rule = format!(
+        "{m} usable nodes, above {MAX_EXHAUSTIVE_NODES}: searched {} orders, the rotations of the \
+         node list and of its reverse, not all {m}!",
+        out.len()
+    );
+    (out, Some(rule))
 }
 
 fn permutations(items: &[usize]) -> Vec<Vec<usize>> {
@@ -587,8 +810,22 @@ pub fn enumerate_cluster(
         ));
         return (Vec::new(), pruned);
     }
+    if let Err(e) = hw
+        .check_node_names()
+        .and_then(|()| try_segment_layout(layout, Span(0, layout.n_layer), true, true).map(|_| ()))
+    {
+        pruned.push(("all plans".into(), e));
+        return (Vec::new(), pruned);
+    }
     let nodes = usable_nodes(hw, hints, &mut pruned);
     let m = nodes.len();
+    if m > MAX_SEARCHED_NODES {
+        pruned.push((
+            "all plans".into(),
+            format!("{m} usable nodes: the search covers at most {MAX_SEARCHED_NODES}"),
+        ));
+        return (Vec::new(), pruned);
+    }
     if m < 2 || layout.n_layer < m as u32 {
         pruned.push((
             "all plans".into(),
@@ -600,12 +837,16 @@ pub fn enumerate_cluster(
         ));
         return (Vec::new(), pruned);
     }
-    let grid = if m == 2 { 47 } else { 8 };
+    // Enough grid points for `m - 1` strictly increasing cuts.
+    let grid = if m == 2 { 47 } else { 8.max(m as u32 + 2) };
     let cuts = cut_vectors(layout.n_layer, m, grid);
-    let order: Vec<usize> = (0..m).collect();
+    let (orders, order_rule) = node_orders(m);
+    if let Some(rule) = order_rule {
+        pruned.push(("node order search".into(), rule));
+    }
     let mut cache: BTreeMap<ChoiceKey, Result<Choice, String>> = BTreeMap::new();
     let mut found: Vec<Found> = Vec::new();
-    for perm in permutations(&order) {
+    for perm in orders {
         let ns: Vec<&Node> = perm.iter().map(|&i| &nodes[i]).collect();
         let names: Vec<String> = ns
             .iter()
@@ -750,6 +991,11 @@ pub fn single_node_references(
     };
     let mut pruned = Vec::new();
     let mut out = Vec::new();
+    if hw.check_node_names().is_err()
+        || try_segment_layout(layout, Span(0, layout.n_layer), true, true).is_err()
+    {
+        return out;
+    }
     for node in usable_nodes(hw, hints, &mut pruned) {
         let mut best: Option<(f64, Plan, ClusterPrediction)> = None;
         for &ubatch in &CLUSTER_UBATCHES {
@@ -811,11 +1057,37 @@ pub fn single_node_runs(
     pin: Option<(u32, u32)>,
     replay: Option<&[crate::score::TierOutcome]>,
 ) -> Result<(Vec<NodeRun>, Vec<(String, String)>), String> {
+    // Outcomes without their file's header: decode only (replay version 1 never matches).
+    let bare = replay.map(|o| Replay {
+        meta: ReplayMeta {
+            replay_version: 1,
+            fnv1a64: String::new(),
+            trace_ubatch: 0,
+            prefill_tokens: 0,
+            layers: None,
+            warm: 0,
+        },
+        outcomes: o.to_vec(),
+    });
+    single_node_runs_replay(hw, layout, w, pin, bare.as_ref())
+}
+
+/// [`single_node_runs`] from a replay file: decode from its outcome and, when the trace header
+/// matches the workload and the candidate's ubatch ([`Replay::prefill_matches`]), prefill from
+/// it too; otherwise prefill keeps the uniform prior (ADR 0092 section 1).
+#[allow(clippy::type_complexity)]
+pub fn single_node_runs_replay(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    w: &Workload,
+    pin: Option<(u32, u32)>,
+    replay: Option<&Replay>,
+) -> Result<(Vec<NodeRun>, Vec<(String, String)>), String> {
     let node = node_of(hw, None)?;
     if node.gpu.is_none() || node.disk.is_none() {
         return Err("the node needs a GPU and the builder disk".into());
     }
-    let sub = segment_layout(layout, Span(0, layout.n_layer), true, true);
+    let sub = try_segment_layout(layout, Span(0, layout.n_layer), true, true)?;
     let budget = Budget {
         gpu_bytes: node.gpu_bytes / 100 * 99,
         ram_bytes: node.ram_bytes / 100 * 99,
@@ -831,18 +1103,22 @@ pub fn single_node_runs(
     };
     let mut out = Vec::new();
     for (v, r) in pairs {
-        let mut tier = uniform_tier(&sub, &[(v, r)]).remove(0);
-        if let Some(rep) = replay {
-            let Some(t) = rep
-                .iter()
-                .find(|t| t.vram_slots == v && t.ram_slots == r && t.policy == "lru" && t.prefetch)
-            else {
-                dropped.push((format!("v{v} r{r}"), "no replay outcome".into()));
-                continue;
-            };
-            tier.decode = t.decode.clone();
-        }
+        let uniform = uniform_tier(&sub, &[(v, r)]).remove(0);
+        let found = match replay {
+            Some(rep) => {
+                let Some(t) = rep.outcome(v, r) else {
+                    dropped.push((format!("v{v} r{r}"), "no replay outcome".into()));
+                    continue;
+                };
+                Some((rep, t))
+            }
+            None => None,
+        };
         for &ubatch in &CLUSTER_UBATCHES {
+            let tier = match found {
+                Some((rep, t)) => rep.priced_tier(t, uniform.clone(), ubatch, w.prompt),
+                None => uniform.clone(),
+            };
             let p = Placement::Builder {
                 vram_slots: v,
                 ram_slots: r,

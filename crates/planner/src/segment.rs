@@ -8,11 +8,13 @@
 //! own span (`tetraeder-bench replay --layers a..b --warm n`, per-layer rows).
 
 use crate::candidate::{Placement, Workload, footprint};
-use crate::cluster::segment_layout;
+use crate::cluster::try_segment_layout;
 use crate::layout::ModelLayout;
 use crate::score::{
-    BUILDER_DISK, BuilderRun, READER_DEPTH, TierOutcome, builder_features_tier, builder_run,
+    BUILDER_DISK, BuilderRun, READER_DEPTH, Replay, builder_features_tier, builder_run,
+    check_span_rows,
 };
+use crate::serve::uniform_tier;
 use serde::Serialize;
 use serde_json::Value;
 use tetraeder_costmodel::calib::{Anchor, fit};
@@ -68,6 +70,9 @@ pub struct SegmentPrediction {
     pub replay_full_hit_share: f64,
     pub replay_ram_hit_rate: f64,
     pub replay_layer_rows: usize,
+    /// Where the prefill disk bytes came from: `replay` when the trace header matched, else
+    /// `uniform`.
+    pub prefill_source: &'static str,
 }
 
 impl SegmentPrediction {
@@ -116,7 +121,9 @@ fn used(a: &SegmentAnchor, r: &BuilderRun) -> AnchorUsed {
 /// `replay`. The anchors are always bare spans (no embedding, no head); `seg` says whether the
 /// segment holds them, so the whole model `0..n` with both prices as `node-predict` does.
 /// Returns the prediction and the fitted graph. `threads` and `ubatch` are the runs' (anchors
-/// and judged share them). The replay must hold per-layer rows for exactly the span.
+/// and judged share them). The replay must hold per-layer rows for exactly the span; its prefill
+/// prices the prefill when its trace header matches the workload and `ubatch`
+/// ([`Replay::prefill_matches`]), the same rule `predict --cluster` applies per segment.
 #[allow(clippy::too_many_arguments)]
 pub fn segment_predict(
     hw: &HardwareGraph,
@@ -127,7 +134,7 @@ pub fn segment_predict(
     threads: u32,
     ubatch: u32,
     anchors: &[SegmentAnchor],
-    replay: &[TierOutcome],
+    replay: &Replay,
 ) -> Result<(SegmentPrediction, HardwareGraph), String> {
     let span = seg.layers;
     if span.1 as usize > layout.layers.len() || span.0 >= span.1 {
@@ -143,7 +150,7 @@ pub fn segment_predict(
     let mut fitted_on = Vec::new();
     let mut list = Vec::new();
     for a in anchors {
-        let sub = segment_layout(layout, a.span, false, false);
+        let sub = try_segment_layout(layout, a.span, false, false)?;
         let run = builder_run(&a.files);
         let o = run
             .measured_outcome(vram, ram)
@@ -175,20 +182,15 @@ pub fn segment_predict(
         .ok_or("no link between the GPU and the CPU")?;
     let f = fit(hw, &list, &gpu.id, &cpu.id, &link.id).map_err(|e| e.to_string())?;
 
-    let sub = segment_layout(layout, span, seg.embed, seg.head);
+    let sub = try_segment_layout(layout, span, seg.embed, seg.head)?;
     let o = replay
-        .iter()
-        .find(|t| t.vram_slots == vram && t.ram_slots == ram && t.policy == "lru" && t.prefetch)
+        .outcome(vram, ram)
         .ok_or_else(|| format!("no lru replay outcome with prefetch for v{vram} r{ram}"))?;
-    let rows = o.decode.layers.as_ref().map_or(0, Vec::len);
-    if rows != sub.layers.len() {
-        return Err(format!(
-            "the replay holds {rows} layer rows, the span {}..{} has {}",
-            span.0,
-            span.1,
-            sub.layers.len()
-        ));
-    }
+    check_span_rows((span.0, span.1), o)?;
+    let prior = uniform_tier(&sub, &[(vram, ram)]).remove(0);
+    let priced = replay.priced_tier(o, prior, ubatch, w.prompt);
+    let rows = priced.decode.layers.as_ref().map_or(0, Vec::len);
+    let o = &priced;
     let feat = builder_features_tier(&sub, vram, o, knobs, ReadPath::Reader, depth, BUILDER_DISK)?;
     let p = predict(&f.hw, &feat, w.prompt, w.r#gen).map_err(|e| e.to_string())?;
     let u = predict(hw, &feat, w.prompt, w.r#gen).map_err(|e| e.to_string())?;
@@ -230,6 +232,11 @@ pub fn segment_predict(
         replay_full_hit_share: o.decode.full_hit(),
         replay_ram_hit_rate: o.decode.ram_hit_rate_engine_mean,
         replay_layer_rows: rows,
+        prefill_source: if replay.prefill_matches(ubatch, w.prompt) {
+            "replay"
+        } else {
+            "uniform"
+        },
     };
     Ok((out, f.hw))
 }

@@ -11,8 +11,8 @@ use tetraeder_plan::{Hints, Phase, SegmentShape, Span, segment_plan, segments};
 use tetraeder_planner::layout::{ModelLayout, fixtures};
 use tetraeder_planner::segment::FIT_BAND_LIMIT;
 use tetraeder_planner::{
-    SegmentAnchor, TierLayer, TierOutcome, Workload, enumerate_cluster, segment_layout,
-    segment_predict, single_node_runs, uniform_tier,
+    Replay, ReplayMeta, SegmentAnchor, TierLayer, TierOutcome, Workload, enumerate_cluster,
+    segment_layout, segment_predict, single_node_runs, single_node_runs_replay, uniform_tier,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -25,7 +25,21 @@ const LAN: &str = include_str!("../../costmodel/fixtures/cluster/cluster_two_309
 
 /// The uniform prior of `uniform_tier`, as per-layer rows of the span (what a replay of the span
 /// holds): every layer takes the share `slots / n_expert`.
-fn replay_of(layout: &ModelLayout, span: Span, v: u32, r: u32) -> TierOutcome {
+fn replay_of(layout: &ModelLayout, span: Span, v: u32, r: u32) -> Replay {
+    Replay {
+        meta: ReplayMeta {
+            replay_version: 2,
+            fnv1a64: "00".into(),
+            trace_ubatch: 2048,
+            prefill_tokens: 2048,
+            layers: Some((span.0, span.1)),
+            warm: 1,
+        },
+        outcomes: vec![tier_of(layout, span, v, r)],
+    }
+}
+
+fn tier_of(layout: &ModelLayout, span: Span, v: u32, r: u32) -> TierOutcome {
     let sub = segment_layout(layout, span, false, false);
     let mut t = uniform_tier(&sub, &[(v, r)]).remove(0);
     let share = f64::from(v) / f64::from(layout.n_expert);
@@ -95,12 +109,12 @@ fn the_whole_model_prices_as_node_predict() {
     for pick in all.iter().take(6) {
         let (v, r) = (pick.vram_slots, pick.ram_slots);
         let replay = replay_of(&layout, Span(0, n), v, r);
-        let (runs, _) = single_node_runs(
+        let (runs, _) = single_node_runs_replay(
             &node,
             &layout,
             &W,
             Some((v, r)),
-            Some(std::slice::from_ref(&replay)),
+            Some(&replay),
         )
         .unwrap();
         let want = runs.iter().find(|x| x.ubatch == pick.ubatch).unwrap();
@@ -117,7 +131,7 @@ fn the_whole_model_prices_as_node_predict() {
             cpu_threads(&node),
             pick.ubatch,
             &anchors(f64::from(v) / f64::from(layout.n_expert)),
-            std::slice::from_ref(&replay),
+            &replay,
         )
         .unwrap();
         let tag = format!("v{v} r{r} ub{}", pick.ubatch);
@@ -169,7 +183,7 @@ fn the_shape_of_the_segment_is_priced() {
             cpu_threads(&node),
             ub,
             &anchors(f64::from(v) / f64::from(layout.n_expert)),
-            std::slice::from_ref(&replay),
+            &replay,
         )
         .unwrap()
         .0
@@ -227,7 +241,7 @@ fn a_cluster_segment_prices_as_predict_cluster_does() {
                 threads,
                 ub,
                 &anchors(f64::from(v) / f64::from(layout.n_expert)),
-                std::slice::from_ref(&replay),
+                &replay,
             )
             .unwrap();
             let want = &c.prediction.segments[i];
@@ -278,7 +292,7 @@ fn a_fit_band_over_the_limit_is_refused() {
         cpu_threads(&node),
         ub,
         &anchors(f64::from(v) / f64::from(layout.n_expert)),
-        std::slice::from_ref(&replay),
+        &replay,
     )
     .unwrap();
     p.band = FIT_BAND_LIMIT;

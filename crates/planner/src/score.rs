@@ -408,6 +408,118 @@ pub fn read_tier_replay(path: &Path) -> Result<Vec<TierOutcome>, String> {
     serde_json::from_value(outcomes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// What a `tetraeder-bench replay` file says about the trace and the span it replayed.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReplayMeta {
+    pub replay_version: u32,
+    /// Fingerprint of the routing trace (`trace.fnv1a64`).
+    pub fnv1a64: String,
+    /// Physical batch of the recorded run (`trace.header.ubatch`): what its prefill read.
+    pub trace_ubatch: u32,
+    /// Prompt tokens of the replayed prefill.
+    pub prefill_tokens: u64,
+    /// The replayed layer span (`scope.layers`); `None` is the whole model.
+    pub layers: Option<(u32, u32)>,
+    /// Warm requests replayed before the counted one (`scope.warm`).
+    pub warm: u32,
+}
+
+/// A replay file: its header and outcomes.
+#[derive(Debug, Clone)]
+pub struct Replay {
+    pub meta: ReplayMeta,
+    pub outcomes: Vec<TierOutcome>,
+}
+
+impl Replay {
+    pub fn read(path: &Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Self::parse(&text).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let outcomes: Vec<TierOutcome> =
+            serde_json::from_value(v.get("outcomes").cloned().ok_or("no outcomes")?)
+                .map_err(|e| e.to_string())?;
+        let layers = v["scope"]["layers"].as_array().and_then(|a| {
+            Some((
+                u32::try_from(a.first()?.as_u64()?).ok()?,
+                u32::try_from(a.get(1)?.as_u64()?).ok()?,
+            ))
+        });
+        let small = |x: &Value| x.as_u64().and_then(|x| u32::try_from(x).ok());
+        let meta = ReplayMeta {
+            replay_version: small(&v["replay_version"]).unwrap_or(1),
+            fnv1a64: v["trace"]["fnv1a64"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            trace_ubatch: small(&v["trace"]["header"]["ubatch"]).unwrap_or(0),
+            prefill_tokens: v["outcomes"][0]["prefill"]["tokens"].as_u64().unwrap_or(0),
+            layers,
+            warm: small(&v["scope"]["warm"]).unwrap_or(0),
+        };
+        Ok(Replay { meta, outcomes })
+    }
+
+    /// The outcome of a slot pair under the engine's policy (`lru`, prefetch on).
+    pub fn outcome(&self, vram_slots: u32, ram_slots: u32) -> Option<&TierOutcome> {
+        self.outcomes.iter().find(|t| {
+            t.vram_slots == vram_slots
+                && t.ram_slots == ram_slots
+                && t.policy == "lru"
+                && t.prefetch
+        })
+    }
+
+    /// The replay's prefill describes a run of `prompt` tokens in ubatches of `ubatch` only when
+    /// the trace header says it recorded that: a 2048-token ubatch routes nearly every expert, a
+    /// 512-token one does not, and a 32K prefill reads other bytes per token than a 2048 one.
+    pub fn prefill_matches(&self, ubatch: u32, prompt: u32) -> bool {
+        self.meta.replay_version >= 2
+            && self.meta.trace_ubatch == ubatch
+            && self.meta.prefill_tokens == u64::from(prompt)
+    }
+
+    /// The tier a prediction prices: decode (with its per-layer rows) from the replay `o`,
+    /// prefill from it too when [`Self::prefill_matches`], else from `prior`.
+    pub fn priced_tier(
+        &self,
+        o: &TierOutcome,
+        prior: TierOutcome,
+        ubatch: u32,
+        prompt: u32,
+    ) -> TierOutcome {
+        let prefill = if self.prefill_matches(ubatch, prompt) {
+            o.prefill.clone()
+        } else {
+            prior.prefill
+        };
+        TierOutcome {
+            decode: o.decode.clone(),
+            prefill,
+            ..prior
+        }
+    }
+}
+
+/// The rows of a replayed span are exactly the layers `span`, in order: a replay of other layers
+/// prices the wrong ones even when the count fits.
+pub fn check_span_rows(span: (u32, u32), o: &TierOutcome) -> Result<(), String> {
+    let rows = o.decode.layers.as_deref().unwrap_or_default();
+    let first = rows.first().map(|r| r.layer);
+    if rows.len() as u64 != u64::from(span.1.saturating_sub(span.0)) || first != Some(span.0) {
+        return Err(format!(
+            "the replay holds {} layer rows from layer {first:?}, the segment is layers {}..{}",
+            rows.len(),
+            span.0,
+            span.1
+        ));
+    }
+    Ok(())
+}
+
 /// Disk id of the builder's expert files in the planner's hardware graphs.
 pub const BUILDER_DISK: &str = "nvme0";
 /// The reader's direct-I/O queue depth (`READER_QUEUE_DEPTH`), also the depth of the synchronous
@@ -1429,6 +1541,139 @@ mod tests {
         // a file from before the pair share was recorded keeps the hit model
         let old = serde_json::json!({"runs": [{"decode_layers": {"full_hit_rate_mean": 0.5}}]});
         assert!(builder_run(&[old]).measured_outcome(32, 60).is_none());
+    }
+
+    /// A builder directory whose anchors carry the routing they measured (`vram_pair_share` and
+    /// the IO counters of `truth_outcome`) and the times the graph `truth` gives for the features
+    /// that routing makes; the candidates are left to the hit model (no replay file).
+    fn write_measured_builder(dir: &Path, truth: &HardwareGraph) {
+        let (l, _, file) = synthetic_enumeration();
+        std::fs::create_dir_all(dir).unwrap();
+        let put = |name: &str, text: String| std::fs::write(dir.join(name), text).unwrap();
+        put("layout.json", serde_json::to_string_pretty(&l).unwrap());
+        put("candidates.json", serde_json::to_string_pretty(&file).unwrap());
+        let tokens = 128.0;
+        let variants = file
+            .anchors
+            .iter()
+            .chain(file.candidates.iter().map(|e| &e.variant));
+        for v in variants {
+            let (vram, ram) = variant_slots(v).unwrap();
+            let t = truth_outcome(&l, vram, ram);
+            let mut run = serde_json::json!({
+                "decode_tokens": 128,
+                "decode_layers": {
+                    "vram_pair_share": t.decode.vram_share,
+                    "full_hit_rate_mean": t.decode.full_hit(),
+                    "ram_hit_rate_mean": t.decode.ram_hit_rate_engine_mean,
+                },
+                "decode_io": {"bytes_per_token": t.decode.disk_bytes_per_token},
+                "decode_prefetch": {"bytes": t.decode.prefetch_bytes_per_token * tokens},
+                "prefill_io": {"bytes_per_token": t.prefill.disk_bytes_per_token},
+            });
+            // the times the scorer's own features give on the truth graph
+            let measured = builder_run(&[serde_json::json!({"runs": [run.clone()]})])
+                .measured_outcome(vram, ram)
+                .unwrap();
+            let env = |k: &str| v.env[&format!("TETRAEDER_EXIT_{k}")].clone();
+            let knobs = (
+                v.threads,
+                env("UBATCH").parse().unwrap(),
+                env("OP_OFFLOAD") == "1",
+            );
+            let (path, depth) = read_path(&v.env, &l, &measured);
+            let f = builder_features_tier(
+                &l,
+                vram,
+                &measured,
+                knobs,
+                path,
+                (depth, READER_DEPTH),
+                BUILDER_DISK,
+            )
+            .unwrap();
+            let p = predict(truth, &f, v.prompt, v.r#gen).unwrap();
+            run["prefill_tok_s"] = p.pp_tok_s.into();
+            run["decode_tok_s"] = p.tg_tok_s.into();
+            for rep in 1..=2 {
+                put(
+                    &format!("{}.r{rep}.json", v.id),
+                    serde_json::json!({"runs": [run.clone()]}).to_string(),
+                );
+            }
+        }
+    }
+
+    /// ADR 0092 section 8, through the whole scorer (candidates file, run files, `score_dir`, the
+    /// anchor features from the measured shares, the fit): anchor times that come from a known
+    /// graph are fitted back. On the prior itself (nothing to move) every anchor is reproduced to
+    /// 1e-6 and the fitted rates stay; on a graph with a faster GPU and a slower link the fit
+    /// moves toward it and reproduces the anchors to 1%.
+    // hardware: none
+    #[test]
+    fn anchor_times_from_a_known_graph_are_fitted_back_through_the_scorer() {
+        let threads = synthetic_enumeration().1.threads;
+        let mut prior = HardwareGraph::from_toml(RTX3090_PRIOR).unwrap();
+        prior
+            .devices
+            .iter_mut()
+            .find(|d| d.id == "cpu0")
+            .unwrap()
+            .threads = Some(threads);
+        let rate = |g: &HardwareGraph| {
+            let gpu = g.device("gpu0").unwrap();
+            (
+                gpu.compute.unwrap().flops_per_s,
+                gpu.bandwidth_bytes_per_s.unwrap().value,
+                g.links
+                    .iter()
+                    .find(|k| k.a == "gpu0" || k.b == "gpu0")
+                    .unwrap()
+                    .beta_bytes_per_s
+                    .value,
+            )
+        };
+        let root = std::env::temp_dir().join(format!("tetraeder-fitback-{}", std::process::id()));
+        // 1. the truth is the prior: exact
+        let dir = root.join("same");
+        write_measured_builder(&dir, &prior);
+        let s = score_dir(&dir).unwrap();
+        assert!(s.tier_source.contains("anchors measured"), "{}", s.tier_source);
+        assert!(!s.anchor_residuals.is_empty());
+        for (id, r) in &s.anchor_residuals {
+            assert!(r.abs() < 1e-6, "{id}: {r}");
+        }
+        let (want, got) = (rate(&prior), rate(&s.calibrated));
+        for (w, g) in [(want.0, got.0), (want.1, got.1), (want.2, got.2)] {
+            assert!((g / w - 1.0).abs() < 1e-6, "{want:?} vs {got:?}");
+        }
+        // 2. the truth has a faster GPU and a slower link than the prior
+        let mut truth = prior.clone();
+        truth
+            .devices
+            .iter_mut()
+            .find(|d| d.id == "gpu0")
+            .unwrap()
+            .compute
+            .as_mut()
+            .unwrap()
+            .flops_per_s *= 1.25;
+        for k in truth.links.iter_mut().filter(|k| k.a == "gpu0" || k.b == "gpu0") {
+            k.beta_bytes_per_s.value *= 0.8;
+        }
+        let dir = root.join("moved");
+        write_measured_builder(&dir, &truth);
+        let s = score_dir(&dir).unwrap();
+        for (id, r) in &s.anchor_residuals {
+            assert!(r.abs() < 0.01, "{id}: {r}");
+        }
+        let (t, p, f) = (rate(&truth), rate(&prior), rate(&s.calibrated));
+        let off = |a: f64, b: f64| (a / b).ln().abs();
+        assert!(
+            off(f.0, t.0) < off(p.0, t.0) || off(f.2, t.2) < off(p.2, t.2),
+            "the fit moved away from the truth: prior {p:?}, truth {t:?}, fit {f:?}"
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     // The scorer's numbers on the synthetic fixture before ADR 0056 (no tier file, no disk).

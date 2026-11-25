@@ -476,6 +476,14 @@ impl<'a> Checker<'a> {
             self.issues.push(Issue::StageSpansNodes { at, nodes });
         }
         self.node_rules(at, st);
+        // With no device group the stage has no node, so `node_rules` and the leader check have
+        // nothing to compare against: a stage that names a node's devices needs its group.
+        if !self.complete && st.devices.is_empty() && self.names_node_device(st) {
+            self.issues.push(Issue::Open {
+                at,
+                what: "devices",
+            });
+        }
 
         if self.complete {
             let mut open = Vec::new();
@@ -815,6 +823,18 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A device of some node (ADR 0091) named by a rule or a buffer of `st`.
+    fn names_node_device(&self, st: &Stage) -> bool {
+        let rules = st.assign.iter().flat_map(|a| a.home.iter().chain(&a.compute).flatten());
+        let buffers = (st.kv.iter().flatten().map(|b| &b.device))
+            .chain(st.workspace.iter().map(|b| &b.device))
+            .chain(st.expert_cache.iter().map(|c| &c.device))
+            .chain(st.phase_budgets.iter().map(|b| &b.device));
+        rules
+            .chain(buffers)
+            .any(|d| self.ctx.hw.node_of(d).is_some())
+    }
+
     /// Everything a stage names is on its node (ADR 0091), except two cases: the head unit's
     /// rule on the leader's node, and an expert rule whose home and compute are both on one other
     /// node, Linux on both (ADR 0008). KV, workspace, slot caches and phase budgets never leave
@@ -1147,6 +1167,29 @@ impl<'a> Checker<'a> {
                         },
                         node: node.to_string(),
                     });
+                }
+            }
+            // KV, workspace, slot caches and phase budgets are not units: a node ruled out for
+            // every unit (`units` unset) holds none of them either.
+            if f.units.is_some() {
+                continue;
+            }
+            for (r, rep) in self.plan.replicas.iter().enumerate() {
+                for (s, st) in rep.stages.iter().enumerate() {
+                    let buffers = (st.kv.iter().flatten().map(|b| &b.device))
+                        .chain(st.workspace.iter().map(|b| &b.device))
+                        .chain(st.expert_cache.iter().map(|c| &c.device))
+                        .chain(st.phase_budgets.iter().map(|b| &b.device));
+                    let on_node = buffers.into_iter().any(|d| hw.node_of(d) == Some(node));
+                    if on_node && banned.insert((r as u32, s as u32, node)) {
+                        node_issues.push(Issue::ForbiddenNode {
+                            at: At {
+                                replica: r as u32,
+                                stage: Some(s as u32),
+                            },
+                            node: node.to_string(),
+                        });
+                    }
                 }
             }
         }
