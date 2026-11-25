@@ -458,7 +458,8 @@ p = os.path.join(out, "session.json")
 d = json.load(open(p))
 a = json.load(open(os.path.join(out, "calib", "a", "anchors", "a1-r1.json")))
 r = a["runs"][-1] if "runs" in a else a
-d["prompt"] = {"tokens": 2048, "gen": 128, "fnv1a64": r["prompt"]["fnv1a64"]}
+pr = r.get("prompt") or a["prompt"]  # exit_regime writes it at the top of the file, the stand-in inside the run
+d["prompt"] = {"tokens": 2048, "gen": 128, "fnv1a64": pr["fnv1a64"]}
 json.dump(d, open(p, "w"), indent=2)
 EOF
   if [ "$TINY" = 1 ] && [ "$lb_fake" = 0 ]; then

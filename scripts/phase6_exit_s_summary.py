@@ -356,7 +356,8 @@ def node_rules(res: str, sess: dict, rule) -> None:
         if seg["span"][0] == 0:  # a span from layer 0 takes tokens: no hidden rows, so the prompt hash is the evidence
             bad = []
             for f in files:
-                got = (ss.run_of(load(f)).get("prompt") or {}).get("fnv1a64")
+                j = load(f)
+                got = (ss.run_of(j).get("prompt") or j.get("prompt") or {}).get("fnv1a64")  # exit_regime writes it at the top of the file
                 if not ph or got != ph:
                     bad.append(f"{os.path.basename(f)} prompt {got}")
             why = bad
