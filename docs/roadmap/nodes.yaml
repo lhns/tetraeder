@@ -2769,8 +2769,8 @@ nodes:
   - crates/tetraeder/src/pipeline.rs
   - crates/tetraeder/tests/pipeline_parity.rs
   - crates/tetraeder/tests/pipeline_contract.rs
-  verdict_quote: 'pipelined prefill slow link walk 0.891 s pipelined 0.429 s ratio 0.48 (CI run 45520943827, ubuntu, two daemons over MemTransport with the middle segment links slowed; pipelined prefill rows within tol_batch of the walk and the one-node run at every boundary of the 4-layer model)'
-  headline: 'a prefill step is cut into micro-batches in flight across the segments of a PipelineBackend, as the flow-shop price of predict_cluster assumes; on a slowed link it took 0.48 of the walk time (four micro-batches, a 0.85 limit), with the same logits and greedy tokens'
+  verdict_quote: 'pipelined prefill slow link walk 1.312 s pipelined 0.904 s ratio 0.69 (CI run 45526039702, ubuntu; windows 1.266 s and 0.951 s, ratio 0.75; two daemons over MemTransport with the middle segment links slowed; pipelined prefill rows within tol_batch of the walk and the one-node run at every boundary of the 4-layer model)'
+  headline: 'a prefill step is cut into micro-batches in flight across the segments of a PipelineBackend, as the flow-shop price of predict_cluster assumes; on a slowed link it took 0.69 of the walk time (0.75 on Windows) (four micro-batches, a 0.85 limit), with the same logits and greedy tokens'
   depends_on:
   - cluster-pipeline-nodes
   replaced_by: []
