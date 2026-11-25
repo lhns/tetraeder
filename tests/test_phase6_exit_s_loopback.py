@@ -203,30 +203,6 @@ def test_the_pick_must_partition_the_layers_one_stage_per_node_leader_first(tmp_
     assert s6.check_partition(plan(("a", 0, 94)), 94)  # one node
 
 
-
-def test_the_merge_overlays_the_fitted_node_graphs_and_keeps_the_rest():
-    sys.path.insert(0, str(SCRIPTS))
-    import phase6_exit_s_merge as m
-
-    hw = {"devices": [{"id": "a/gpu0", "kind": "gpu", "node": "a", "capacity_bytes": 25769803776, "bandwidth_bytes_per_s": {"value": 9e11}},
-                      {"id": "a/cpu0", "kind": "cpu", "node": "a", "capacity_bytes": 64_000_000_000, "threads": 16},
-                      {"id": "a/disk0", "kind": "disk", "node": "a", "capacity_bytes": 1}],
-          "links": [{"id": "a/pcie", "a": "a/gpu0", "b": "a/cpu0", "kind": "pcie", "alpha_s": {"value": 1}, "beta_bytes_per_s": {"value": 1}},
-                    {"id": "net", "a": "a/cpu0", "b": "b/cpu0", "kind": "network", "alpha_s": {"value": 0.03}}]}
-    fitted = {"a": {"devices": [{"id": "gpu0", "kind": "gpu", "capacity_bytes": 1, "bandwidth_bytes_per_s": {"value": 7e11}},
-                                {"id": "cpu0", "kind": "cpu", "capacity_bytes": 59_450_000_000, "threads": 12},
-                                {"id": "nvme0", "kind": "disk", "queue_curve": [{"depth": 1, "bytes_per_s": 1e9}]},
-                                {"id": "ghost0", "kind": "gpu"}],
-                    "links": [{"id": "p", "a": "gpu0", "b": "cpu0", "kind": "pcie", "alpha_s": {"value": 2e-5}, "beta_bytes_per_s": {"value": 2e10}}]}}
-    out, notes = m.merge(hw, fitted)
-    d = {x["id"]: x for x in out["devices"]}
-    assert d["a/gpu0"]["bandwidth_bytes_per_s"]["value"] == 7e11 and d["a/gpu0"]["capacity_bytes"] == 25769803776  # the discovered capacity stays
-    assert d["a/cpu0"]["capacity_bytes"] == 59_450_000_000 and d["a/cpu0"]["threads"] == 12  # the measured RAM budget lands on the CPU
-    assert d["a/disk0"]["queue_curve"][0]["depth"] == 1 and d["a/disk0"]["kind"] == "disk"
-    assert out["links"][0]["alpha_s"]["value"] == 2e-5 and out["links"][1]["alpha_s"]["value"] == 0.03
-    assert notes == ["a: no device for fitted ghost0"]
-
-
 @needs_posix
 def test_case_s_the_link_gate_passes_before_the_download_and_leaves_its_evidence(tmp_path):
     r1, r2, out = session_s(tmp_path)

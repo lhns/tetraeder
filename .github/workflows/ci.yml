@@ -127,6 +127,14 @@ jobs:
         run: |
           bash scripts/phase6_exit_f.sh || echo "driver exit status $? (1 is the load-shape verdict)"
           python3 -I scripts/phase6_loopback_check.py "$RESULTS_ROOT/$RESULTS_NAME" "$LB_DIR"
+      - name: phase 6 loopback cleanup
+        if: always() && runner.os == 'Linux'
+        run: |
+          # the detached daemons, head and trigger would hold the ports of the pytest loopback runs that follow
+          for f in "$RUNNER_TEMP"/p6-lb/*/pids/*; do
+            [ -f "$f" ] && p=$(head -c 20 "$f" | tr -dc 0-9) && [ -n "$p" ] && { pkill -9 -P "$p" || true; kill -9 "$p" || true; }
+          done
+          true
       - name: phase 6 loopback logs
         if: failure() && runner.os == 'Linux'
         run: |
