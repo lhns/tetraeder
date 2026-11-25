@@ -282,7 +282,8 @@ mod tests {
             ],
         });
         let fitted = read_fitted(
-            "[[devices]]\nid = \"cpu0\"\nkind = \"cpu\"\ncapacity_bytes = 59\nthreads = 12\n\
+            "[[devices]]\nid = \"gpu0\"\nkind = \"gpu\"\n\
+             [[devices]]\nid = \"cpu0\"\nkind = \"cpu\"\ncapacity_bytes = 59\nthreads = 12\n\
              [[devices]]\nid = \"nvme0\"\nkind = \"disk\"\nqueue_curve = [{ depth = 1, bytes_per_s = 1.0 }]\n\
              [[links]]\nid = \"p\"\nkind = \"pcie\"\na = \"gpu0\"\nb = \"cpu0\"\nalpha_s = 2.0\nbeta_bytes_per_s = 3.0\n",
         )

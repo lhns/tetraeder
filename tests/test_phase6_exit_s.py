@@ -419,3 +419,16 @@ def test_the_cli_writes_the_verdict(tmp_path):
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "summary", str(res)], capture_output=True, text=True)
     assert r.returncode == 0 and "status: pass" in r.stdout
     assert json.loads((res / "verdict-s.json").read_text())["verdict"] == "pass"
+
+
+def test_the_plans_slots_must_be_the_anchors(tmp_path):
+    plan = tmp_path / "p.toml"
+    plan.write_text(
+        '[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n'
+        '[[replicas.stages.expert_cache]]\ndevice = "a/gpu0"\nslots = 32\n[[replicas.stages.expert_cache]]\ndevice = "a/cpu0"\nslots = 96\n'
+    )
+    assert s6.check_slots(str(plan), 32, 96) == []
+    why = s6.check_slots(str(plan), 32, 64)
+    assert len(why) == 1 and "cpu0 has 96 slots" in why[0]
+    plan.write_text('[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n')
+    assert s6.check_slots(str(plan), 1, 1) == []  # no cache, nothing to compare

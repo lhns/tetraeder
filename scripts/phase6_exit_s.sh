@@ -43,8 +43,8 @@
 # ROUND_FILE) writes the report-only single-node round.
 #
 # Env: RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
-# V and R (the slots of both segments: 32 VRAM and 96 RAM, the covering regime the confirmation validated; the plan's own slot counts
-# are not read, so check the pick's notes in plans/candidates.json), A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first),
+# V and R (the slots the anchors run: 32 VRAM and 96 RAM, the covering regime the confirmation validated; the judged workers run the plan's
+# own `expert_cache`, and the plan stage refuses a pick whose slots differ), A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first),
 # MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94" instead of the pick's).
 # LOOPBACK=1: the dry run with the stand-in tools of scripts/phase6_loopback.py (LB_SCENARIO breaks one rule on purpose); no GPU.
 cd "$(dirname "$0")/.." || exit 1
@@ -209,6 +209,7 @@ st_plan() {
   done
   summ pick "$out/plans/candidates.json" "$out/plans/candidates" "$out/plans/judged-plan.toml" || die "no plan that computes on both nodes: Case S has no judged candidate"
   summ span "$out/plans/judged-plan.toml" || die "the pick does not compute on both nodes"
+  summ slots "$out/plans/judged-plan.toml" --vram "$vs" --ram "$rs" || die "the pick's slots are not the anchors' (V and R): the workers run the plan's, so set V and R to the pick's or pick again"
   local nl
   nl=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["n_layer"])' "$out/layout.json")
   summ spans "$out/plans/judged-plan.toml" --n-layer "$nl" > "$out/plans/spans.raw" || die "the pick's stages do not cut the $nl layers one node each, leader first"
@@ -354,7 +355,7 @@ EOF
 
 # one judged round into $out/judged/<label>: `tetraeder cluster judged-round` on node a (the head), then the files back
 run_round() { # run_round LABEL
-  local label=$1 d="$out/judged/$1" n t0 P
+  local label=$1 d="$out/judged/$1" n k t0 P
   mkdir -p "$d"
   P=$(p6dir a)
   if [ "$label" = last ]; then probe_link aalast; else probe_link "$label"; fi # raw points per round: reported, not gated

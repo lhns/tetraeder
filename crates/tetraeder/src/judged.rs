@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn layers_json_takes_the_difference_over_the_span() {
         let a = json!({"layers": [layer(0, 0, 0, 0, 0, 0), layer(10, 10, 1, 1, 5, 5), layer(0, 0, 0, 0, 0, 0)]});
-        let b = json!({"layers": [layer(9, 9, 9, 9, 9, 9), layer(40, 20, 4, 1, 25, 5), layer(9, 9, 9, 9, 9, 9)]});
+        let b = json!({"layers": [layer(9, 9, 9, 9, 9, 9), layer(40, 20, 4, 2, 25, 5), layer(9, 9, 9, 9, 9, 9)]});
         let j = layers_json(&a, &b, 1..2);
         assert_eq!(j["first_layer"], 1);
         // 30 hits and 10 cpu experts

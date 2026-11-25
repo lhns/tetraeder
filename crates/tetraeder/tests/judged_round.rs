@@ -142,9 +142,10 @@ fn cpu_a_judged_round_across_two_loopback_nodes_writes_the_files_the_summary_rea
     let mut plan = two_stage_plan("tiny", 2, 1, "a/cpu0", "b/cpu0", None);
     plan.knobs.prefill_micro_batches = 2;
     plan.knobs.ubatch = Some(16);
-    for st in &mut plan.replicas[0].stages {
+    // The ids of a cluster plan carry the node; the segment plan a worker reads has them stripped.
+    for (st, node) in plan.replicas[0].stages.iter_mut().zip(["a", "b"]) {
         let cache = |d: &str| SlotCache {
-            device: d.to_owned(),
+            device: format!("{node}/{d}"),
             slots: 4,
         };
         let Stage { expert_cache, .. } = st;
