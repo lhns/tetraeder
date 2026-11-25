@@ -2575,7 +2575,7 @@ nodes:
   title: First two-box cluster session
   track: bench
   kind: session
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
