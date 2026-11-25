@@ -692,6 +692,30 @@ impl HardwareGraph {
         serde_json::from_str(s)
     }
 
+    /// Node names prefix device ids (`<node>/gpu0`), so a name must be one path segment: not
+    /// empty, no `/` or `\`, not `.` or `..`. A node listed twice shows as a repeated device id.
+    pub fn check_node_names(&self) -> Result<(), String> {
+        for d in &self.devices {
+            if let Some(n) = d.node.as_deref()
+                && (n.is_empty() || n == "." || n == ".." || n.contains(['/', '\\']))
+            {
+                return Err(format!(
+                    "device {}: `{n}` is not a node name (not empty, no `/` or `\\`, not `.` or `..`)",
+                    d.id
+                ));
+            }
+        }
+        for (i, d) in self.devices.iter().enumerate() {
+            if self.devices[..i].iter().any(|o| o.id == d.id) {
+                return Err(format!(
+                    "device id {} repeats: a node is listed twice or two nodes share a name",
+                    d.id
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Structural check: unique ids, link endpoints and lane groups exist.
     pub fn validate(&self) -> Result<(), String> {
         for (i, d) in self.devices.iter().enumerate() {
@@ -699,6 +723,7 @@ impl HardwareGraph {
                 return Err(format!("duplicate device id {}", d.id));
             }
         }
+        self.check_node_names()?;
         for l in &self.links {
             for end in [&l.a, &l.b] {
                 if self.device(end).is_none() {
@@ -936,5 +961,28 @@ mod tests {
         let mut g = HardwareGraph::from_toml(FIXTURE).unwrap();
         g.links[0].b = "nope".into();
         assert!(g.validate().unwrap_err().contains("unknown device"));
+    }
+
+    /// Node names prefix device ids, so one path segment (ADR 0091; the hardening of step 2).
+    #[test]
+    fn node_names_are_one_path_segment_and_not_repeated() {
+        let one = HardwareGraph::from_toml(FIXTURE).unwrap();
+        let named =
+            |n: &str| HardwareGraph::merge_cluster(&[(n.into(), one.clone())], vec![], vec![]);
+        assert!(named("a").check_node_names().is_ok());
+        for bad in ["", ".", "..", "a/b", "a\\b", "/"] {
+            let g = named(bad);
+            assert!(g.check_node_names().is_err(), "`{bad}`");
+            assert!(g.validate().is_err(), "`{bad}`");
+        }
+        // The same name for two nodes repeats every device id.
+        let twice = HardwareGraph::merge_cluster(
+            &[("a".into(), one.clone()), ("a".into(), one.clone())],
+            vec![],
+            vec![],
+        );
+        assert!(twice.check_node_names().unwrap_err().contains("repeats"));
+        // A graph with no nodes is the local node and is fine.
+        assert!(one.check_node_names().is_ok());
     }
 }

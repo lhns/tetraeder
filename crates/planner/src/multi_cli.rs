@@ -195,11 +195,13 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// A hardware graph from JSON (`hw.json`) or, when the text is not JSON, TOML.
 pub fn parse_hw(text: &str) -> Result<HardwareGraph, String> {
     let t = text.trim_start();
-    if t.starts_with('{') {
-        HardwareGraph::from_json(text).map_err(|e| format!("hardware json: {e}"))
+    let g = if t.starts_with('{') {
+        HardwareGraph::from_json(text).map_err(|e| format!("hardware json: {e}"))?
     } else {
-        HardwareGraph::from_toml(text).map_err(|e| format!("hardware toml: {e}"))
-    }
+        HardwareGraph::from_toml(text).map_err(|e| format!("hardware toml: {e}"))?
+    };
+    g.check_node_names()?;
+    Ok(g)
 }
 
 pub fn parse_layout(text: &str) -> Result<ModelLayout, String> {

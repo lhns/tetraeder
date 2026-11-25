@@ -75,7 +75,14 @@ pub fn rejected_total(reason: &str) -> u64 {
 }
 
 /// A refused handshake. `reason` is one of `untrusted`, `unknown_node`, `no_identity`,
-/// `wrong_peer`, `bad_hello`, `handshake`, `limit` (too many handshakes or connections).
+/// `wrong_peer`, `bad_hello`, `handshake` (no preface within 10 s), `tls_timeout` (TLS not
+/// complete within 3 s), `limit` (too many handshakes or connections), `ip_limit` (too many
+/// handshakes in flight from one source address) and `peer_limit` (too many connections of one
+/// peer). The cluster code adds `not_leader` (a segment connection from a node that is neither
+/// the head nor the replica's leader), `no_grant` (a prefix fetch the head did not announce),
+/// `bad_snapshot` (a fetched snapshot that does not match its key), `bad_profile` (an
+/// implausible hardware graph), `bad_frame` (a frame over the request limit) and `bad_relay`
+/// (a connection to a replica's loopback prefix listener without the launch token).
 /// `duplicate` is no longer produced: a new connection replaces the old one.
 pub fn rejected(reason: &'static str) {
     *REJECTED

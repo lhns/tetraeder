@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
-use std::net::{Shutdown, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Shutdown, SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -45,6 +45,9 @@ const ALPN: &[u8] = b"tetraeder/1";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// An inbound connection that has not finished its preface by then is dropped.
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Until TLS completes (the peer is authenticated then); the longer timeout above only applies
+/// after that, so a socket that stays silent holds a handshake slot for a few seconds.
+const TLS_TIMEOUT: Duration = Duration::from_secs(3);
 /// Name sent as SNI; identity is the certificate's node id, not a host name.
 const SNI: &str = "tetraeder-node";
 const MAX_PREFACE: usize = 64 * 1024;
@@ -105,6 +108,45 @@ struct LiveEntry {
 
 type Live = Mutex<HashMap<(NodeId, Purpose), LiveEntry>>;
 
+/// In-flight handshakes per source address.
+#[derive(Default)]
+struct IpLimiter {
+    counts: Mutex<HashMap<IpAddr, usize>>,
+}
+
+/// One in-flight handshake of a source address; gives its slot back when dropped.
+struct IpPermit {
+    limiter: Arc<IpLimiter>,
+    ip: IpAddr,
+}
+
+impl IpLimiter {
+    fn try_acquire(self: &Arc<Self>, ip: IpAddr, max: usize) -> Option<IpPermit> {
+        let mut c = lock(&self.counts);
+        let n = c.entry(ip).or_insert(0);
+        if *n >= max {
+            return None;
+        }
+        *n += 1;
+        Some(IpPermit {
+            limiter: Arc::clone(self),
+            ip,
+        })
+    }
+}
+
+impl Drop for IpPermit {
+    fn drop(&mut self) {
+        let mut c = lock(&self.limiter.counts);
+        if let Some(n) = c.get_mut(&self.ip) {
+            *n -= 1;
+            if *n == 0 {
+                c.remove(&self.ip);
+            }
+        }
+    }
+}
+
 /// Registration of an inbound connection in the live map; clears it when dropped, so a handshake
 /// cancelled by the timeout or a connection that ended never leaves a stale entry.
 struct LiveGuard {
@@ -128,6 +170,13 @@ impl Drop for LiveGuard {
 
 /// Handshakes in flight before authentication; further connections are dropped at once.
 const MAX_HANDSHAKES: usize = 64;
+/// Of those, per source address (Vast boxes cannot firewall ports to peer addresses, so any host
+/// can open sockets): one source cannot take the slots of the others. The slot is given back
+/// when TLS completes.
+const MAX_HANDSHAKES_PER_IP: usize = 8;
+/// Registered connections of one peer (replica, segment and probe numbers are the peer's choice):
+/// a peer cannot fill the map for the others.
+const MAX_LIVE_PER_PEER: usize = 64;
 /// Registered inbound connections (peers x purposes); a replica or segment number is chosen by
 /// the peer, so the map is bounded.
 const MAX_LIVE: usize = 4096;
@@ -375,8 +424,15 @@ impl Inner {
             sock: sock.try_clone().ok()?,
         };
         let mut live = lock(&self.live);
-        if live.len() >= MAX_LIVE && !live.contains_key(&key) {
-            return None;
+        if !live.contains_key(&key) {
+            if live.len() >= MAX_LIVE {
+                metrics::rejected("limit");
+                return None;
+            }
+            if live.keys().filter(|(p, _)| *p == key.0).count() >= MAX_LIVE_PER_PEER {
+                metrics::rejected("peer_limit");
+                return None;
+            }
         }
         if let Some(old) = live.insert(key.clone(), entry) {
             old.dead.store(true, Ordering::SeqCst);
@@ -497,19 +553,25 @@ impl Inner {
     }
 
     /// Handshake of one inbound connection; a refusal is counted and returns `None`.
-    async fn serve(&self, tcp: TcpStream) -> Option<Raw> {
+    async fn serve(&self, tcp: TcpStream, permit: IpPermit) -> Option<Raw> {
         let tcp = match self.tune_inbound(tcp) {
             Ok(t) => t,
             Err(_) => return None,
         };
         let (tcp, keep) = tcp;
-        let mut tls = match self.acceptor.accept(tcp).await {
-            Ok(t) => t,
-            Err(e) => {
+        let mut tls = match tokio::time::timeout(TLS_TIMEOUT, self.acceptor.accept(tcp)).await {
+            Ok(Ok(t)) => t,
+            Ok(Err(e)) => {
                 metrics::rejected(reject_reason(&e));
                 return None;
             }
+            Err(_) => {
+                metrics::rejected("tls_timeout");
+                return None;
+            }
         };
+        // Authenticated: the live map bounds this peer from here on.
+        drop(permit);
         let peer = match peer_id(
             tls.get_ref()
                 .1
@@ -532,7 +594,6 @@ impl Inner {
         };
         // The guard clears the entry on every way out below, also when the timeout cancels us.
         let Some(guard) = self.register(&peer, &hello.purpose, &keep) else {
-            metrics::rejected("limit");
             let busy = Answer {
                 ok: false,
                 reason: "too many connections".into(),
@@ -587,17 +648,24 @@ async fn accept_loop(
     mut stop: watch::Receiver<bool>,
 ) {
     let slots = Arc::new(tokio::sync::Semaphore::new(MAX_HANDSHAKES));
+    let per_ip = Arc::new(IpLimiter::default());
     loop {
         tokio::select! {
             r = listener.accept() => {
-                let tcp = match r {
-                    Ok((tcp, _)) => tcp,
+                let (tcp, from) = match r {
+                    Ok(x) => x,
                     Err(e) => {
                         // Out of descriptors or a reset before accept: do not spin.
                         tracing::warn!("accept failed: {e}");
                         tokio::time::sleep(Duration::from_millis(50)).await;
                         continue;
                     }
+                };
+                let Some(permit) =
+                    per_ip.try_acquire(from.ip().to_canonical(), MAX_HANDSHAKES_PER_IP)
+                else {
+                    metrics::rejected("ip_limit");
+                    continue;
                 };
                 let Ok(slot) = Arc::clone(&slots).try_acquire_owned() else {
                     metrics::rejected("limit");
@@ -606,7 +674,7 @@ async fn accept_loop(
                 let (inner, tx) = (Arc::clone(&inner), tx.clone());
                 tokio::spawn(async move {
                     let _slot = slot;
-                    match tokio::time::timeout(ACCEPT_TIMEOUT, inner.serve(tcp)).await {
+                    match tokio::time::timeout(ACCEPT_TIMEOUT, inner.serve(tcp, permit)).await {
                         Ok(Some(raw)) => {
                             // A full inbox drops the connection (and its registration).
                             let _ = tx.try_send(raw);
@@ -865,6 +933,20 @@ impl<S: AsyncRead + AsyncWrite + Send + Unpin + 'static> Drop for Tx<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_source_cannot_hold_more_than_its_share_of_handshakes() {
+        let l = Arc::new(IpLimiter::default());
+        let a: IpAddr = "10.0.0.1".parse().unwrap();
+        let b: IpAddr = "10.0.0.2".parse().unwrap();
+        let held: Vec<_> = (0..3).map(|_| l.try_acquire(a, 3).unwrap()).collect();
+        assert!(l.try_acquire(a, 3).is_none());
+        assert!(l.try_acquire(b, 3).is_some());
+        drop(held);
+        assert!(l.try_acquire(a, 3).is_some());
+        // Slots given back leave no entry behind.
+        assert!(lock(&l.counts).is_empty());
+    }
 
     #[test]
     fn a_refusal_reason_is_cut() {

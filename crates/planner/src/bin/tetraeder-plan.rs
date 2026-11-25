@@ -109,14 +109,37 @@ enum Command {
         #[arg(long)]
         layout: PathBuf,
         /// `calib.json` of `calibrate`; without it the graph itself is used.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "cluster")]
         calib: Option<PathBuf>,
-        #[arg(long)]
-        candidates: PathBuf,
+        #[arg(long, required_unless_present = "cluster", conflicts_with = "cluster")]
+        candidates: Option<PathBuf>,
         /// `routing-<model>.json` of `tetraeder bench --routing-out`: expert parallel priced at
         /// the recorded routing (ADR 0070); hashed into the file. Without it, uniform routing.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "cluster")]
         routing: Option<PathBuf>,
+        /// Instead of the Phase 5 candidates: the plan (TOML) of a cluster, priced across its
+        /// nodes (ADR 0091, 0092). `--hw` is the merged cluster graph.
+        #[arg(long)]
+        cluster: Option<PathBuf>,
+        /// With `--cluster`: `A..B=FILE`, the `tetraeder-bench replay --layers A..B` output of
+        /// the builder segment on layers A to B; repeatable, one per segment.
+        #[arg(long = "tier-replay", requires = "cluster")]
+        tier_replays: Vec<String>,
+        /// With `--cluster`: sha256 of the routing trace behind the replays.
+        #[arg(long, requires = "cluster")]
+        trace_sha256: Option<String>,
+        /// With `--cluster`: hash of the judged prompt (`prompt.fnv1a64` of an exit result). The
+        /// replays' prefill is taken only from a trace that recorded this prompt.
+        #[arg(long, requires = "cluster")]
+        prompt_hash: Option<String>,
+        /// With `--cluster`: refuse anything but routing `trace` for every builder segment, and
+        /// a missing `--trace-sha256` (Case S, ADR 0091).
+        #[arg(long, requires = "cluster")]
+        judged: bool,
+        #[arg(long, default_value_t = 2048, requires = "cluster")]
+        prompt: u32,
+        #[arg(long, default_value_t = 128, requires = "cluster")]
+        r#gen: u32,
         #[arg(long)]
         out: PathBuf,
     },
@@ -143,6 +166,10 @@ enum Command {
         /// sha256 of the routing trace behind `--tier-replay`, recorded with the prediction.
         #[arg(long)]
         trace_sha256: Option<String>,
+        /// Hash of the judged prompt (`prompt.fnv1a64` of an exit result): the replay's prefill
+        /// is taken only from a trace that recorded this prompt (ADR 0092 section 1).
+        #[arg(long)]
+        prompt_hash: Option<String>,
         /// Refuse anything but a prediction priced from a routing trace (ADR 0092): a judged
         /// prediction without `--tier-replay` exits non-zero.
         #[arg(long)]
@@ -190,6 +217,9 @@ enum Command {
         /// sha256 of the routing trace behind `--tier-replay`.
         #[arg(long)]
         trace_sha256: Option<String>,
+        /// Hash of the judged prompt; default: the `prompt.fnv1a64` the anchors' results agree on.
+        #[arg(long)]
+        prompt_hash: Option<String>,
         #[arg(long)]
         out: PathBuf,
         /// The fitted hardware graph, TOML.
@@ -334,6 +364,95 @@ fn read_opt(p: &Option<PathBuf>) -> Result<Option<String>> {
     p.as_deref().map(read).transpose()
 }
 
+/// The options of `predict --cluster` besides the files.
+struct ClusterOpts {
+    /// `A..B=FILE` per builder segment.
+    tier_replays: Vec<String>,
+    trace_sha256: Option<String>,
+    prompt_hash: Option<String>,
+    judged: bool,
+    workload: Workload,
+}
+
+/// `A..B` as a layer span.
+fn parse_span(s: &str) -> Result<tetraeder_plan::Span> {
+    let (a, b) = s.split_once("..").context("a span is a..b")?;
+    Ok(tetraeder_plan::Span(a.trim().parse()?, b.trim().parse()?))
+}
+
+/// `predict --cluster`: the plan across nodes priced at the replays of its segments' spans.
+/// With `--judged` (Case S, ADR 0091) the prediction refuses anything but routing `trace` on
+/// every builder segment and needs the trace's sha256; nothing is written then.
+fn predict_cluster_cmd(
+    hw: &std::path::Path,
+    comm: Option<&std::path::Path>,
+    layout: &std::path::Path,
+    plan: &std::path::Path,
+    opts: &ClusterOpts,
+    out: &std::path::Path,
+) -> Result<()> {
+    if opts.judged && opts.trace_sha256.is_none() {
+        anyhow::bail!(
+            "a judged prediction carries the sha256 of its routing trace (--trace-sha256)"
+        );
+    }
+    let hw_text = read(hw)?;
+    let mut graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
+    if let Some(c) = comm {
+        multi_cli::merge_comm(&mut graph, &read(c)?).map_err(anyhow::Error::msg)?;
+    }
+    let layout_text = read(layout)?;
+    let layout = multi_cli::parse_layout(&layout_text).map_err(anyhow::Error::msg)?;
+    let plan_text = read(plan)?;
+    let plan = tetraeder_plan::Plan::from_toml(&plan_text)
+        .with_context(|| format!("parse {}", plan.display()))?;
+    let mut replays = Vec::new();
+    for spec in &opts.tier_replays {
+        let (span, file) = spec
+            .split_once('=')
+            .with_context(|| format!("--tier-replay {spec}: want A..B=FILE"))?;
+        replays.push(tetraeder_planner::SegmentReplay {
+            span: parse_span(span)?,
+            replay: tetraeder_planner::Replay::read(std::path::Path::new(file))
+                .map_err(anyhow::Error::msg)?
+                .for_prompt(opts.prompt_hash.as_deref()),
+        });
+    }
+    let w = &opts.workload;
+    let priced = if opts.judged {
+        tetraeder_planner::predict_cluster_judged(&graph, &layout, &plan, w, &replays)
+    } else {
+        tetraeder_planner::predict_cluster_routed(&graph, &layout, &plan, w, &replays)
+    }
+    .map_err(anyhow::Error::msg)?;
+    let doc = serde_json::json!({
+        "kind": "predict-cluster",
+        "hw_sha256": multi_cli::sha256_hex(hw_text.as_bytes()),
+        "layout_sha256": multi_cli::sha256_hex(layout_text.as_bytes()),
+        "plan_sha256": multi_cli::sha256_hex(plan_text.as_bytes()),
+        "routing": priced.routing.name(),
+        "routing_trace": {
+            "sha256": opts.trace_sha256,
+            "prompt_hash": opts.prompt_hash,
+            "replay_version": replays.iter().map(|r| r.replay.meta.replay_version).max(),
+            "segments": priced.segments,
+        },
+        "judged": opts.judged,
+        "workload": {"prompt": w.prompt, "gen": w.r#gen},
+        "prediction": priced.prediction,
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc)?)
+        .with_context(|| format!("write {}", out.display()))?;
+    println!(
+        "cluster plan: pp {:.2} tok/s, tg {:.3} tok/s, routing {} -> {}",
+        priced.prediction.pp_tps,
+        priced.prediction.tg_tps,
+        priced.routing.name(),
+        out.display()
+    );
+    Ok(())
+}
+
 fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Ledger {
@@ -382,6 +501,7 @@ fn main() -> Result<()> {
             pin,
             tier_replay,
             trace_sha256,
+            prompt_hash,
             judged,
             out,
         } => {
@@ -404,15 +524,22 @@ fn main() -> Result<()> {
                 })
                 .transpose()?;
             let replay = match &tier_replay {
-                Some(p) => {
-                    Some(tetraeder_planner::read_tier_replay(p).map_err(anyhow::Error::msg)?)
-                }
+                Some(p) => Some(
+                    tetraeder_planner::Replay::read(p)
+                        .map_err(anyhow::Error::msg)?
+                        .for_prompt(prompt_hash.as_deref()),
+                ),
                 None => None,
             };
             let w = Workload { prompt, r#gen };
-            let (runs, dropped) =
-                tetraeder_planner::single_node_runs(&graph, &layout, &w, pin, replay.as_deref())
-                    .map_err(anyhow::Error::msg)?;
+            let (runs, dropped) = tetraeder_planner::single_node_runs_replay(
+                &graph,
+                &layout,
+                &w,
+                pin,
+                replay.as_ref(),
+            )
+            .map_err(anyhow::Error::msg)?;
             let pick = runs.first().context("no placement fits the node")?;
             let row = tetraeder_planner::builder::slot_row_bytes(&layout);
             let env: BTreeMap<String, String> = BTreeMap::from([
@@ -444,6 +571,7 @@ fn main() -> Result<()> {
                             .with_context(|| format!("parse {}", p.display()))?;
                         serde_json::json!({
                             "sha256": trace_sha256,
+                            "prompt_hash": prompt_hash,
                             "fnv1a64": v["trace"]["fnv1a64"],
                             "replay_version": v["replay_version"],
                             "scope": v["scope"],
@@ -487,6 +615,7 @@ fn main() -> Result<()> {
             anchors,
             tier_replay,
             trace_sha256,
+            prompt_hash,
             out,
             hw_out,
         } => {
@@ -524,8 +653,21 @@ fn main() -> Result<()> {
                     files: vals,
                 });
             }
-            let replay =
-                tetraeder_planner::read_tier_replay(&tier_replay).map_err(anyhow::Error::msg)?;
+            // the anchors ran the judged prompt: their results name it
+            let mut hashes: Vec<&str> = list
+                .iter()
+                .flat_map(|a| &a.files)
+                .filter_map(|f| f["prompt"]["fnv1a64"].as_str())
+                .collect();
+            hashes.sort_unstable();
+            hashes.dedup();
+            if prompt_hash.is_none() && hashes.len() > 1 {
+                anyhow::bail!("the anchors ran different prompts: {hashes:?}");
+            }
+            let prompt_hash = prompt_hash.or_else(|| hashes.first().map(|h| (*h).to_string()));
+            let replay = tetraeder_planner::Replay::read(&tier_replay)
+                .map_err(anyhow::Error::msg)?
+                .for_prompt(prompt_hash.as_deref());
             let threads = graph
                 .devices
                 .iter()
@@ -577,6 +719,7 @@ fn main() -> Result<()> {
                 "routing": "trace",
                 "routing_trace": {
                     "sha256": trace_sha256,
+                    "prompt_hash": replay.judged_prompt,
                     "fnv1a64": rv["trace"]["fnv1a64"],
                     "replay_version": rv["replay_version"],
                     "scope": rv["scope"],
@@ -756,8 +899,32 @@ fn main() -> Result<()> {
             calib,
             candidates,
             routing,
+            cluster,
+            tier_replays,
+            trace_sha256,
+            prompt_hash,
+            judged,
+            prompt,
+            r#gen,
             out,
         } => {
+            if let Some(plan) = cluster {
+                return predict_cluster_cmd(
+                    &hw,
+                    comm.as_deref(),
+                    &layout,
+                    &plan,
+                    &ClusterOpts {
+                        tier_replays,
+                        trace_sha256,
+                        prompt_hash,
+                        judged,
+                        workload: Workload { prompt, r#gen },
+                    },
+                    &out,
+                );
+            }
+            let candidates = candidates.context("--candidates or --cluster")?;
             let hw_text = read(&hw)?;
             let mut graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
             let comm_sha = match &comm {

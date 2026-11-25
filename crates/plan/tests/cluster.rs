@@ -590,3 +590,109 @@ fn a_stage_names_only_devices_of_its_node() {
     q.replicas[0].stages[0].assign[1].home = Some(vec!["b/gpu0".into()]);
     assert_eq!(cross(&check(&q, &hw, 6, None)), ["b/gpu0"]);
 }
+
+#[test]
+fn forbid_node_also_rules_out_kv_workspace_and_slot_caches() {
+    let hw = cluster();
+    let forbid_b = |units: Option<UnitSel>| Hints {
+        forbid: vec![Forbid {
+            units,
+            device: None,
+            node: Some("b".into()),
+            tier: None,
+        }],
+        ..Default::default()
+    };
+    // Both stages compute on a; only a buffer can name b.
+    let mut p = two_nodes();
+    let first = p.replicas[0].stages[0].clone();
+    p.replicas[0].stages[1].assign = first.assign.clone();
+    p.replicas[0].stages[1].devices = first.devices.clone();
+    p.replicas[0].stages[1].kv.as_mut().unwrap()[0].device = "a/gpu0".into();
+    let hints = forbid_b(None);
+    let at = |s: u32| At {
+        replica: 0,
+        stage: Some(s),
+    };
+    let forbidden = |p: &Plan, h: &Hints| -> Vec<At> {
+        check(p, &hw, 6, Some(h))
+            .into_iter()
+            .filter_map(|i| match i {
+                Issue::ForbiddenNode { at, .. } => Some(at),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(forbidden(&p, &hints), vec![]);
+    // A workspace, a slot cache or the KV on b (the stage's own node rules flag them as well).
+    let mut ws = p.clone();
+    ws.replicas[0].stages[0].workspace.push(DeviceBytes {
+        device: "b/gpu0".into(),
+        bytes: 1,
+    });
+    assert_eq!(forbidden(&ws, &hints), vec![at(0)]);
+    let mut cache = p.clone();
+    cache.replicas[0].stages[1].expert_cache.push(SlotCache {
+        device: "b/gpu0".into(),
+        slots: 2,
+    });
+    assert_eq!(forbidden(&cache, &hints), vec![at(1)]);
+    let mut kv = p.clone();
+    kv.replicas[0].stages[0].kv.as_mut().unwrap()[0].device = "b/gpu0".into();
+    assert_eq!(forbidden(&kv, &hints), vec![at(0)]);
+    // A hint that rules out only some units leaves the buffers alone.
+    let only_head = forbid_b(Some(UnitSel {
+        kinds: vec![UnitKind::Head],
+        ..Default::default()
+    }));
+    assert_eq!(forbidden(&kv, &only_head), vec![]);
+}
+
+#[test]
+fn a_stage_without_devices_is_flagged_when_it_names_a_nodes_devices() {
+    let hw = cluster();
+    let reserve = BTreeMap::new();
+    let m = model();
+    let ctx = Context {
+        hw: &hw,
+        model: &m,
+        phase: Phase(6),
+        reserve: &reserve,
+        hints: None,
+    };
+    let mut p = two_nodes();
+    p.replicas[0].stages[1].devices.clear();
+    let open = |p: &Plan| -> Vec<Issue> {
+        validate_partial(p, &ctx)
+            .err()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|i| {
+                matches!(
+                    i,
+                    Issue::Open {
+                        what: "devices",
+                        ..
+                    }
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        open(&p),
+        vec![Issue::Open {
+            at: At {
+                replica: 0,
+                stage: Some(1)
+            },
+            what: "devices"
+        }]
+    );
+    // A stage that names nothing is a plain partial plan.
+    let mut bare = p.clone();
+    bare.replicas[0].stages[1] = Stage {
+        layers: Span(2, 4),
+        ..Default::default()
+    };
+    assert_eq!(open(&bare), vec![]);
+}

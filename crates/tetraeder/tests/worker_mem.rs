@@ -155,3 +155,38 @@ fn a_slow_link_delays_calls_but_keeps_the_answers() {
     assert_eq!(rows[0], logits_for(VOCAB, &[1, 2, 3]));
     assert_eq!(b.restarts(), 0);
 }
+
+// hardware: cpu
+#[test]
+fn a_bad_request_header_is_an_error_reply_and_the_worker_serves_on() {
+    use std::io::Write;
+    use tetraeder::remote_backend::wire::{Reply, Request};
+    use tetraeder::remote_backend::{encode_raw, parse_header, read_frame, write_frame};
+    use tetraeder_transport::{Peer, Purpose, Transport as _};
+    let board = tetraeder_transport::MemTransport::switchboard();
+    mode::serve(&board, VOCAB, 4, &[]);
+    let head = board.node(&mode::id("head"));
+    let mut c = head
+        .connect(
+            &Peer {
+                id: mode::id("worker"),
+                addr: String::new(),
+            },
+            Purpose::Segment {
+                replica: 0,
+                segment: 0,
+            },
+        )
+        .unwrap();
+    c.tx.write_all(&encode_raw(b"not json", &[]).unwrap())
+        .unwrap();
+    c.tx.flush().unwrap();
+    let f = read_frame(&mut c.rx).unwrap().expect("a reply");
+    let r: Reply = parse_header(&f).unwrap();
+    assert!(r.err.is_some(), "the bad header is the call's failure");
+    // The same connection still works.
+    write_frame(&mut c.tx, &Request::Info, &[]).unwrap();
+    let f = read_frame(&mut c.rx).unwrap().expect("a reply");
+    let r: Reply = parse_header(&f).unwrap();
+    assert!(r.err.is_none() && r.info.is_some());
+}
