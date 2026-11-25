@@ -22,9 +22,9 @@ use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
 /// The largest fit band a prediction may be frozen on (ADR 0092 "Rerun rules", the value proposed; owner answer 7 of
 /// ADR 0091): the band is the largest |ln(pred / meas)| of the anchors after the fit. Real-hidden
-/// anchors measured 0.07; the limit is the 0.15 line the prediction itself is judged by, since an
+/// anchors measured 0.07; the owner set the limit at 0.10 (2026-11-25), under the 0.15 judging line, since an
 /// anchor fit that misses its own anchors by more cannot be trusted to land inside it.
-pub const FIT_BAND_LIMIT: f64 = 0.15;
+pub const FIT_BAND_LIMIT: f64 = 0.10;
 
 /// One anchor: a span, its slot pair and the result files of its rounds (`exit_regime` JSON).
 pub struct SegmentAnchor {

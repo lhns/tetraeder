@@ -5,7 +5,7 @@ name: docs
 # "Tech tree"); a stale page or an invalid node fails here. The skill's scripts are pinned to one design-skills commit.
 on:
   push:
-    branches: [main, "phase*", "track-*", "serving-*", "memory-*", "planner-*", "engine-*", "cluster-*"]
+    branches: [main, "phase*", "track-*", "serving-*", "memory-*", "planner-*", "engine-*", "cluster-*", "bench-*"]
   pull_request:
 
 concurrency:

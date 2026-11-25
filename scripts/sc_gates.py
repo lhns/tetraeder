@@ -29,7 +29,7 @@ import cotenant_guard  # noqa: E402
 
 # Mirrors FIT_BAND_LIMIT of crates/planner/src/segment.rs (tests/test_sc_gates.py keeps them equal). The band is the
 # largest |ln(pred / meas)| over the anchors after the fit: 0.07 measured on real hidden rows, 1.23 on fixed-seed input.
-FIT_BAND_LIMIT = 0.15
+FIT_BAND_LIMIT = 0.10
 AA_BAND = 0.08  # bench/spec/phase0.toml, ADR 0068 and ADR 0091 Case S: band on T
 PROMPT, GEN = 2048, 128
 COTENANT_SOURCE = "engine_sample.py cotenant"
