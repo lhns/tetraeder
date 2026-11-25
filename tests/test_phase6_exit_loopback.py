@@ -1,5 +1,6 @@
-"""The loopback dry run of the Phase 6 exit drivers: scripts/phase6_exit_f.sh end to end with two "boxes" as two sets of processes on this
-machine (scripts/phase6_loopback.py in place of tetraeder), real fault injection (kill -9 of the engine, kill -9 of the daemon and its
+"""The loopback dry run of the Phase 6 exit drivers with the fake head (LOOPBACK=fake, the summary-rule fixtures): scripts/phase6_exit_f.sh end
+to end with two "boxes" as two sets of processes on this machine (scripts/phase6_loopback.py in place of tetraeder; the real binaries run in
+the CI step "phase 6 loopback", scripts/phase6_loopback_check.py), real fault injection through the trigger (kill -9 of the engine, kill -9 of the daemon and its
 children, SIGSTOP and SIGCONT), the load, the epochs and the verdict. Hardware label: none (needs a POSIX userland with pgrep, setsid and
 flock; skips cleanly without)."""
 
@@ -22,7 +23,7 @@ needs_posix = pytest.mark.skipif(
 
 
 def run_f(tmp_path, **env):
-    e = {**os.environ, "LOOPBACK": "1", "RESULTS_NAME": "f", "RESULTS_ROOT": str(tmp_path / "res"), "LB_DIR": str(tmp_path / "lb"),
+    e = {**os.environ, "LOOPBACK": "fake", "RESULTS_NAME": "f", "RESULTS_ROOT": str(tmp_path / "res"), "LB_DIR": str(tmp_path / "lb"),
          "TRIALS": "1", **env}
     r = subprocess.run(["bash", str(SCRIPTS / "phase6_exit_f.sh")], cwd=ROOT, env=e, capture_output=True, text=True, timeout=900)
     return r, tmp_path / "res" / "f"
@@ -51,6 +52,7 @@ def test_case_f_runs_end_to_end_on_loopback(tmp_path):
     bad = {f"{t['mode']}.{k}": x["detail"] for t in v["trials"] for k, x in t["rules"].items() if not x["ok"]}
     assert not bad, (bad, log[-3000:])
     for t in v["trials"]:
+        assert t["stats"]["live_b_at_fault"] >= 1 and t["stats"]["fault_uncertainty_s"] < 0.5  # the trigger's evidence, B's own reading
         assert t["stats"]["in_flight_errors"] >= 1 and max(t["stats"]["in_flight_error_delay_s"]) <= v["bound_s"]
         assert t["stats"]["rejoin_s"] is not None and t["stats"]["rejoin_s"] <= v["rejoin_limit_s"]
     # the dry run is not the full spec: only the load shape (14 s against 180 s) may fail among the session rules

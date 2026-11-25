@@ -87,6 +87,7 @@ class Server(ThreadingHTTPServer):
 
 def run_engine(port: int, load_s: float | None = None) -> None:
     seq = [0]
+    live = [0]
     lock = threading.Lock()
 
     class H(Quiet):
@@ -97,8 +98,9 @@ def run_engine(port: int, load_s: float | None = None) -> None:
             req = self.body()
             with lock:
                 seq[0] += 1
+                live[0] += 1
                 n = seq[0]
-            log(f"{iso_now()}  DEBUG tetraeder::step: admit seq={n} queued_ms=0.10 prompt={len(str(req.get('prompt', ''))) // 4} common=0 source=live")
+            log(f"{iso_now()}  DEBUG tetraeder::step: admit seq={n} queued_ms=0.10 prompt={len(str(req.get('prompt', ''))) // 4} common=0 source=live live={live[0]}")
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson")
             self.send_header("Connection", "close")
@@ -107,12 +109,17 @@ def run_engine(port: int, load_s: float | None = None) -> None:
             try:
                 for i in range(int(req.get("max_tokens", MAX_TOKENS))):
                     time.sleep(TOKEN_S)
+                    if i % 5 == 0:  # the scheduler's step line, which the fault trigger reads for requests in flight
+                        log(f"{iso_now()}  DEBUG tetraeder::step: step dec_seqs=1 dec_toks=1 live={live[0]} paused=0 idle=0 waiting=0")
                     self.wfile.write(b'{"t":"x "}\n')
                     self.wfile.flush()
                 self.wfile.write(b'{"done":"length"}\n')
                 self.wfile.flush()
             except OSError:
                 pass
+            finally:
+                with lock:
+                    live[0] -= 1
 
     time.sleep(LOAD_S if load_s is None else load_s)  # the model load: the daemon reports the engine ready only after it
     srv = Server(("127.0.0.1", port), H)

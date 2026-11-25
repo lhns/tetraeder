@@ -11,11 +11,16 @@ chunks received, finish reason, an error string (transport error, an error event
 
 `--calibrate` sizes the prompt through the head's /tokenize (the rehearsal's 512-token prompt came out at 395) and writes
 {"chars_per_token", "prompt_tokens"}; the load then takes `--chars-per-token` from it.
+
+`--fire-peer HOST:PORT` (Case F, scripts/phase6_trigger.py): FIRE_AFTER seconds into the load, once the trigger on box B reports requests
+in flight on B, the load fires the fault over that direct connection and writes the record (send, ack, middle, B's reading) to --fire-out.
 """
 
 import argparse
 import http.client
 import json
+import os
+import sys
 import threading
 import time
 import urllib.parse
@@ -131,7 +136,17 @@ def main():
     ap.add_argument("--chars-per-token", type=float, default=CHARS_PER_TOKEN)
     ap.add_argument("--calibrate", action="store_true", help="size the prompt through /tokenize, write --meta-out, send nothing")
     ap.add_argument("--meta-out", help="with --calibrate: {chars_per_token, prompt_tokens}")
+    ap.add_argument("--fire-peer", help="HOST:PORT of the fault trigger on box B")
+    ap.add_argument("--fire-token-file")
+    ap.add_argument("--fire-mode", choices=("worker", "daemon", "stop"))
+    ap.add_argument("--fire-after", type=float, default=60.0, help="seconds after the start of the load")
+    ap.add_argument("--fire-out")
+    ap.add_argument("--fire-stop-for", type=float, default=60.0)
+    ap.add_argument("--fire-restore-after", type=float, default=40.0)
+    ap.add_argument("--fire-poll-s", type=float, default=0.2)
     a = ap.parse_args()
+    if a.fire_peer and not (a.fire_token_file and a.fire_mode and a.fire_out):
+        ap.error("--fire-peer needs --fire-token-file, --fire-mode and --fire-out")
     if not a.calibrate and not a.out:
         ap.error("--out is required")
     u = urllib.parse.urlparse(a.url)
@@ -164,6 +179,14 @@ def main():
                 out.write(json.dumps(rec) + "\n")
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(a.concurrency)]
+    if a.fire_peer:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import phase6_trigger as trig  # next to this file
+
+        threads.append(threading.Thread(target=trig.fire_when_in_flight, args=(
+            a.fire_peer, trig.read_token(a.fire_token_file), a.fire_mode, a.label,
+            {"stop_for": a.fire_stop_for, "restore_after": a.fire_restore_after, "poll_s": a.fire_poll_s},
+            start, a.fire_after, a.fire_out)))
     for t in threads:
         t.start()
     for t in threads:

@@ -4,7 +4,7 @@
     phase6_exit_f_summary.py RESULTS_DIR                  writes RESULTS_DIR/verdict-f.json, prints the tables
     phase6_exit_f_summary.py admits NODE_LOG [--out F]    epochs of the `admit` lines of a node log (plain text)
     phase6_exit_f_summary.py clock < samples              offset of box B's clock to box A's, from `t0 a t1 t2 b t3` lines
-    phase6_exit_f_summary.py clock < samples              offset of box B's clock to box A's, from `t0 a t1 t2 b t3` lines
+    phase6_exit_f_summary.py valid TRIAL_DIR              exit 0 when the fault of this attempt found requests in flight on B
 
 Layout of RESULTS_DIR (written by scripts/phase6_exit_f.sh; the tests build it from the rehearsal data and from
 synthetic trials):
@@ -12,7 +12,7 @@ synthetic trials):
     session.json          boxes, model sha256, load shape, bound, clock offset, creation epochs, replica names
     gates/<box>/          lscpu.txt, cotenant.json, gates.json {power_ok, idle_ok}  (box a and box b)
     head-requests.jsonl   the head's request log (whole session; .gz also read)
-    trials/<mode>-<n>/    meta.json, load.jsonl, b-admits.txt
+    trials/<mode>-<n>/    meta.json, load.jsonl, b-admits.txt (n counts attempts)
     manual.jsonl          operator actions, one {"t": epoch, "what": text} per line
 
 Pass rules per trial (ADR 0091 Case F, "Pass, per trial"; no speed is judged):
@@ -29,6 +29,13 @@ Pass rules per trial (ADR 0091 Case F, "Pass, per trial"; no speed is judged):
                         restore + limit; the epoch is the first `admit` on B at or after the restore
   trial1_no_manual      trial 1 of a mode needs no operator action between the fault and the rejoin deadline
   b_served_before       B admitted a request in the 60 s before the fault (both replicas were in service)
+  fault_evidence        the fault was fired by the trigger with B's own reading of requests in flight (`fault.live_b` at least 1) and its
+                        time (the middle of send and ack on A's clock) is known within 0.5 s. Missing evidence fails
+Attempts (advisor decision 2026-11-25, docs/notes/phase6-rule-changes.md): the fault time is the middle of the trigger's send and ack, the
+uncertainty half that interval. An attempt whose fault found no request in flight on B (`fault.live_b` is 0, B's own log) is repeated, at most
+twice per mode; every attempt is in the verdict (`attempts`), the judged trials are the first three valid ones of each mode, trial 1 is the first
+valid one. The reading comes from B, never from the client's outcome, so a failure cannot be relabelled invalid. More than two invalid attempts in
+a mode, or fewer than three valid ones, is incomplete.
 Session rules: gates on both boxes (one NUMA node, co-tenant by engine_sample.py, power, idle), nine complete trials,
 the same model file on both boxes, certificates pinned and cluster.toml written after the boxes were created, the load
 shape, and the clock offset between the boxes known within 0.5 s. A rule whose evidence is missing fails.
@@ -71,7 +78,9 @@ LABELS = {
     "rejoin": "rejoin",
     "trial1_no_manual": "manual action in trial 1",
     "b_served_before": "B serving before the fault",
+    "fault_evidence": "the fault evidence",
 }
+MAX_REPEATS = 2
 RULES = list(LABELS)
 
 
@@ -169,12 +178,17 @@ def judge_trial(rows: list[dict], meta: dict, gw: list[dict] | None, b_admits: l
         for n in RULES:
             rule(n, False, "no client requests or no fault epoch")
         return {"rules": rules, "stats": {}}
+    fault = meta.get("fault") or {}
+    unc = fault.get("uncertainty_s")
+    live_b = fault.get("live_b")
+    rule("fault_evidence", isinstance(live_b, int) and live_b >= 1 and unc is not None and unc <= CLOCK_UNCERTAINTY_MAX_S,
+         f"{live_b} requests in flight on B at the fault by B's own log, fault time uncertain by {unc} s (limit {CLOCK_UNCERTAINTY_MAX_S})")
     infl = [r for r in rows if r["t_submit"] < tf <= (r["t_end"] or 1e18)]
     infl_err = [r for r in infl if r["class"] != "ok"]
     early = [r for r in rows if tf <= r["t_submit"] < tf + bound]
     after = [r for r in rows if r["t_submit"] >= tf + bound]
     delays = sorted(round(r["t_end"] - tf, 3) for r in infl_err)
-    stats = {"requests": len(rows), "in_flight_at_fault": len(infl), "in_flight_errors": len(infl_err),
+    stats = {"fault_uncertainty_s": unc, "live_b_at_fault": live_b, "requests": len(rows), "in_flight_at_fault": len(infl), "in_flight_errors": len(infl_err),
              "in_flight_error_delay_s": delays, "submitted_in_bound": len(early), "submitted_after_bound": len(after)}
 
     rule("clean_error_in_bound", bool(infl_err) and all(d <= bound for d in delays) and all(clean_error(r) for r in infl_err),
@@ -239,7 +253,8 @@ def reading(per_mode_fail: dict[str, set[int]]) -> str:
     return "; ".join(parts) if parts else "every rule holds in every mode"
 
 
-def session_rules(res: str, sess: dict) -> list[dict]:
+def session_rules(res: str, sess: dict, clock_unc: list[float] | None = None) -> list[dict]:
+    clock_unc = clock_unc or []
     out: list[dict] = []
 
     def rule(name: str, ok: bool, detail: str) -> None:
@@ -276,9 +291,9 @@ def session_rules(res: str, sess: dict) -> list[dict]:
                 and pt is not None and abs(pt / PROMPT_TOKENS - 1) <= PROMPT_TOL and ld.get("stream") is True)
     rule("load_shape", shape_ok, f"concurrency {ld.get('concurrency')}, {ld.get('duration_s')} s, prompt {pt} tokens against "
          f"{PROMPT_TOKENS} +-{PROMPT_TOL:.0%}, {ld.get('max_tokens')} output tokens, stream {ld.get('stream')}")
-    unc = (sess.get("clock") or {}).get("uncertainty_s")
+    unc = max(clock_unc) if clock_unc else (sess.get("clock") or {}).get("uncertainty_s")
     rule("clock_offset", unc is not None and unc <= CLOCK_UNCERTAINTY_MAX_S,
-         f"offset {(sess.get('clock') or {}).get('b_minus_a_s')} s, uncertainty {unc} s against {CLOCK_UNCERTAINTY_MAX_S}")
+         f"offset {(sess.get('clock') or {}).get('b_minus_a_s')} s, worst uncertainty {unc} s over {len(clock_unc) or 1} measurement(s) against {CLOCK_UNCERTAINTY_MAX_S}")
     return out
 
 
@@ -291,44 +306,79 @@ def trial_dirs(res: str) -> dict[tuple[str, int], str]:
     return found
 
 
+def fault_state(meta: dict) -> str:
+    """`invalid`: B's own reading says no request was in flight on B at the fault (the attempt is repeated). `missing`: no reading, which
+    is judged and fails its rule. `valid`: at least one request was in flight."""
+    f = meta.get("fault")
+    if not isinstance(f, dict) or not isinstance(f.get("live_b"), int):
+        return "missing"
+    return "valid" if f["live_b"] >= 1 else "invalid"
+
+
 def summarize(res: str) -> dict:
     sess = load_json(os.path.join(res, "session.json"))
     bound = sess.get("bound_s", BOUND_S)
     limit = sess.get("rejoin_limit_s", REJOIN_S)
     replica_b = sess.get("replica_b", "replica 1")
     trials_per_mode = sess.get("trials_per_mode", TRIALS)
+    max_repeats = sess.get("max_repeats", MAX_REPEATS)
     gwp = first_existing(os.path.join(res, "head-requests.jsonl"), os.path.join(res, "head-requests.jsonl.gz"))
     gw = read_jsonl(gwp) if gwp else None
     mp = os.path.join(res, "manual.jsonl")
     manual = read_jsonl(mp) if os.path.isfile(mp) else []
     dirs = trial_dirs(res)
-    out: dict = {"case": "F", "bound_s": bound, "rejoin_limit_s": limit, "trials": []}
+    out: dict = {"case": "F", "bound_s": bound, "rejoin_limit_s": limit, "trials": [], "attempts": []}
     fails: dict[str, set[int]] = {}
     missing = []
+    unclocked: list[float] = []  # clock uncertainty of every attempt
+    repeats_over = []
     for mi, mode in enumerate(MODES, 1):
-        for n in range(1, trials_per_mode + 1):
-            d = dirs.get((mode, n))
-            if d is None:
-                missing.append(f"{mode}-{n}")
-                continue
+        judged = 0
+        invalid = 0
+        for n in sorted(k for (m, k) in dirs if m == mode):
+            d = dirs[(mode, n)]
             try:
                 meta = load_json(os.path.join(d, "meta.json"))
                 rows = read_jsonl(os.path.join(d, "load.jsonl"))
             except (OSError, ValueError) as e:
                 missing.append(f"{mode}-{n} ({e})")
                 continue
-            meta.setdefault("trial", n)
+            state = fault_state(meta)
+            if meta.get("clock_uncertainty_s") is not None:
+                unclocked.append(meta["clock_uncertainty_s"])
+            att = {"mode": mode, "attempt": n, "fault": state, "live_b": (meta.get("fault") or {}).get("live_b"),
+                   "fault_uncertainty_s": (meta.get("fault") or {}).get("uncertainty_s"), "requests": len(rows)}
+            if state == "invalid":
+                invalid += 1
+                att["judged"] = False
+                att["note"] = "no request in flight on B at the fault: repeated"
+                out["attempts"].append(att)
+                continue
+            if judged >= trials_per_mode:
+                att["judged"] = False
+                att["note"] = "more valid attempts than trials per mode: not judged"
+                out["attempts"].append(att)
+                continue
+            judged += 1
+            att["judged"] = True
+            out["attempts"].append(att)
+            meta["trial"] = judged  # trial 1 is the first valid attempt
             meta.setdefault("mode", mode)
             ap = os.path.join(d, "b-admits.txt")
-            off = (sess.get("clock") or {}).get("b_minus_a_s") or 0.0  # B's log is on B's clock, the trial on A's
+            off = meta.get("clock_b_minus_a_s", (sess.get("clock") or {}).get("b_minus_a_s")) or 0.0  # B's log is on B's clock, the trial on A's
             admits = [float(x) - off for x in open(ap, encoding="utf-8").read().split()] if os.path.isfile(ap) else None
             t = judge_trial(rows, meta, gw, admits, manual, bound, limit, replica_b)
-            t.update(mode=mode, mode_number=mi, trial=n, ok=all(r["ok"] for r in t["rules"].values()))
+            t.update(mode=mode, mode_number=mi, trial=judged, attempt=n, ok=all(r["ok"] for r in t["rules"].values()))
             out["trials"].append(t)
             for name, r in t["rules"].items():
                 if not r["ok"]:
                     fails.setdefault(name, set()).add(mi)
-    rules = session_rules(res, sess)
+        missing += [f"{mode}-{k}" for k in range(judged + 1, trials_per_mode + 1)]
+        if invalid > max_repeats:
+            repeats_over.append(f"{mode} had {invalid} invalid attempts against {max_repeats}")
+    rules = session_rules(res, sess, unclocked)
+    rules.append({"name": "repeats_within_limit", "ok": not repeats_over,
+                  "detail": "; ".join(repeats_over) or f"at most {max_repeats} invalid attempts in every mode"})
     out["session_rules"] = rules
     out["missing_trials"] = missing
     out["reading"] = reading(fails)
@@ -352,6 +402,9 @@ def print_tables(o: dict) -> None:
         print(f"  mode {t['mode_number']} {t['mode']:6} trial {t['trial']}: in flight {s.get('in_flight_at_fault')} errors "
               f"{s.get('in_flight_errors')} delays {s.get('in_flight_error_delay_s')} rejoin_s {s.get('rejoin_s')} "
               f"{'ok' if t['ok'] else 'FAIL ' + ', '.join(k for k, r in t['rules'].items() if not r['ok'])}")
+    for a in o.get("attempts", []):
+        if not a["judged"]:
+            print(f"  attempt {a['mode']}-{a['attempt']}: not judged, {a['note']} (in flight on B {a['live_b']})")
     for r in o["session_rules"]:
         print(f"  rule {r['name']:26} {'ok  ' if r['ok'] else 'FAIL'} {r['detail']}")
 
@@ -397,6 +450,10 @@ def main() -> int:
         rows = [[float(x) for x in ln.split()] for ln in sys.stdin if ln.strip()]
         print(json.dumps(clock_offset(rows)))
         return 0
+    if a.target == "valid":  # the fault of one attempt found requests in flight on B (B's own reading)
+        state = fault_state(load_json(os.path.join(a.arg, "meta.json")))
+        print(state)
+        return 0 if state != "invalid" else 1
     if a.target == "admits":
         text = open(a.arg, encoding="utf-8", errors="replace").read()
         eps = admit_epochs(text)

@@ -111,6 +111,29 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build -p tetraeder
+      # ADR 0091 Case F on loopback with the real binaries: a real `tetraeder serve --cluster` head and two real `tetraeder node`
+      # daemons on the tiny MoE fixture, started by the same phase6_box.sh commands a box uses, real kill -9 and SIGSTOP faults fired
+      # through the trigger. The verdict is `fail` by design (20 s of load is not 180 s); the check asserts every other rule.
+      - name: phase 6 loopback (real binaries)
+        if: runner.os == 'Linux'
+        timeout-minutes: 30
+        env:
+          LOOPBACK: "1"
+          TETRAEDER_BIN: ${{ github.workspace }}/target/debug/tetraeder
+          RESULTS_NAME: loopback-real
+          RESULTS_ROOT: ${{ runner.temp }}/p6-results
+          LB_DIR: ${{ runner.temp }}/p6-lb
+          THREADS: "2"
+        run: |
+          bash scripts/phase6_exit_f.sh || echo "driver exit status $? (1 is the load-shape verdict)"
+          python3 -I scripts/phase6_loopback_check.py "$RESULTS_ROOT/$RESULTS_NAME" "$LB_DIR"
+      - name: phase 6 loopback logs
+        if: failure() && runner.os == 'Linux'
+        run: |
+          for f in "$RUNNER_TEMP"/p6-lb/*/logs/*.log "$RUNNER_TEMP"/p6-results/loopback-real/trials/*/fault.log; do
+            [ -f "$f" ] && { echo "=== $f"; tail -n 60 "$f"; }
+          done
+          true
       # Which CPU variant each runner loads (ADR 0052): tier, ISA, missing, extra, registry names.
       - name: CPU backend
         shell: bash
