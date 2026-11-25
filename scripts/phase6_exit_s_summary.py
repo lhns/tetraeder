@@ -6,7 +6,7 @@ rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
     phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml     the analytic pick among the spanning plans
     phase6_exit_s_summary.py span PLAN.toml           the plan computes on both nodes, one node per stage
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
-    phase6_exit_s_summary.py spans PLAN.toml          `node first..last` per stage, in order (the driver compares them with the confirmed regime)
+    phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
     phase6_exit_s_summary.py precheck RESULTS_DIR calib|freeze           the rules that must hold before calibration is trusted (calib) or
                                                       before the first judged round (freeze); exit 1 and the reasons otherwise
     phase6_exit_s_summary.py round ROUND_DIR [--frozen-sha S]            is the judged round clean (reasons, exit 1)
@@ -109,6 +109,22 @@ def plan_spans(plan_toml: str) -> list[tuple[str, int, int]]:
 # what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
 PRE_CALIB = ("gates_", "ram_budget_", "trace_hidden", "anchors_", "fit_band_")
 PRE_FREEZE = PRE_CALIB + ("prediction_judged", "freeze", "span_both_nodes")
+
+
+def check_partition(plan_toml: str, n_layer: int, nodes: tuple[str, ...] = ("a", "b")) -> list[str]:
+    """The stages cut the layers 0..n_layer in order, one stage per node, the first node first (the leader holds the first layers)."""
+    sp = plan_spans(plan_toml)
+    why = []
+    if [n for n, _, _ in sp] != list(nodes):
+        why.append(f"the stages sit on {[n for n, _, _ in sp]}, not one per node in order {list(nodes)}")
+    pos = 0
+    for n, lo, hi in sp:
+        if lo != pos or hi <= lo:
+            why.append(f"stage on {n} covers {lo}..{hi} after layer {pos}")
+        pos = hi
+    if pos != n_layer:
+        why.append(f"the stages end at layer {pos}, the model has {n_layer}")
+    return why
 
 
 def check_span(plan_toml: str, nodes: tuple[str, ...] | None = None) -> list[str]:
@@ -464,7 +480,9 @@ def main() -> int:
     r.add_argument("dir")
     r.add_argument("--prompt-hash")
     r.add_argument("--frozen-sha")
-    sub.add_parser("spans").add_argument("plan")
+    sp_ = sub.add_parser("spans")
+    sp_.add_argument("plan")
+    sp_.add_argument("--n-layer", type=int, help="also check that the stages partition the layers, one per node in order")
     pc = sub.add_parser("precheck")
     pc.add_argument("res")
     pc.add_argument("stage", choices=["calib", "freeze"])
@@ -500,7 +518,10 @@ def main() -> int:
     if a.cmd == "spans":
         for n, lo, hi in plan_spans(a.plan):
             print(f"{n} {lo}..{hi}")
-        return 0
+        why = check_partition(a.plan, a.n_layer) if a.n_layer else []
+        for w in why:
+            print(f"GATE FAILED spans: {w}", file=sys.stderr)
+        return 1 if why else 0
     if a.cmd == "precheck":
         want = PRE_CALIB if a.stage == "calib" else PRE_FREEZE
         bad = [r for r in summarize(a.res)["rules"] if not r["ok"] and r["name"].startswith(want)]

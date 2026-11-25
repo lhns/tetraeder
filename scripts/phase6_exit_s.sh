@@ -5,18 +5,21 @@
 # (its stages, with its gates), the verdict is scripts/phase6_exit_s_summary.py. No Rust, no cargo locally.
 #
 # Two invocations, with a commit between them (the frozen prediction goes to git before any judged run):
-#   STAGES="gates setup plan calib predict" bash scripts/phase6_exit_s.sh          ... commit predictions/, link/, plans/, calib/
+#   STAGES="gates setup budget plan calib predict" bash scripts/phase6_exit_s.sh   ... commit predictions/, link/, plans/, calib/
 #   FROZEN_SHA=<FROZEN.sha256> STAGES="judged aalast linkend summary" bash scripts/phase6_exit_s.sh
 # Stages:
 #   gates     both boxes, before any download: power, idle, one NUMA node, co-tenant by engine_sample.py. A miss ends the session
 #   setup     certificates, cluster.toml after create, the 142 GB model on both boxes (`create` went through scripts/sc_offers.sh:
 #             real --download-gb 150, disk_gb 230), build, the node daemons
-#   plan      `cluster profile` and the start link probe (band 0.08 later), `tetraeder-plan candidates --cluster`, the analytic pick
-#             among plans that compute on both nodes (a plan on one node is never a candidate), the spans checked against the regime
-#             the segment confirmation validated
-#   calib     per node, sc_box.sh: env, disk, balloon (the RAM budget measured), the whole-model trace on the leader (routing trace and
-#             hidden rows), the hidden rows to node b, anchors of the node's own segment truncated to a quarter and a half (real hidden
-#             rows; layer 0 takes tokens), two rounds, the fit (band limit 0.10, refused above)
+#   budget    per node, sc_box.sh: env, disk (the NVMe curve and the one-thread copy rate), balloon: the RAM budget under
+#             EMULATE_RAM_GB is measured before anything is profiled (ADR 0092 section 4)
+#   plan      `cluster profile` and the start link probe (band 0.08 later); the graph gets what a judged session adds (each node's
+#             builder disk `nvme0` from the committed prior, its measured RAM budget on the CPU: phase6_exit_s_merge.py), then
+#             `tetraeder-plan candidates --cluster`, the analytic pick among plans that compute on both nodes (a plan on one node is
+#             never a candidate), its stages checked to partition the layers one node each; its spans are what the anchors run
+#   calib     the whole-model trace on the leader (routing trace, and the hidden rows entering the cut), the trace and the rows to node
+#             b, anchors of each node's own segment truncated to a quarter and a half (real hidden rows; layer 0 takes tokens), two
+#             rounds, the fit (band limit 0.10, refused above)
 #   predict   the fitted node graphs merged into the cluster graph, `tetraeder-plan predict --cluster --judged` (routing trace only),
 #             SHA256SUMS and FROZEN.sha256 of everything it used; refuses on any failed pre-freeze rule
 #   judged    refuses unless FROZEN_SHA equals the frozen hash and every frozen file matches; rounds of the judged plan until three
@@ -35,8 +38,9 @@
 # single-node round.
 #
 # Env: RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, JUDGED_ROUND_CMD, REFERENCE_CMD, RESULTS_ROOT,
-# SPANS ("a 0..47,b 47..94": the regime the confirmation validated with 32 VRAM and 96 RAM slots, V and R), A1/A2 per node (11 and 23
-# layers after the span's first), MAX_ROUNDS (8), CLEAN_ROUNDS (3), EMULATE_RAM_GB (64).
+# V and R (the slots of both segments: 32 VRAM and 96 RAM, the covering regime the confirmation validated; the plan's own slot counts
+# are not read, so check the pick's notes in plans/candidates.json), A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first),
+# MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94" instead of the pick's).
 # LOOPBACK=1: the dry run with the stand-in tools of scripts/phase6_loopback.py (LB_SCENARIO breaks one rule on purpose); no GPU.
 cd "$(dirname "$0")/.." || exit 1
 repo=$PWD
@@ -46,8 +50,8 @@ say() { echo "[$(date +%T)] $*"; }
 die() { say "FATAL: $*"; exit 1; }
 name="${RESULTS_NAME:?set RESULTS_NAME}"
 out="${RESULTS_ROOT:-$repo/bench/results}/$name"
-stages="${STAGES:-gates setup plan calib predict}"
-spans="${SPANS:-a 0..47,b 47..94}"
+stages="${STAGES:-gates setup budget plan calib predict}"
+spans="${SPANS:-}" # the pick's, from plans/spans.txt, once the plan stage has run
 vs="${V:-32}" rs="${R:-96}"
 if [ "$LOOPBACK" = 1 ]; then
   lb="${LB_DIR:-$repo/runs/phase6-loopback-s}"
@@ -60,6 +64,10 @@ mkdir -p "$out"/{gates,certs,cluster,link,plans,calib,env,hidden,trace,predictio
 . "$repo/scripts/phase6_exit_lib.sh"
 
 summ() { python3 -I scripts/phase6_exit_s_summary.py "$@"; }
+need_spans() {
+  [ -n "$spans" ] || spans=$(tr -d '\r' < "$out/plans/spans.txt" 2> /dev/null) || true
+  [ -n "$spans" ] || die "no spans: run the plan stage first"
+}
 span_of() { echo "$spans" | tr ',' '\n' | awk -v n="$1" '$1 == n { print $2 }'; }
 first_of() { span_of "$1" | cut -d. -f1; }
 end_of() { span_of "$1" | awk -F'[.][.]' '{ print $2 }'; }
@@ -75,14 +83,17 @@ loopback_tools() { shim tetraeder "" && shim tetraeder-plan plan; }
 
 # one sc_box.sh run on a node (STAGES of sc_box.sh), waited for; the results dir of the box is <name>-n<node>
 scbox() { # scbox NODE TAG "STAGES"
-  local n=$1 tag=$2 st=$3 s e a1 a2
-  s=$(first_of "$n") e=$(end_of "$n")
-  a1=$((s + ${A1_LAYERS:-11})) a2=$((s + ${A2_LAYERS:-23}))
+  local n=$1 tag=$2 st=$3 s="" e="" a1="" a2="" cut="" span_env=""
+  if [ -n "$spans" ]; then
+    s=$(first_of "$n") e=$(end_of "$n") cut=$(end_of a)
+    a1=$((s + ${A1_LAYERS:-11})) a2=$((s + ${A2_LAYERS:-23}))
+    span_env="SPLIT=$s END=$e A1_END=$a1 A2_END=$a2 HIDDEN_AT=$cut"
+  fi
   if [ "$LOOPBACK" = 1 ]; then
-    (cd "$repo" && python3 scripts/phase6_loopback.py sc-box --node "$n" --out "$lb/$n/$(resrel "$n")" --stages "$st" --span "$s..$e") | tail -n 1
+    (cd "$repo" && python3 scripts/phase6_loopback.py sc-box --node "$n" --out "$lb/$n/$(resrel "$n")" --stages "$st" --span "${s:-0}..${e:-94}") | tail -n 1
     return 0
   fi
-  bx "$n" 60 "bash scripts/phase6_box.sh launch sc-$n-$tag env RESULTS_NAME=$name-n$n SPLIT=$s END=$e A1_END=$a1 A2_END=$a2 HIDDEN_AT=$(end_of a) V=$vs R=$rs EMULATE_RAM_GB=${EMULATE_RAM_GB:-64} STAGES='$st' bash scripts/sc_box.sh" | head -n 2
+  bx "$n" 60 "bash scripts/phase6_box.sh launch sc-$n-$tag env RESULTS_NAME=$name-n$n $span_env V=$vs R=$rs EMULATE_RAM_GB=${EMULATE_RAM_GB:-64} STAGES='$st' bash scripts/sc_box.sh" | head -n 2
 }
 scbox_wait() { # scbox_wait NODE "STAGES"
   [ "$LOOPBACK" = 1 ] && return 0
@@ -146,17 +157,24 @@ st_setup() {
   fi
   bx b 60 "bash scripts/phase6_box.sh node"
   bx a 60 "bash scripts/phase6_box.sh node"
-  python3 -I - "$out/session.json" "$spans" "$vs" "$rs" << 'EOF'
-import json, os, sys
-p, spans, v, r = sys.argv[1:5]
-d = json.load(open(p)) if os.path.exists(p) else {}
-d["segments"] = [{"node": n.split()[0], "span": [int(x) for x in n.split()[1].split("..")], "slots": [int(v), int(r)]} for n in spans.split(",")]
-d["segments"][0]["embed"], d["segments"][-1]["head"] = True, True
-d["band_source"] = "bench/spec/phase0.toml"
-d["boxes"] = {"a": {"id": os.environ.get("ID_A", "loopback")}, "b": {"id": os.environ.get("ID_B", "loopback")}}
-json.dump(d, open(p, "w"), indent=2)
-EOF
+  sess band_source '"bench/spec/phase0.toml"'
+  sess boxes "{\"a\": {\"id\": \"${ID_A:-loopback}\"}, \"b\": {\"id\": \"${ID_B:-loopback}\"}}"
   say "setup done"
+}
+
+# the RAM budget of each node is measured under the balloon before the graph is profiled (ADR 0092 section 4)
+st_budget() {
+  local n
+  say "env, disk and balloon on both nodes"
+  scbox a b1 "env disk balloon" > /dev/null
+  scbox b b1 "env disk balloon" > /dev/null
+  scbox_wait a "env disk balloon"
+  scbox_wait b "env disk balloon"
+  for n in a b; do
+    mkdir -p "$out/env/$n"
+    get "$n" "$(resrel "$n")/env.json" "$out/env/$n/env.json"
+  done
+  say "budget done"
 }
 
 st_plan() {
@@ -171,8 +189,15 @@ st_plan() {
   get a probe-start.json "$out/link/probe-start.json"
   get a hw.json "$out/link/hw.json"
   get a layout.json "$out/layout.json"
+  say "the graph a judged session adds to: builder disks and the measured RAM budgets"
+  local ra rb
+  ra=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/a/env.json")
+  rb=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/b/env.json")
+  python3 -I scripts/phase6_exit_s_merge.py "$out/link/hw.json" --builder-disk crates/planner/fixtures/rtx3090_prior.toml \
+    --ram-budget "a=$ra" --ram-budget "b=$rb" -o "$out/link/hw-builder.json"
+  put a "$out/link/hw-builder.json" hw-builder.json
   say "candidates across the nodes, then the pick"
-  bx a 300 "rm -rf $P/candidates; $(tplan) candidates --cluster --hw $P/hw.json --layout $P/layout.json --plans-dir $P/candidates --out $P/candidates.json --prompt 2048" | tail -n 3
+  bx a 300 "rm -rf $P/candidates; $(tplan) candidates --cluster --hw $P/hw-builder.json --layout $P/layout.json --plans-dir $P/candidates --out $P/candidates.json --prompt 2048" | tail -n 3
   get a candidates.json "$out/plans/candidates.json"
   mkdir -p "$out/plans/candidates"
   local f
@@ -181,21 +206,30 @@ st_plan() {
   done
   summ pick "$out/plans/candidates.json" "$out/plans/candidates" "$out/plans/judged-plan.toml" || die "no plan that computes on both nodes: Case S has no judged candidate"
   summ span "$out/plans/judged-plan.toml" || die "the pick does not compute on both nodes"
-  local got want
-  got=$(summ spans "$out/plans/judged-plan.toml" | tr -d '\r' | tr '\n' ',' | sed 's/,$//')
-  want="$spans"
-  [ "$got" = "$want" ] || die "the pick's spans '$got' are not the regime the segment confirmation validated '$want' (ADR 0092 section 6): it goes back to the ADR"
+  local nl
+  nl=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["n_layer"])' "$out/layout.json")
+  summ spans "$out/plans/judged-plan.toml" --n-layer "$nl" > "$out/plans/spans.raw" || die "the pick's stages do not cut the $nl layers one node each, leader first"
+  tr -d '\r' < "$out/plans/spans.raw" | tr '\n' ',' | sed 's/,$//' > "$out/plans/spans.txt"
+  rm -f "$out/plans/spans.raw"
+  spans=$(cat "$out/plans/spans.txt")
   put a "$out/plans/judged-plan.toml" judged-plan.toml
-  say "plan done: $got"
+  python3 -I - "$out/session.json" "$spans" "$vs" "$rs" << 'EOF'
+import json, os, sys
+p, spans, v, r = sys.argv[1:5]
+d = json.load(open(p)) if os.path.exists(p) else {}
+d["segments"] = [{"node": n.split()[0], "span": [int(x) for x in n.split()[1].split("..")], "slots": [int(v), int(r)]} for n in spans.split(",")]
+d["segments"][0]["embed"], d["segments"][-1]["head"] = True, True
+json.dump(d, open(p, "w"), indent=2)
+EOF
+  say "plan done: $spans (the segment confirmation validated 0..47 and 47..94 at 32 and 96 slots; another cut is the pick's, the covering regime is yours to check in the notes of plans/candidates.json)"
 }
 
 st_calib() {
   local n
-  say "node a: env, disk, balloon, the whole-model trace; node b: env, disk, balloon"
-  scbox a c1 "env disk balloon trace" > /dev/null
-  scbox b c1 "env disk balloon" > /dev/null
-  scbox_wait a "env disk balloon trace"
-  scbox_wait b "env disk balloon"
+  need_spans
+  say "node a: the whole-model trace, hidden rows entering layer $(end_of a)"
+  scbox a c1 "trace" > /dev/null
+  scbox_wait a "trace"
   if [ "$LOOPBACK" != 1 ]; then
     say "the trace and the hidden rows to node b"
     for f in runs/sc/hidden.bin runs/sc/routing.trace; do
@@ -221,10 +255,9 @@ st_calib() {
   scbox_wait a "anchors predict"
   scbox_wait b "anchors predict"
   for n in a b; do
-    mkdir -p "$out/calib/$n/anchors" "$out/env/$n"
+    mkdir -p "$out/calib/$n/anchors"
     for k in a1-r1 a1-r2 a2-r1 a2-r2; do get "$n" "$(resrel "$n")/anchors/$k.json" "$out/calib/$n/anchors/$k.json"; done
     for k in pred.json fitted.toml replay.json; do get "$n" "$(resrel "$n")/predictions/$k" "$out/calib/$n/$k"; done
-    get "$n" "$(resrel "$n")/env.json" "$out/env/$n/env.json"
   done
   python3 -I - "$out" << 'EOF'
 import json, os, sys
@@ -242,9 +275,10 @@ EOF
 
 st_predict() {
   local P tsha ph
+  need_spans
   P=$(p6dir a)
   [ "$LOOPBACK" = 1 ] && [ ! -x "$lb/tetraeder-plan" ] && loopback_tools
-  python3 -I scripts/phase6_exit_s_merge.py "$out/link/hw.json" --node "a=$out/calib/a/fitted.toml" --node "b=$out/calib/b/fitted.toml" \
+  python3 -I scripts/phase6_exit_s_merge.py "$out/link/hw-builder.json" --node "a=$out/calib/a/fitted.toml" --node "b=$out/calib/b/fitted.toml" \
     -o "$out/predictions/hw-cluster.json"
   tsha=$(awk '{ print $1 }' "$out/trace/routing.sha256")
   ph=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["prompt"]["fnv1a64"])' "$out/session.json")
@@ -258,8 +292,8 @@ st_predict() {
   fi
   tail -n 2 "$out/predictions/predict.log"
   get a predict-cluster.json "$out/predictions/predict-cluster.json"
-  (cd "$out" && sha256sum layout.json link/probe-start.json link/hw.json predictions/hw-cluster.json predictions/predict-cluster.json \
-    plans/judged-plan.toml plans/candidates.json trace/routing.sha256 trace/hidden.sha256 calib/a/pred.json calib/b/pred.json \
+  (cd "$out" && sha256sum layout.json link/probe-start.json link/hw.json link/hw-builder.json predictions/hw-cluster.json predictions/predict-cluster.json \
+    plans/judged-plan.toml plans/candidates.json plans/spans.txt trace/routing.sha256 trace/hidden.sha256 calib/a/pred.json calib/b/pred.json \
     calib/a/replay.json calib/b/replay.json calib/a/fitted.toml calib/b/fitted.toml > predictions/SHA256SUMS \
     && (cd predictions && sha256sum SHA256SUMS > FROZEN.sha256))
   python3 -I -c 'import json, sys, time; json.dump({"t_frozen": time.time(), "sha256": open(sys.argv[1]).read().split()[0]}, open(sys.argv[2], "w"))' \

@@ -48,7 +48,7 @@ def text(r):
 def session_s(tmp_path, scenario="", second_scenario=None):
     """The two invocations of the driver; returns (first result, second result or None, results dir)."""
     try:
-        r1, out = run_s(tmp_path, "gates setup plan calib predict", scenario)
+        r1, out = run_s(tmp_path, "gates setup budget plan calib predict", scenario)
         if r1.returncode != 0 or not (out / "predictions" / "FROZEN.sha256").exists():
             return r1, None, out
         r2, out = run_s(tmp_path, "judged aalast linkend summary", second_scenario if second_scenario is not None else scenario,
@@ -102,7 +102,7 @@ def test_case_s_no_plan_on_both_nodes_stops_at_the_pick(tmp_path):
 @needs_posix
 def test_case_s_refuses_to_judge_on_a_frozen_hash_that_does_not_match_or_a_changed_file(tmp_path):
     try:
-        r1, out = run_s(tmp_path, "gates setup plan calib predict")
+        r1, out = run_s(tmp_path, "gates setup budget plan calib predict")
         assert r1.returncode == 0, text(r1)[-2500:]
         r2, _ = run_s(tmp_path, "judged", FROZEN_SHA="0" * 64)
         assert r2.returncode != 0 and "is not the frozen hash" in text(r2)
@@ -165,6 +165,44 @@ def test_case_s_scripts_parse_and_name_the_missing_judged_round_command():
     for name in ("sc_box.sh", "sc_gates.py", "fetch_exit_model.sh", "phase6_exit_s_summary.py", "phase6_exit_s_merge.py", "phase6_loopback.py",
                  "phase6_box.sh"):
         assert name in body and (SCRIPTS / name).exists(), name
+
+
+def test_the_candidate_graph_gets_builder_disks_and_the_measured_ram_budget():
+    sys.path.insert(0, str(SCRIPTS))
+    import tomllib
+
+    import phase6_exit_s_merge as m
+
+    hw = json.loads((ROOT / "crates" / "planner" / "fixtures" / "phase6-rehearsal" / "hw.json").read_text())
+    prior = tomllib.loads((ROOT / "crates" / "planner" / "fixtures" / "rtx3090_prior.toml").read_text())
+    out, notes = m.prepare(hw, prior, {"a": 59_450_000_000, "b": 58_000_000_000})
+    ids = {d["id"] for d in out["devices"]}
+    assert {"a/nvme0", "b/nvme0"} <= ids and not any(i.startswith(("a/disk", "b/disk")) for i in ids)
+    assert not any(x["id"].startswith(("a/storage-disk", "b/storage-disk")) for x in out["links"])
+    link = next(x for x in out["links"] if x["id"] == "b/nvme-cpu0")
+    assert (link["a"], link["b"]) == ("b/nvme0", "b/cpu0")
+    cpu = {d["id"]: d["capacity_bytes"] for d in out["devices"] if d["kind"] == "cpu"}
+    assert cpu == {"a/cpu0": 59_450_000_000, "b/cpu0": 58_000_000_000} and notes == []
+    # a fitted nvme0 then lands on the builder disk, not on a discovered one
+    out, _ = m.merge(out, {"a": {"devices": [{"id": "nvme0", "kind": "disk", "queue_curve": [{"depth": 1, "bytes_per_s": 7.0}]}]}})
+    assert next(d for d in out["devices"] if d["id"] == "a/nvme0")["queue_curve"][0]["bytes_per_s"] == 7.0
+
+
+def test_the_pick_must_partition_the_layers_one_stage_per_node_leader_first(tmp_path):
+    sys.path.insert(0, str(SCRIPTS))
+    import phase6_exit_s_summary as s6
+
+    def plan(*stages):
+        body = "[[replicas]]\n" + "".join(f'[[replicas.stages]]\nlayers = [{lo}, {hi}]\ndevices = ["{n}/gpu0"]\n' for n, lo, hi in stages)
+        f = tmp_path / "p.toml"
+        f.write_text(body)
+        return str(f)
+
+    assert s6.check_partition(plan(("a", 0, 40), ("b", 40, 94)), 94) == []  # another cut than the confirmed 47 is a valid pick
+    assert s6.check_partition(plan(("b", 0, 47), ("a", 47, 94)), 94)  # the leader holds the first layers
+    assert s6.check_partition(plan(("a", 0, 47), ("b", 48, 94)), 94)  # a hole
+    assert s6.check_partition(plan(("a", 0, 47), ("b", 47, 90)), 94)  # not the whole model
+    assert s6.check_partition(plan(("a", 0, 94)), 94)  # one node
 
 
 def test_the_merge_overlays_the_fitted_node_graphs_and_keeps_the_rest():
