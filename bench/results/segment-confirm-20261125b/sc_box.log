@@ -1,0 +1,95 @@
+[01:12:00] sc_box start stages='env build disk balloon trace anchors predict' threads=15 out=/root/tetraeder/bench/results/segment-confirm-20261125b model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[01:12:00] STAGE env
+[01:12:01] env done
+[01:12:01] STAGE build
+patches: already applied
+[01:12:01] build start (cargo jobs 7)
+[01:12:01] main build done
+[01:12:02] build done
+[01:12:02] STAGE disk
+disk-curve -> /root/tetraeder/bench/results/segment-confirm-20261125b/disk/disk-curve.json
+copy_bytes_per_s 12810093402.069845
+[01:12:26] disk done
+[01:12:26] STAGE balloon
+[01:12:26] balloon 195528851456 B (memory 259528851456, emulated 64000000000)
+[01:12:26] balloon pid 49801: oom_score_adj -1000 not allowed
+ok
+{"memory_max": 259528851456, "memory_current": 218112180224, "inactive_file": 20130074624, "reserve_bytes": 1073741824, "ram_budget_bytes": 60473004032}
+BALLOON_READY
+  "ram_budget": {
+    "memory_max": 259528851456,
+    "memory_current": 218112180224,
+    "inactive_file": 20130074624,
+    "reserve_bytes": 1073741824,
+    "ram_budget_bytes": 60473004032
+  }
+}
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+[01:14:02] balloon done
+[01:14:02] STAGE trace
+[01:14:02] trace-whole start: TETRAEDER_EXIT_SLOTS=16 TETRAEDER_EXIT_RAM_SLOTS=28 TETRAEDER_EXIT_HIDDEN_OUT=47,/root/tetraeder/runs/sc/hidden.bin TETRAEDER_EXIT_ROUTING_OUT=/root/tetraeder/runs/sc/routing.trace threads 15
+[01:15:59] trace-whole done rc=0 in 117 s
+routing 6f9c06f58df869662cc85663a7bcb26b119059b015a39c29cb0010001dadaa50 3384542
+hidden 7a66c1a0e087db88bf445d0a6828e702a53e3886871ec7972152a079d93c099f 35660316
+[01:15:59] trace done
+[01:15:59] STAGE anchors
+[01:15:59] a1-r1 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:16:17] a1-r1 done rc=0 in 18 s
+[01:16:17] a2-r1 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:16:50] a2-r1 done rc=0 in 33 s
+[01:16:50] a1-r2 start: TETRAEDER_EXIT_LAYERS=47..58 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:17:07] a1-r2 done rc=0 in 17 s
+[01:17:07] a2-r2 start: TETRAEDER_EXIT_LAYERS=47..70 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:17:41] a2-r2 done rc=0 in 34 s
+[01:17:41] anchors done
+[01:17:41] STAGE predict
+gate anchors-real ok
+replay: 2 configurations -> /root/tetraeder/bench/results/segment-confirm-20261125b/predictions/replay.json
+segment 47..94 v32 r96 ub2048: pp 445.08 tok/s, tg 17.426 tok/s (uncalibrated 516.40, 12.942), band 0.050, binding compute:cpu0 -> /root/tetraeder/bench/results/segment-confirm-20261125b/predictions/pred.json
+footprint gpu 22060071936 host 53900476416 (budget gpu 25512105663 ram 59868273960); replay prefill disk B/token 0.000, decode disk B/token 0.0, layer rows 47
+gate fitband ok
+059669ea1641a3bba612bf9272444b728928eca3d238defde9bfa0b6a288280a  SHA256SUMS
+box commit unknown
+[01:17:41] predict done: frozen, fetch and commit predictions/ before the judged stage
+[01:17:41] SC_BOX_DONE rc=0 stages='env build disk balloon trace anchors predict'
+[01:19:28] sc_box start stages='judged aalast' threads=15 out=/root/tetraeder/bench/results/segment-confirm-20261125b model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[01:19:28] STAGE judged
+[01:19:28] judged gates ok (059669ea1641a3bba612bf9272444b728928eca3d238defde9bfa0b6a288280a)
+[01:19:28] judged-r1 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+cotenant CO-TENANT: host 13.08174376342037 cores busy, container 8.099724790038035, engine 8.042647848420346, outside 4.982018973382335, smt pairs 0 (5.0 cores busy outside the container (limit 4.8 of 32 physical))
+[01:20:37] judged-r1 done rc=0 in 69 s
+[01:20:38] judged-r2 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+cotenant CO-TENANT: host 13.995103877454168 cores busy, container 7.935985324010522, engine 7.87559707638419, outside 6.059118553443646, smt pairs 0 (6.1 cores busy outside the container (limit 4.8 of 32 physical))
+[01:21:47] judged-r2 done rc=0 in 70 s
+A/A on T: 12.08 s -> 12.16 s, +0.007 against 0.08 ok
+[01:21:47] judged-r3 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:22:53] judged-r3 done rc=0 in 66 s
+[01:22:53] judged done
+[01:22:53] STAGE aalast
+[01:22:54] judged gates ok (059669ea1641a3bba612bf9272444b728928eca3d238defde9bfa0b6a288280a)
+[01:22:54] aa-last start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:24:00] aa-last done rc=0 in 66 s
+A/A on T: 12.08 s -> 11.76 s, -0.026 against 0.08 ok
+[01:24:00] aalast done
+[01:24:00] SC_BOX_DONE rc=0 stages='judged aalast'
+[01:24:49] sc_box start stages='judged aalast' threads=15 out=/root/tetraeder/bench/results/segment-confirm-20261125b model=/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf span=47..94 slots=32,96
+[01:24:49] STAGE judged
+[01:24:49] judged gates ok (059669ea1641a3bba612bf9272444b728928eca3d238defde9bfa0b6a288280a)
+[01:24:49] judged-r1 exists, skipped
+[01:24:49] judged-r2 exists, skipped
+A/A on T: 12.08 s -> 12.16 s, +0.007 against 0.08 ok
+[01:24:49] judged-r3 exists, skipped
+[01:24:50] judged-r4 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:26:00] judged-r4 done rc=0 in 71 s
+[01:26:00] judged-r5 start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:27:06] judged-r5 done rc=0 in 66 s
+[01:27:06] judged done
+[01:27:06] STAGE aalast
+[01:27:06] judged gates ok (059669ea1641a3bba612bf9272444b728928eca3d238defde9bfa0b6a288280a)
+[01:27:06] aa-last start: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_LAYERS=47..94 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOTS=96 TETRAEDER_EXIT_SLOTS=32 TETRAEDER_EXIT_THREADS=15 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_PREFILL_WARM=1 TETRAEDER_EXIT_HIDDEN_IN=/root/tetraeder/runs/sc/hidden.bin threads 15
+[01:28:14] aa-last done rc=0 in 68 s
+A/A on T: 12.08 s -> 12.06 s, -0.002 against 0.08 ok
+[01:28:14] aalast done
+[01:28:14] SC_BOX_DONE rc=0 stages='judged aalast'

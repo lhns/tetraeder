@@ -16,7 +16,7 @@
 #            (TETRAEDER_EXIT_HIDDEN_IN, ADR 0091 answer 7), no head, warm 1, ANCHOR_ROUNDS (2) rounds each
 #   predict  stage 4: `tetraeder-bench replay --layers SPLIT..END --warm 1` of the trace, `tetraeder-plan segment-predict`
 #            (fit on the anchors, price the segment from the replay), then the freeze: SHA256SUMS and FROZEN.sha256. The freeze is
-#            refused (nothing written) when an anchor ran on fixed-seed input or the fit band is above FIT_BAND_MAX (0.15)
+#            refused (nothing written) when an anchor ran on fixed-seed input or the fit band is above FIT_BAND_MAX (0.10)
 #   judged   stage 5: refuses to run unless `sc_gates.py judged-start` passes (one NUMA node, the co-tenant reading under the
 #            limit, FROZEN_SHA equal to predictions/FROZEN.sha256 and every frozen file matching, fit band within the limit,
 #            anchors on real hidden rows); the segment with the trace run's hidden rows as input, warm 1, ROUNDS (3) rounds
@@ -230,7 +230,7 @@ st_predict() {
   # shellcheck disable=SC2046
   "$plan" segment-predict --hw "$p/hw.toml" --layout "$out/layout.json" --layers "$split..$end" --pin "$vs,$rs" --ubatch "$ub" \
     --prompt "$pre" --gen "$dec" $(anchor_args "$out/anchors" "") --tier-replay "$p/replay.json" --trace-sha256 "$tsha" \
-    --max-band "${FIT_BAND_MAX:-0.15}" --out "$p/pred.json" --hw-out "$p/fitted.toml" || die "segment-predict (a fit band over the limit refuses the freeze)"
+    --max-band "${FIT_BAND_MAX:-0.10}" --out "$p/pred.json" --hw-out "$p/fitted.toml" || die "segment-predict (a fit band over the limit refuses the freeze)"
   # the environment the planner wrote must be the one the anchors ran (apart from the span's end and the warm count)
   python3 -I - "$p/pred.json" "$vs" "$rs" "$ub" "$pre" "$dec" "$threads" << 'EOF' || die "pred.json environment differs from the anchors'"
 import json, sys
@@ -249,7 +249,7 @@ if pr["footprint_gpu"] > pr["gpu_budget"] or pr["footprint_host"] > pr["ram_budg
     print("the pick does not fit its budgets")
     sys.exit(1)
 EOF
-  python3 -I scripts/sc_gates.py fitband "$p/pred.json" --limit "${FIT_BAND_MAX:-0.15}" || die "fit band over the limit: nothing frozen"
+  python3 -I scripts/sc_gates.py fitband "$p/pred.json" --limit "${FIT_BAND_MAX:-0.10}" || die "fit band over the limit: nothing frozen"
   (cd "$out" && sha256sum layout.json disk/disk-curve.json predictions/hw.toml predictions/fitted.toml predictions/replay.json \
     predictions/pred.json trace/routing.sha256 trace/hidden.sha256 anchors/*.json $(ls env.json 2> /dev/null) > predictions/SHA256SUMS \
     && (cd predictions && sha256sum SHA256SUMS > FROZEN.sha256))
