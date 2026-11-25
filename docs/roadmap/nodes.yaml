@@ -2796,17 +2796,21 @@ nodes:
   title: Judged round across two nodes
   track: cluster
   kind: tooling
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/tetraeder/tests/judged_round.rs
+  - crates/tetraeder/src/judged.rs
+  - crates/tetraeder/src/hw_merge.rs
+  verdict_quote: 'CI run 45640528598 ubuntu and windows - test cpu_a_judged_round_across_two_loopback_nodes_writes_the_files_the_summary_reads ... ok; test a_replica_being_replaced_keeps_the_requests_waiting_until_the_new_one_joins ... ok'
+  headline: 'one judged round and the graph merge are tetraeder subcommands'
   depends_on:
   - cluster-pipeline-prefill
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-25
+  end: 2026-11-25
   folded: []
   overview: false
   plain: A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI.
@@ -4640,6 +4644,7 @@ nodes:
   folded: []
   overview: false
   plain: 'Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read.'
+  notes: 'Not reproduced on CPU with the tiny MoE: cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node (cluster_integration.rs) sends three cold prompts of about 2000 tokens, then three streamed with ignore_eos, through serve --cluster-plan at 4 micro-batches of 512, ctx 4096 and 4 sequences, and every answer equals one node. What differs from rehearsal 2 is the 30B with expert slots, CUDA and a WAN link, so the cause is still open; the test stays as the guard.'
 
 - id: cluster-probe-control-idle
   title: cluster probe to 64 MiB dies on the daemon control-idle limit

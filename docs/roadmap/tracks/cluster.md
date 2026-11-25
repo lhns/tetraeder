@@ -23,6 +23,7 @@ flowchart TB
     cluster_planner_hardening>"✔ Harden the cluster<br/>planner inputs"]
     cluster_pipeline_prefill["✔ Prefill pipelined<br/>across stages"]
     cluster_step_tokens_from_plan>"✔ Replica step size<br/>from the plan"]
+    cluster_judged_round_cmd["✔ Judged round across<br/>two nodes"]
     cluster_mode1_detection>"✔ Head learns of a<br/>killed replica engine<br/>at once"]
     cluster_discovery_disk_names>"✔ Discovery names the<br/>builder disk"]
     cluster_failover_bound[/"✔ Failover bound per<br/>Case F mode"/]
@@ -30,7 +31,6 @@ flowchart TB
     cluster_prefix_fetch_not_triggered>"✔ No prefix fetch<br/>between replicas on<br/>two GPU nodes"]
     cluster_plan_source_gpu_segments>"✔ Planner proposes no<br/>plan for two real GPU<br/>boxes"]
     cluster_drain_without_plan>"✔ Node drain does not<br/>move load without a<br/>cluster plan"]
-    cluster_judged_round_cmd["○ Judged round across<br/>two nodes"]
     cluster_leader_move["⏸ Move a replica's<br/>leader"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
@@ -51,17 +51,17 @@ flowchart TB
     cluster_join_leave ~~~ cluster_planner_hardening
     cluster_remote_kv ~~~ cluster_pipeline_prefill
     cluster_failover ~~~ cluster_step_tokens_from_plan
-    cluster_planner_hardening ~~~ cluster_mode1_detection
-    cluster_pipeline_prefill ~~~ cluster_discovery_disk_names
-    cluster_step_tokens_from_plan ~~~ cluster_failover_bound
+    cluster_planner_hardening ~~~ cluster_judged_round_cmd
+    cluster_pipeline_prefill ~~~ cluster_mode1_detection
+    cluster_step_tokens_from_plan ~~~ cluster_discovery_disk_names
+    cluster_judged_round_cmd ~~~ cluster_failover_bound
     cluster_mode1_detection ~~~ cluster_rejoin_after_restore
     cluster_discovery_disk_names ~~~ cluster_prefix_fetch_not_triggered
     cluster_failover_bound ~~~ cluster_plan_source_gpu_segments
     cluster_rejoin_after_restore ~~~ cluster_drain_without_plan
-    cluster_prefix_fetch_not_triggered ~~~ cluster_judged_round_cmd
-    cluster_plan_source_gpu_segments ~~~ cluster_leader_move
-    cluster_drain_without_plan ~~~ cluster_experts_nodes
-    cluster_judged_round_cmd ~~~ cluster_replica_scaling
+    cluster_prefix_fetch_not_triggered ~~~ cluster_leader_move
+    cluster_plan_source_gpu_segments ~~~ cluster_experts_nodes
+    cluster_drain_without_plan ~~~ cluster_replica_scaling
     cluster_leader_move ~~~ cluster_prefix_fetch_not_observed
     cluster_experts_nodes ~~~ cluster_head_led_plan_ignores_segments
     cluster_replica_scaling ~~~ cluster_second_cold_request_empty
@@ -84,8 +84,8 @@ flowchart TB
     cluster_planner --> cluster_planner_hardening
     cluster_pipeline_nodes --> cluster_pipeline_prefill
     cluster_pipeline_prefill --> cluster_step_tokens_from_plan
-    cluster_mode1_detection --> cluster_failover_bound
     cluster_pipeline_prefill --> cluster_judged_round_cmd
+    cluster_mode1_detection --> cluster_failover_bound
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -100,8 +100,8 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_failover_bound unrated
-    class cluster_remote_kv,cluster_judged_round_cmd next
+    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound unrated
+    class cluster_remote_kv next
     class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan succ
     class cluster_leader_move,cluster_experts_nodes parked
     class cluster_replica_scaling blocked
@@ -126,7 +126,7 @@ flowchart TB
 | `cluster-discovery-disk-names` | Discovery names the builder disk | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | an unedited cluster profile graph gives the 235B its spanning candidate | docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster_discovered_ram_experts.rs; crates/profiler/src/discover.rs |
 | `cluster-failover-bound` | Failover bound per Case F mode | experiment | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-mode1-detection |  |  | worst case 2.13 s at the default, under the 3 s rule | docs/adr/0091-phase6-multi-node.md; crates/control/tests/case_f.rs; crates/control/src/cluster.rs |
 | `cluster-leader-move` | Move a replica's leader | feature | ci | parked | unrated |  |  | bench-phase6-exit |  |  |  |  |
-| `cluster-judged-round-cmd` | Judged round across two nodes | tooling | ci | next | unrated |  |  | cluster-pipeline-prefill |  |  |  |  |
+| `cluster-judged-round-cmd` | Judged round across two nodes | tooling | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-pipeline-prefill |  |  | one judged round and the graph merge are tetraeder subcommands | docs/adr/0091-phase6-multi-node.md; crates/tetraeder/tests/judged_round.rs; crates/tetraeder/src/judged.rs; crates/tetraeder/src/hw_merge.rs |
 | `cluster-planner-hardening` | Harden the cluster planner inputs | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-planner |  |  | inputs refused, not panicked | docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster_hardening.rs |
 | `cluster-discovery` | Node list, health and probes | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-transport |  |  | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | docs/adr/0091-phase6-multi-node.md; crates/control/tests/sim.rs; crates/control/tests/tls_loopback.rs; crates/transport/tests/hardening.rs |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-discovery, cluster-replicas |  |  | a node whose replica answers one probe step joins the router, a node that goes down or a broken connection takes it out, and a restored node or a restarted engine rejoins without manual action, on simulated nodes and two real node processes; the drain and restart of a pipeline over nodes is not built | docs/adr/0091-phase6-multi-node.md; crates/control/tests/case_f.rs; crates/control/tests/router_props.rs; crates/control/tests/replica_daemon.rs; crates/tetraeder/tests/replica_smoke.rs |
@@ -163,7 +163,7 @@ flowchart TB
 | `cluster-discovery-disk-names` | Discovery names the builder disk | case_s_candidate pick=c00 stages=2 ubatch=Some(2048) ram_expert_stages=2, discovery_gives_the_235b_a_spanning_candidate_with_ram_experts ok (CI of branch cluster-discovery-disks) | an unedited cluster profile graph gives the 235B its spanning candidate | Discovery named every disk disk0 and gave the device no read rate, so the planner homed every 235B expert in RAM and the validator rejected all candidates; the volume that holds the node's models dir is now nvme0 with its link prior as the rate, and the test builds the graph from recorded volumes with no edit. The RAM budget of a judged session is still a graph edit unless the box's RAM is the budget. |  |  |  |  |  |
 | `cluster-failover-bound` | Failover bound per Case F mode | case_f_bound mode=KillWorker worst_error_s=0.001 computed_bound_s=0.000, mode=KillDaemon 0.001 and 0.000, mode=Blackhole worst_error_s=1.044 computed_bound_s=1.067 at node_down_after 1 s (CI of branch cluster-discovery-disks) | worst case 2.13 s at the default, under the 3 s rule | The worst time from a node fault to the in-flight error on the head, from the code, a killed engine or daemon closes the connection with no timer, a partition costs node_down_after plus the tick plus one pause step, 2.13 s at 2 s, plus one one-way delay on a real link. Simulated nodes confirm each mode within its bound. Findings, an engine that hangs with its daemon alive has no timer, and a receiver that does not drain delays the errors by up to 60 s each. |  |  |  |  |  |
 | `cluster-leader-move` | Move a replica's leader |  |  | A replan that moves a replica's leader node replaces the replica (drain the old one, start a new id on the new leader, no prefix carried), as ADR 0091 decides; ClusterControl::restart refuses such a plan today. Parked until after the exit, which needs no leader move. |  |  |  |  |  |
-| `cluster-judged-round-cmd` | Judged round across two nodes |  |  | A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI. |  |  |  |  |  |
+| `cluster-judged-round-cmd` | Judged round across two nodes | CI run 45640528598 ubuntu and windows - test cpu_a_judged_round_across_two_loopback_nodes_writes_the_files_the_summary_reads ... ok; test a_replica_being_replaced_keeps_the_requests_waiting_until_the_new_one_joins ... ok | one judged round and the graph merge are tetraeder subcommands | A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI. |  |  |  |  |  |
 | `cluster-planner-hardening` | Harden the cluster planner inputs | CI run 45527752415 ubuntu and windows - test a_node_name_is_one_path_segment ... ok; test forbid_node_also_rules_out_kv_workspace_and_slot_caches ... ok | inputs refused, not panicked | Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors. | From the read-only review of 81d4ecc4..51738939 (2026-11-24); none reachable without a malformed cluster.toml or layout. The transport findings of the same review went to cluster-discovery. |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | test a_killed_and_restarted_daemon_rejoins_within_down_after_plus_one_heartbeat ... ok (CI run 45305038491, ubuntu and windows, with the membership fault tests and two loopback TLS daemons profiling and probing each other) | node daemon, membership and probes done; killed daemon rejoins within node_down_after plus one heartbeat on MemTransport and loopback TLS; step 1 review fixes in | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live | case_f mode=Blackhole requests=185 in_flight_errors=3 max_error_s=1.030 bound_s=2.0 moved=2 ok_after_bound=18 rejoin_s=0.739 (CI run 45424566387, ubuntu and windows) | a node whose replica answers one probe step joins the router, a node that goes down or a broken connection takes it out, and a restored node or a restarted engine rejoins without manual action, on simulated nodes and two real node processes; the drain and restart of a pipeline over nodes is not built | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). | Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. Done as built (ADR 0091 History, step 5) for replicas of one node; since step 6 (cluster-integration) a node change replans the replicas that span it and a planned change drains the replica first (its requests finish), while a node that goes down still fails the requests in flight on it. |  |  |  |  |
@@ -181,7 +181,7 @@ flowchart TB
 | `cluster-drain-without-plan` | Node drain does not move load without a cluster plan | drain_without_plan drained_after_s=0.18 in_flight_ok=6 later_on_other=10 (CI run 45565416727) | a drained node takes no new request without a plan | With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains. |  |  |  |  |  |
 | `cluster-prefix-fetch-not-observed` | Prefix fetch between real processes not demonstrated | prefix: no fetch line, x2 recomputed (common=0) with declared prefill 5 tok/s and --cluster-hw (bench/results/phase6-rehearsal-2-20261125/README.md, step 2) | a fetch priced to win was not seen, no grant log line, no readable counter | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |  |  |  |  |  |
 | `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | c00 leader a: node b idle, pp 5200 tok/s, tg 190 tok/s (bench/results/phase6-rehearsal-2-20261125/split30/c00-local-run) | serve --cluster-plan with the head as leader silently drops the other nodes segments | The planner picked a plan whose leader is the head; the head started its in-process engine for the whole model and never used node b; the plan source should refuse or serve it. |  |  |  |  |  |
-| `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | round r2 and r3: status 200, no token (bench/results/phase6-rehearsal-2-20261125/split30, runs 2 to 4) | after one cold 2048-token request the next cold one ends with nothing | Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read. |  |  |  |  |  |
+| `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | round r2 and r3: status 200, no token (bench/results/phase6-rehearsal-2-20261125/split30, runs 2 to 4) | after one cold 2048-token request the next cold one ends with nothing | Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read. | Not reproduced on CPU with the tiny MoE: cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node (cluster_integration.rs) sends three cold prompts of about 2000 tokens, then three streamed with ignore_eos, through serve --cluster-plan at 4 micro-batches of 512, ctx 4096 and 4 sequences, and every answer equals one node. What differs from rehearsal 2 is the 30B with expert slots, CUDA and a WAN link, so the cause is still open; the test stays as the guard. |  |  |  |  |
 | `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | error: node a: probe of b failed: write failed: Broken pipe (bench/results/phase6-rehearsal-2-20261125/README.md, deviations) | a slow link makes the full probe exceed the 30 s idle limit | On a link with bulk 2 to 15 s per 4 to 32 MiB the probe to 64 MiB with 10 repeats is cut by the control connection idle limit, so no start probe could be taken at the specified sizes. |  |  |  |  |  |
 
 ### Folded items per node
