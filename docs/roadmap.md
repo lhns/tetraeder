@@ -342,6 +342,7 @@ flowchart TB
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
 | Rerun the segment confirmation | ○ next | Rerun of the one-segment confirmation on a one-NUMA-node 3090 host with real-hidden anchors, gates as code and an early A/A abort |
+| Magnitude against llama-server on Qwen3.6 | ○ next | One box runs Magnitude (magnitude-engine on the GGUF, its own runtime), llama-server at the pin and tetraeder serve (libllama) on the Qwen3.6-35B-A3B file of bench-strata-q36, c1 and c4, to place a second expert-tiering engine against the same baseline; it can share a box with another Qwen3.6 job. |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -378,6 +379,7 @@ flowchart TB
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-235b-segment-confirm-2`: Rerun the segment confirmation
+- `bench-magnitude-q36`: Magnitude against llama-server on Qwen3.6
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -866,7 +868,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 28 nodes (18 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 49 nodes (35 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (35 done, 3 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 18 nodes (14 done, 2 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

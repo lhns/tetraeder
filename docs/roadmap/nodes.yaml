@@ -3935,6 +3935,25 @@ nodes:
   folded: []
   overview: false
   plain: Rerun of the one-segment confirmation on a one-NUMA-node 3090 host with real-hidden anchors, gates as code and an early A/A abort
+- id: bench-magnitude-q36
+  title: Magnitude against llama-server on Qwen3.6
+  track: bench
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-strata-q36
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: One box runs Magnitude (magnitude-engine on the GGUF, its own runtime), llama-server at the pin and tetraeder serve (libllama) on the Qwen3.6-35B-A3B file of bench-strata-q36, c1 and c4, to place a second expert-tiering engine against the same baseline; it can share a box with another Qwen3.6 job.
+  notes: 'Magnitude does not run Qwen3 dense or MoE (inventory 2026-11-25), so the own builders cannot pair with it; its expert ranking by expected uses and memory negotiation are design references (docs/plan.md references).'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench
