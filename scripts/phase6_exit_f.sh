@@ -215,6 +215,7 @@ st_trials() {
       echo "clock b minus a: $clk"
       # the load on a, its start epoch is on a's clock; the fault is armed on b for that epoch + FAULT_AT on b's clock
       t0a=$(bx a 60 "bash scripts/phase6_box.sh launch load-$label $(load_cmd "$label" "$trial_s" "$A/trials-$label.jsonl")" | head -n 1)
+      case "$t0a" in '' | *[!0-9.]*) die "the load of $label was not started by this call ('$t0a'): a launch of the same tag already ran. Remove $A/pids/launch-load-$label.done on the box or rerun with a new RESULTS_NAME" ;; esac
       target_b=$(awk -v t="$t0a" -v f="$fault_at" -v o="$off" 'BEGIN { printf "%.3f", t + f + o }')
       bx b 60 "bash scripts/phase6_box.sh launch fault-$label env TARGET_EPOCH=$target_b FAULT_LOG=$B/logs/fault-$label.log STOP_FOR=$stop_for RESTORE_AFTER=$restore_after POLL_S=$poll_s P6=$B bash scripts/phase6_fault.sh $mode 0" > /dev/null
       say "load and fault started (fault at b epoch $target_b)"
