@@ -2708,6 +2708,24 @@ nodes:
   folded: []
   overview: false
   plain: A 7-node plan on 24 GB cards passes the planner's footprint but fails the validator with MemoryExceeded; find which accounting differs and make them agree, with a property test over the cluster fixtures (found by planner-costmodel-v6-rest; does not affect the two-node exit).
+- id: cluster-leader-move
+  title: Move a replica's leader
+  track: cluster
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-exit
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A replan that moves a replica's leader node replaces the replica (drain the old one, start a new id on the new leader, no prefix carried), as ADR 0091 decides; ClusterControl::restart refuses such a plan today. Parked until after the exit, which needs no leader move.
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster

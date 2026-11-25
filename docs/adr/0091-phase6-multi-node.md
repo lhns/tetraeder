@@ -213,6 +213,10 @@ Phase 6 code stays on branches until the regression-gate box (`bench-regression-
 - On the WAN, two nodes are expected to tie one streaming node on decode and win on prefill (estimates above); the value of two nodes there is fitting the model in RAM, not decode speed.
 - The head is a single point of failure for the gateway; acceptable for two to three nodes and revisited with Phase 7.
 
+## Leader move (2026-11-25, decided, parked)
+
+A plan that moves a replica's leader to another node is a replacement, not a reshard: the old replica drains (no new request, in-flight ones finish), a new replica starts under a new id on the new leader, and the prefix cache is not carried over. Neither exit case needs it: Case F restores node B under the same plan and Case S has no fault. Tree node `cluster-leader-move`, parked behind `bench-phase6-exit`.
+
 ## Owner answers (2026-11-23)
 
 1. Exit hardware: a Vast WAN pair (option a); a same-host pair runs in the rehearsal as an unjudged point; the homelab later.
