@@ -21,13 +21,17 @@
 #             b, anchors of each node's own segment truncated to a quarter and a half (real hidden rows; layer 0 takes tokens), two
 #             rounds, the fit (band limit 0.10, refused above)
 #   predict   the fitted node graphs merged into the cluster graph, `tetraeder-plan predict --cluster --judged` (routing trace only),
-#             SHA256SUMS and FROZEN.sha256 of everything it used; refuses on any failed pre-freeze rule
+#             SHA256SUMS and FROZEN.sha256 of everything it used; refuses on any failed pre-freeze rule. With SECOND_PREDICT_CMD (runs
+#             on node a, writes $PRED_OUT) a report-only prediction priced from a second prompt's routing trace, recorded before the
+#             judged runs, is kept as predictions/predict-cluster-p2.json (not frozen, not the judged prompt)
 #   judged    refuses unless FROZEN_SHA equals the frozen hash and every frozen file matches; rounds of the judged plan until three
 #             are clean or eight have run (unclean rounds are rerun on the same prediction, all reported); the early A/A after round
 #             2 aborts the session outside 0.08 on T
 #   aalast    the A/A last: the judged plan once more, the last run of the session
-#   linkend   the probe again; 16 KiB and 32 MiB must agree with the start probe within 0.08, else the rounds are rerun after a new
-#             probe and prediction (a new session)
+#   linkend   the end probe; the frozen judged plan is priced again with its link curves and nothing else changed
+#             (predictions/predict-cluster-end.json). The link rule (advisor, delegated by the owner, 2026-11-25): predicted pp and
+#             tg each move by at most 0.08, else the session is not clean; the verdict must hold against the frozen and the end-priced
+#             prediction. The link is also probed before every judged round (link/probe-<round>.json); raw points are reported only
 #   summary   session.json and the verdict
 # THE JUDGED ROUND: no Rust command runs pp2048 then tg128 across the two nodes with the warm request, no prefix reuse and each
 # segment's counters in an exit_regime-shaped JSON (tree node cluster-exit-round). Until it exists the judged and aalast stages refuse
@@ -273,6 +277,22 @@ EOF
   say "calib done"
 }
 
+# price HW_FILE OUT_FILE (under the work dir of node a): the judged plan, the frozen replays, nothing else differs between callers
+price() {
+  local P tsha ph
+  P=$(p6dir a)
+  tsha=$(awk '{ print $1 }' "$out/trace/routing.sha256")
+  ph=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["prompt"]["fnv1a64"])' "$out/session.json")
+  bx a 600 "$(tplan) predict --cluster $P/judged-plan.toml --hw $P/$1 --layout $P/layout.json --tier-replay $(span_of a)=$P/replay-a.json --tier-replay $(span_of b)=$P/replay-b.json --trace-sha256 $tsha --prompt-hash $ph --judged --prompt 2048 --gen 128 --out $P/$2"
+}
+
+probe_link() { # probe_link NAME: the link probe of the session, into link/probe-NAME.json
+  local P
+  P=$(p6dir a)
+  bx a 900 "$(tet) cluster probe --cluster $P/cluster.toml --key $P/keys/key.pem --cert $P/keys/cert.pem --repeats ${PROBE_REPEATS:-10} -o $P/probe-$1.json" | tail -n 1
+  get a "probe-$1.json" "$out/link/probe-$1.json"
+}
+
 st_predict() {
   local P tsha ph
   need_spans
@@ -286,12 +306,13 @@ st_predict() {
   put a "$out/calib/a/replay.json" replay-a.json
   put a "$out/calib/b/replay.json" replay-b.json
   # the prediction is judged: routing from the trace only, the sha256 of the trace it was priced from, one replay per segment
-  if ! bx a 600 "$(tplan) predict --cluster $P/judged-plan.toml --hw $P/hw-cluster.json --layout $P/layout.json --tier-replay $(span_of a)=$P/replay-a.json --tier-replay $(span_of b)=$P/replay-b.json --trace-sha256 $tsha --prompt-hash $ph --judged --prompt 2048 --gen 128 --out $P/predict-cluster.json" > "$out/predictions/predict.log" 2>&1; then
-    cat "$out/predictions/predict.log"
-    die "predict --cluster --judged refused: nothing is frozen"
-  fi
+  price hw-cluster.json predict-cluster.json > "$out/predictions/predict.log" 2>&1 || { cat "$out/predictions/predict.log"; die "predict --cluster --judged refused: nothing is frozen"; }
   tail -n 2 "$out/predictions/predict.log"
   get a predict-cluster.json "$out/predictions/predict-cluster.json"
+  if [ -n "${SECOND_PREDICT_CMD:-}" ]; then # report only: the routing trace of a second prompt (recorded now, before any judged run)
+    bx a 3600 "env PRED_OUT=$P/predict-cluster-p2.json bash -c '$SECOND_PREDICT_CMD'" > /dev/null \
+      && get a predict-cluster-p2.json "$out/predictions/predict-cluster-p2.json" || say "the second-prompt prediction was not written (report only)"
+  fi
   (cd "$out" && sha256sum layout.json link/probe-start.json link/hw.json link/hw-builder.json predictions/hw-cluster.json predictions/predict-cluster.json \
     plans/judged-plan.toml plans/candidates.json plans/spans.txt trace/routing.sha256 trace/hidden.sha256 calib/a/pred.json calib/b/pred.json \
     calib/a/replay.json calib/b/replay.json calib/a/fitted.toml calib/b/fitted.toml > predictions/SHA256SUMS \
@@ -307,6 +328,7 @@ st_predict() {
 run_round() { # run_round LABEL
   local label=$1 d="$out/judged/$1" n t0 t0x
   mkdir -p "$d"
+  if [ "$label" = last ]; then probe_link aalast; else probe_link "$label"; fi # raw points per round: reported, not gated
   if [ "$LOOPBACK" = 1 ]; then
     t0=$(python3 -I -c 'import time; print(time.time())')
     (cd "$repo" && python3 scripts/phase6_loopback.py judged-round --nodes a,b --round "${label#r}" --out "$d")
@@ -363,12 +385,15 @@ st_aalast() {
 }
 
 st_linkend() {
-  local P
-  P=$(p6dir a)
-  bx a 900 "$(tet) cluster probe --cluster $P/cluster.toml --key $P/keys/key.pem --cert $P/keys/cert.pem --repeats 20 -o $P/probe-end.json" | tail -n 1
-  get a probe-end.json "$out/link/probe-end.json"
-  summ link "$out/link/probe-start.json" "$out/link/probe-end.json" \
-    || say "the link drifted past the band: the rounds are rerun after a new probe and prediction (ADR 0091), so this session gives no verdict"
+  need_spans
+  probe_link end
+  # the frozen plan priced again with the end probe's curves: only the link differs from the frozen graph
+  python3 -I scripts/phase6_exit_s_merge.py "$out/predictions/hw-cluster.json" --swap-link "$out/link/probe-end.json" -o "$out/predictions/hw-cluster-end.json"
+  put a "$out/predictions/hw-cluster-end.json" hw-cluster-end.json
+  price hw-cluster-end.json predict-cluster-end.json > "$out/predictions/predict-end.log" 2>&1 || { cat "$out/predictions/predict-end.log"; die "the end-priced prediction was refused"; }
+  tail -n 2 "$out/predictions/predict-end.log"
+  get a predict-cluster-end.json "$out/predictions/predict-cluster-end.json"
+  summ link "$out/link/probe-start.json" "$out/link/probe-end.json" || true # raw points, reported
 }
 
 st_summary() {

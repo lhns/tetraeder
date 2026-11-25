@@ -29,7 +29,9 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
   freeze                FROZEN.sha256 and every frozen file match; every judged round ran under that hash, started after t_frozen
   span_both_nodes       the judged plan is the planner's analytic pick (fastest predicted) among plans that compute on both
                         nodes, and no candidate that does not is considered
-  link                  probe at session end within band (0.08) of the start probe, both directions, at 16 KiB and 32 MiB
+  link_reprice          the link rule (advisor, delegated by the owner, 2026-11-25; docs/notes/phase6-rule-changes.md): the frozen judged plan
+                        is priced again with the end probe's link curves and nothing else changed (predictions/predict-cluster-end.json);
+                        predicted pp and tg each move by at most 0.08. Raw probe points (start, before each round, end) are reported, not gated
   rounds_clean          three clean rounds within eight (every round reported, unclean ones rerun on the same prediction)
   prompt_hash           every judged round ran the frozen prompt
   routing_gate          per segment, medians of the clean rounds against the replay: vram share 0.02, full hit 0.02, RAM hit 0.005
@@ -37,7 +39,9 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
   aa                    judged r1 against judged/aa-last the last run, within 0.08 on T
 A round is unclean when a segment's warm block says not covering, timed prefill read disk bytes, the balloon or co-tenant
 flag is false, the GPU throttled or ran below its default power limit, a rate is missing, or the prompt differs.
-Then, only when clean: e_pp = pp_pred / pp_meas - 1 and e_tg on the medians of the clean rounds; pass when both are within 0.15.
+Then, only when clean: e_pp = pp_pred / pp_meas - 1 and e_tg on the medians of the clean rounds, against the frozen prediction and
+against the end-priced one; pass only when both are within 0.15 against both, a miss when it is outside against both, else no verdict.
+Report only: the errors against a prediction priced from a second prompt's routing trace (predictions/predict-cluster-p2.json).
 """
 
 from __future__ import annotations
@@ -363,13 +367,26 @@ def summarize(res: str) -> dict:
     except (OSError, ValueError, KeyError) as e:
         rule("span_both_nodes", False, f"no plan or candidates ({e})")
 
-    # the link
+    # the link: raw probe points per probe are reported; the rule is how far the end probe moves the frozen plan's prediction
+    out["link"] = []
     try:
-        why, rows = check_link(load(os.path.join(res, "link", "probe-start.json")), load(os.path.join(res, "link", "probe-end.json")), BAND)
-        out["link"] = rows
-        rule("link", not why, "; ".join(why) or f"{len(rows)} points within {BAND}")
-    except (OSError, ValueError) as e:
-        rule("link", False, f"missing probe ({e})")
+        start = load(os.path.join(res, "link", "probe-start.json"))
+        for f in sorted(glob.glob(os.path.join(res, "link", "probe-*.json"))):
+            if os.path.basename(f) != "probe-start.json":
+                _, rows = check_link(start, load(f), BAND)
+                out["link"].append({"probe": os.path.basename(f), "points": rows})
+    except (OSError, ValueError):
+        pass
+    pe: dict = {}
+    try:
+        pe = load(os.path.join(res, "predictions", "predict-cluster-end.json")).get("prediction") or {}
+        pf = (pc.get("prediction") or {}) if pc else {}
+        mv = {k: pe[k] / pf[k] - 1.0 for k in ("pp_tps", "tg_tps")}
+        out["link_reprice"] = {"pp_move": mv["pp_tps"], "tg_move": mv["tg_tps"], "band": BAND}
+        rule("link_reprice", all(abs(v) <= BAND + 1e-9 for v in mv.values()),
+             f"end-priced against frozen: pp {mv['pp_tps']:+.3f}, tg {mv['tg_tps']:+.3f} against {BAND}")
+    except (OSError, ValueError, KeyError, ZeroDivisionError) as e:
+        rule("link_reprice", False, f"no end-priced prediction ({e})")
 
     # rounds
     pr = (pc.get("prediction") or {}) if pc else {}
@@ -440,9 +457,26 @@ def summarize(res: str) -> dict:
         if out.get("median"):
             out["status"] += f"; on the medians e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}, not a verdict"
     else:
-        ok = abs(out["e_pp"]) <= LINE and abs(out["e_tg"]) <= LINE
-        out["verdict"] = "pass" if ok else "miss"
-        out["status"] = f"{out['verdict']}: e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}"
+        m = out["median"]
+        out["e_pp_end"], out["e_tg_end"] = ss.e(pe["pp_tps"], m["pp"]), ss.e(pe["tg_tps"], m["tg"])
+        ok_f = abs(out["e_pp"]) <= LINE and abs(out["e_tg"]) <= LINE
+        ok_e = abs(out["e_pp_end"]) <= LINE and abs(out["e_tg_end"]) <= LINE
+        detail = (f"frozen e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f}; end-priced e_pp {out['e_pp_end']:+.3f}, "
+                  f"e_tg {out['e_tg_end']:+.3f}; against {LINE}")
+        if ok_f and ok_e:
+            out["verdict"], out["status"] = "pass", f"pass: {detail}"
+        elif not ok_f and not ok_e:
+            out["verdict"], out["status"] = "miss", f"miss: {detail}"
+        else:
+            out["status"] = f"no verdict: holds against only one of the frozen and the end-priced prediction ({detail})"
+    # report only: errors against the prediction priced from a second prompt's routing trace
+    try:
+        p2 = load(os.path.join(res, "predictions", "predict-cluster-p2.json"))["prediction"]
+        if out.get("median"):
+            out["second_prompt_report"] = {"pp_tps": p2["pp_tps"], "tg_tps": p2["tg_tps"],
+                                           "e_pp": ss.e(p2["pp_tps"], out["median"]["pp"]), "e_tg": ss.e(p2["tg_tps"], out["median"]["tg"])}
+    except (OSError, ValueError, KeyError):
+        pass
     # report only: the single-node reference of each round
     out["reference"] = [{"file": os.path.relpath(f, res).replace(os.sep, "/"), "pp": ss.run_of(load(f)).get("prefill_tok_s"),
                          "tg": ss.run_of(load(f)).get("decode_tok_s")} for f in sorted(glob.glob(os.path.join(res, "reference", "r[0-9]*.json")))]
@@ -456,6 +490,9 @@ def summarize(res: str) -> dict:
 
 def print_tables(o: dict) -> None:
     print("status:", o["status"])
+    if o.get("second_prompt_report"):
+        q = o["second_prompt_report"]
+        print(f"  report only, second prompt's routing: e_pp {q['e_pp']:+.3f}, e_tg {q['e_tg']:+.3f}")
     for r in o["rounds"]:
         print(f"  {r['round']:14} pp {r['pp'] or 0:8.2f} tg {r['tg'] or 0:7.3f} e_pp {r['e_pp'] or 0:+.3f} e_tg {r['e_tg'] or 0:+.3f} "
               f"{'clean' if r['clean'] else 'UNCLEAN ' + '; '.join(r['unclean_reasons'])}")
@@ -513,8 +550,8 @@ def main() -> int:
         for rw in rows:
             print(f"  {rw['point']:24} {rw['start_s'] * 1e3:9.3f} -> {rw['end_s'] * 1e3:9.3f} ms {rw['diff']:+.3f} {'ok' if rw['ok'] else 'OUTSIDE THE BAND'}")
         for w in why:
-            print(f"GATE FAILED link: {w}")
-        return 1 if why else 0
+            print(f"raw points outside {a.band} (reported, not gated; the rule is the end-priced prediction): {w}")
+        return 0
     if a.cmd == "spans":
         for n, lo, hi in plan_spans(a.plan):
             print(f"{n} {lo}..{hi}")

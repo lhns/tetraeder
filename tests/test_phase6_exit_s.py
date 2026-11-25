@@ -65,7 +65,8 @@ def make_round(d, *, t_start, frozen, pp=295.0, tg=5.1, share=0.39, prompt=PH, *
 
 
 def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, plan=PLAN, probe_end=None, hidden_b=None,
-          anchor_b_seed=False, anchor_a_prompt=PH, cand_single_faster=True, mutate=None, frozen_t=1000.0, freeze_pp=300.0, freeze_tg=5.0):
+          anchor_b_seed=False, anchor_a_prompt=PH, cand_single_faster=True, mutate=None, frozen_t=1000.0, freeze_pp=300.0, freeze_tg=5.0, end_move=(1.0, 1.0),
+          second=None):
     res = tmp_path / "res"
     write(res / "session.json", {"model_sha256": "ab" * 32, "prompt": {"tokens": 2048, "gen": 128, "fnv1a64": PH},
                                  "segments": [{"node": "a", "span": [0, 47], "embed": True, "head": False},
@@ -97,6 +98,10 @@ def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, pla
         "routing_trace": {"sha256": "t" * 64, "prompt_hash": PH}, "workload": {"prompt": 2048, "gen": 128},
         "prediction": {"pp_tps": freeze_pp, "tg_tps": freeze_tg, "request_s": 30.0}})
     names = ["predictions/predict-cluster.json", "plans/judged-plan.toml", "calib/a/pred.json", "calib/b/pred.json"]
+    if end_move is not None:  # the frozen plan priced again with the end probe's link: only the link differs
+        write(res / "predictions" / "predict-cluster-end.json", {"prediction": {"pp_tps": freeze_pp * end_move[0], "tg_tps": freeze_tg * end_move[1]}})
+    if second:
+        write(res / "predictions" / "predict-cluster-p2.json", {"prediction": {"pp_tps": second[0], "tg_tps": second[1]}})
     write(res / "predictions" / "SHA256SUMS", "".join(f"{sha((res / n).read_bytes())}  {n}\n" for n in names))
     frozen = sha((res / "predictions" / "SHA256SUMS").read_bytes())
     write(res / "predictions" / "FROZEN.sha256", f"{frozen}  SHA256SUMS\n")
@@ -123,7 +128,7 @@ def test_a_clean_session_passes(tmp_path):
     o = summary(res)
     assert failed(o) == [] and o["verdict"] == "pass", o["status"]
     assert abs(o["e_pp"] - (300.0 / 295.0 - 1)) < 1e-9 and abs(o["e_tg"] - (5.0 / 5.1 - 1)) < 1e-9
-    assert any(r["point"].endswith("33554432") for r in o["link"])  # 32 MiB is read, interpolated
+    assert any(r["point"].endswith("33554432") for x in o["link"] for r in x["points"])  # 32 MiB is read, interpolated
 
 
 def test_a_clean_session_that_misses_the_line_is_a_miss_not_a_pass(tmp_path):
@@ -216,29 +221,75 @@ def test_the_hidden_rows_must_be_the_same_on_both_boxes(tmp_path):
 # ---- the link ---------------------------------------------------------------------------------------------------------------------
 
 
-def test_a_link_that_drifted_past_the_band_at_32_mib_is_no_verdict(tmp_path):
-    res, _ = build(tmp_path, probe_end=probe(1.0, 1.12))  # a to b at 16 and 64 MiB 12% slower: 32 MiB inside it
+def test_raw_small_message_latency_drifting_15_percent_is_clean_when_the_prediction_barely_moves(tmp_path):
+    # the end probe's 16 KiB point is 15% up, as the rehearsal's WAN pair moved; the end-priced prediction moves 2%
+    p = probe()
+    for c in p["curves"]:
+        c["points"] = [[x, y * (1.15 if x < 1024 * 1024 else 1.0)] for x, y in c["points"]]
+    res, _ = build(tmp_path, probe_end=p, end_move=(0.98, 0.98))
     o = summary(res)
-    assert failed(o) == ["link"] and o["verdict"] == "no verdict"
-    assert any(not r["ok"] and r["point"].endswith("33554432") for r in o["link"])
+    assert failed(o) == [] and o["verdict"] == "pass", o["status"]
+    rows = next(x for x in o["link"] if x["probe"] == "probe-end.json")["points"]
+    assert any(not r["ok"] for r in rows)  # the raw point is reported out of band, and not gated
+    assert abs(o["link_reprice"]["pp_move"] + 0.02) < 1e-9
 
 
-def test_a_link_inside_the_band_and_the_cli(tmp_path):
-    res, _ = build(tmp_path, probe_end=probe(1.07))
+def test_a_link_that_moves_the_frozen_prediction_past_0_08_is_not_clean(tmp_path):
+    res, _ = build(tmp_path, end_move=(0.91, 1.0))
+    o = summary(res)
+    assert failed(o) == ["link_reprice"] and o["verdict"] == "no verdict"
+    res, _ = build(tmp_path / "tg", end_move=(1.0, 1.09))
+    assert failed(summary(res)) == ["link_reprice"]
+    res, _ = build(tmp_path / "edge", end_move=(0.92, 1.08))  # exactly on the band: inside
     assert failed(summary(res)) == []
+
+
+def test_frozen_passes_but_end_priced_fails_is_no_verdict(tmp_path):
+    # measured pp 295, tg 5.1: frozen pp 330 is +11.9% (inside), the end-priced 330 * 1.07 = 353 is +19.7% (outside), the link moved 7%
+    res, _ = build(tmp_path, freeze_pp=330.0, end_move=(1.07, 1.0))
+    o = summary(res)
+    assert failed(o) == [] and o["verdict"] == "no verdict" and "only one of the frozen and the end-priced" in o["status"]
+    assert abs(o["e_pp"]) <= 0.15 < abs(o["e_pp_end"])
+
+
+def test_outside_against_both_is_a_miss_and_inside_against_both_a_pass(tmp_path):
+    res, _ = build(tmp_path, freeze_pp=400.0, end_move=(1.0, 1.0))
+    assert summary(res)["verdict"] == "miss"
+    res, _ = build(tmp_path / "ok", end_move=(1.05, 0.95))
+    o = summary(res)
+    assert o["verdict"] == "pass" and abs(o["e_pp_end"]) < 0.15
+
+
+def test_no_end_priced_prediction_is_no_verdict(tmp_path):
+    res, _ = build(tmp_path, end_move=None)
+    assert failed(summary(res)) == ["link_reprice"]
+
+
+def test_the_second_prompt_prediction_is_reported_beside_the_judged_errors(tmp_path):
+    res, _ = build(tmp_path, second=(280.0, 4.8))
+    o = summary(res)
+    assert o["verdict"] == "pass" and abs(o["second_prompt_report"]["e_pp"] - (280.0 / 295.0 - 1)) < 1e-9
+    assert "second_prompt_report" not in summary(build(tmp_path / "none")[0])
+
+
+def test_the_link_cli_reports_raw_points_and_never_fails(tmp_path):
+    res, _ = build(tmp_path)
     a, b = res / "link" / "probe-start.json", res / "link" / "probe-end.json"
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "link", str(a), str(b)], capture_output=True, text=True)
-    assert r.returncode == 0
     write(b, probe(1.2))
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "link", str(a), str(b)], capture_output=True, text=True)
-    assert r.returncode == 1 and "OUTSIDE THE BAND" in r.stdout
+    assert r.returncode == 0 and "OUTSIDE THE BAND" in r.stdout and "not gated" in r.stdout
 
 
-def test_a_probe_without_a_direction_does_not_pass(tmp_path):
-    p = probe()
-    p["curves"] = p["curves"][:1]
-    res, _ = build(tmp_path, probe_end=p)
-    assert failed(summary(res)) == ["link"]
+def test_swapping_the_link_changes_nothing_else():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import phase6_exit_s_merge as m
+
+    hw = {"devices": [{"id": "a/gpu0"}], "links": [{"id": "net-a-b", "kind": "network", "alpha_s": {"value": 1}}, {"id": "a/pcie"}],
+          "collectives": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "points": [[1, 1]]}, {"op": "all_reduce", "ranks": ["a/gpu0", "a/gpu1"], "points": []}]}
+    out = m.swap_link(hw, {"curves": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "points": [[1, 9]]}], "links": [{"id": "net-a-b", "kind": "network", "alpha_s": {"value": 2}}]})
+    assert [c["points"] for c in out["collectives"] if c["op"] == "copy"] == [[[1, 9]]] and any(c["op"] == "all_reduce" for c in out["collectives"])
+    assert next(x for x in out["links"] if x["id"] == "net-a-b")["alpha_s"]["value"] == 2 and any(x["id"] == "a/pcie" for x in out["links"])
+    assert out["devices"] == [{"id": "a/gpu0"}]
 
 
 def test_the_interpolation_is_the_cost_models_curve_time():

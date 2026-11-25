@@ -133,11 +133,28 @@ def test_case_s_aa_last_outside_the_band_gives_no_verdict(tmp_path):
 
 
 @needs_posix
-def test_case_s_a_link_that_drifted_gives_no_verdict(tmp_path):
-    r1, r2, out = session_s(tmp_path, "link_drift")
+def test_case_s_small_message_drift_is_reported_not_gated(tmp_path):
+    r1, r2, out = session_s(tmp_path, "small_drift")
     v = verdict_s(out)
-    assert v["verdict"] == "no verdict" and failed_rules(v) == ["link"]
-    assert "link drifted past the band" in text(r2)
+    assert v["verdict"] == "pass" and failed_rules(v) == [], v["status"]
+    assert abs(v["link_reprice"]["pp_move"]) < 0.08
+    raw = [r for x in v["link"] for r in x["points"]]
+    assert any(not r["ok"] for r in raw)  # the raw 16 KiB points are out of the old band and reported
+    assert (out / "link" / "probe-r1.json").exists() and (out / "link" / "probe-aalast.json").exists()  # a probe before every round
+
+
+@needs_posix
+def test_case_s_a_link_that_moves_the_prediction_past_0_08_is_not_clean(tmp_path):
+    r1, r2, out = session_s(tmp_path, "link_move")
+    v = verdict_s(out)
+    assert v["verdict"] == "no verdict" and failed_rules(v) == ["link_reprice"]
+
+
+@needs_posix
+def test_case_s_frozen_passes_but_end_priced_fails_is_no_verdict(tmp_path):
+    r1, r2, out = session_s(tmp_path, "end_fails")
+    v = verdict_s(out)
+    assert failed_rules(v) == [] and v["verdict"] == "no verdict" and abs(v["e_pp"]) <= 0.15 < abs(v["e_pp_end"])
 
 
 @needs_posix

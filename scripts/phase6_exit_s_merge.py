@@ -13,7 +13,8 @@ The first form prepares the graph the candidates are enumerated on (what a judge
 crates/planner/tests/cluster_discovered_ram_experts.rs does): discovery names disks `disk0..` and the planner reads a builder's experts
 from `nvme0`, and without it homes every expert in RAM, which the 235B does not fit; so each node's discovered disks are replaced by an
 `nvme0` taken from the committed NVMe prior (`crates/planner/fixtures/rtx3090_prior.toml`), and each node's CPU capacity is set to the
-node's measured RAM budget (ADR 0092 section 4). The second form puts the fitted node graphs in, after the anchors.
+node's measured RAM budget (ADR 0092 section 4). The second form puts the fitted node graphs in, after the anchors. `--swap-link PROBE.json` replaces only the link curves and network
+links (the end pricing of Case S: everything else stays as frozen).
 
 Rule: a fitted device `X` replaces the fields of the cluster device `<node>/X` except its identity (`id`, `name`, `kind`, `tier`,
 `node`, `index`, `numa_nodes`, `cores`) and, for a GPU, its capacity (the discovered one stays); the fitted disk `nvme0` goes to the
@@ -55,6 +56,19 @@ def prepare(hw: dict, prior: dict, ram: dict[str, int]) -> tuple[dict, list[str]
     return hw, notes
 
 
+def swap_link(hw: dict, probe: dict) -> dict:
+    """The graph with the probe's link curves and network links in place of its own; nothing else changes (Case S end pricing)."""
+    nodes = {r.split("/", 1)[0] for c in probe.get("curves", []) for r in c.get("ranks", [])}
+
+    def is_probe_curve(c: dict) -> bool:
+        return c.get("op") == "copy" and len(c.get("ranks", [])) == 2 and {r.split("/", 1)[0] for r in c["ranks"]} <= nodes
+
+    hw["collectives"] = [c for c in hw.get("collectives", []) if not is_probe_curve(c)] + copy.deepcopy(probe.get("curves", []))
+    ids = {x["id"] for x in probe.get("links", [])}
+    hw["links"] = [x for x in hw["links"] if x["id"] not in ids] + copy.deepcopy(probe.get("links", []))
+    return hw
+
+
 def merge(hw: dict, fitted: dict[str, dict]) -> tuple[dict, list[str]]:
     notes: list[str] = []
     devs = {d["id"]: d for d in hw["devices"]}
@@ -92,11 +106,12 @@ def main() -> int:
     ap.add_argument("hw")
     ap.add_argument("--node", action="append", default=[], metavar="ID=FITTED.toml")
     ap.add_argument("--builder-disk", metavar="PRIOR.toml", help="replace each node's discovered disks by the prior's nvme0")
+    ap.add_argument("--swap-link", metavar="PROBE.json", help="replace the graph's link curves and network links by this probe's")
     ap.add_argument("--ram-budget", action="append", default=[], metavar="ID=BYTES")
     ap.add_argument("-o", "--out", required=True)
     a = ap.parse_args()
-    if not a.node and not a.builder_disk:
-        ap.error("--node or --builder-disk")
+    if not a.node and not a.builder_disk and not a.swap_link:
+        ap.error("--node, --builder-disk or --swap-link")
     with open(a.hw, encoding="utf-8") as f:
         hw = json.load(f)
     notes: list[str] = []
@@ -111,6 +126,9 @@ def main() -> int:
     if fitted:
         hw, more = merge(hw, fitted)
         notes += more
+    if a.swap_link:
+        with open(a.swap_link, encoding="utf-8") as f:
+            hw = swap_link(hw, json.load(f))
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(hw, f, indent=2)
     for n in notes:

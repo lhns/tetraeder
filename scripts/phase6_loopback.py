@@ -381,8 +381,13 @@ def fake_probe(out: str) -> None:
     n = os.path.join(os.path.dirname(os.path.abspath(out)), ".probe-count")
     calls = int(open(n).read()) if os.path.exists(n) else 0
     open(n, "w").write(str(calls + 1))
-    scale = 1.12 if (calls >= 1 and scenario("link_drift")) else 1.0
-    pts = [[x, y * (scale if x >= 16 * 1024 * 1024 else 1.0)] for x, y in POINTS]
+    small = 1.15 if (calls >= 1 and scenario("small_drift")) else 1.0  # raw small-message latency 15% up, bulk unchanged
+    big = 1.0
+    if calls >= 1 and scenario("link_move"):
+        big = 1.5  # the bulk rate falls: the frozen plan's prediction moves
+    if calls >= 1 and scenario("end_fails"):
+        big = 0.65  # the link gets faster: the end-priced prediction rises
+    pts = [[x, y * (big if x >= 16 * 1024 * 1024 else (small if x < 1024 * 1024 else 1.0))] for x, y in POINTS]
     wjson(out, {"buffers": "auto", "links": [], "empty_rtt_s": [["a", "b", 0.06], ["b", "a", 0.058]],
                 "curves": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "comm": "tls", "points": pts},
                            {"op": "copy", "ranks": ["b/cpu0", "a/cpu0"], "comm": "tls", "points": POINTS}]})
@@ -434,10 +439,14 @@ def fake_plan(argv: list[str]) -> int:
             print("a judged prediction carries the sha256 of its routing trace and a replay per segment", file=sys.stderr)
             return 1
         plan = open(a.cluster, "rb").read()
+        # the stand-in's link sensitivity: the 64 MiB hop of a to b against the start probe's (1.342 s); a fifth of the relative change
+        hw = json.load(open(a.hw, encoding="utf-8"))
+        t = next((c["points"][-1][1] for c in hw.get("collectives", []) if c.get("ranks") == ["a/cpu0", "b/cpu0"]), 1.342)
+        f = 1.0 / (1.0 + 0.2 * (t / 1.342 - 1.0))
         wjson(a.out, {"kind": "predict-cluster", "routing": "trace", "judged": a.judged, "plan_sha256": sha_bytes(plan),
                       "hw_sha256": sha_bytes(open(a.hw, "rb").read()),
                       "routing_trace": {"sha256": a.trace_sha256, "prompt_hash": a.prompt_hash},
-                      "workload": {"prompt": a.prompt, "gen": a.gen}, "prediction": {"pp_tps": 300.0, "tg_tps": 5.0, "request_s": 30.0}})
+                      "workload": {"prompt": a.prompt, "gen": a.gen}, "prediction": {"pp_tps": 300.0 * f, "tg_tps": 5.0 * f, "request_s": 30.0 / f}})
         return 0
     return 2
 
@@ -474,7 +483,7 @@ def fake_sc_box(a: argparse.Namespace) -> int:
 def fake_judged_round(a: argparse.Namespace) -> int:
     """One judged round: the head's rates and each segment's file, from fixed numbers (the scenarios break rounds on purpose)."""
     k = int(a.round) if a.round.isdigit() else 0
-    pp, tg = 295.0, 5.1
+    pp, tg = (265.0 if scenario("end_fails") else 295.0), 5.1
     if scenario("aa_early_miss") and k == 2:
         pp = 150.0
     if scenario("aa_last_miss") and a.round == "last":
