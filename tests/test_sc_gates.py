@@ -224,6 +224,28 @@ def test_a_clean_miss_is_a_miss_not_no_verdict(tmp_path):
     assert v["clean"] and v["verdict"] == "miss"
 
 
+@pytest.mark.parametrize("over, held", [
+    # the replay of the frozen prediction says share 0.39, full hit 0.005, RAM hit 1.0 (ADR 0092 section 1)
+    ({"share": 0.40}, True),           # 0.01 off: judged
+    ({"share": 0.38}, True),
+    ({"share": 0.42}, False),          # 0.03 off: no verdict
+    ({"share": 0.36}, False),
+    ({"full": 0.035}, False),          # the full-hit line is 0.02 as well
+    ({"full": 0.015}, True),
+    ({"ram": 0.996}, True),            # the RAM hit line is 0.005
+    ({"ram": 0.994}, False),
+])
+def test_the_routing_gate_holds_inside_its_lines_and_misses_outside(tmp_path, over, held):
+    res, _ = make_session(tmp_path, rounds=[over] * 3, aa_last=over)
+    v = summary(res)
+    assert v["gate_held"] is held, v["gate"]
+    if held:
+        assert v["clean"] and v["verdict"] in ("pass", "miss") and "routing_gate" not in failed(v)
+    else:
+        assert failed(v) == {"routing_gate"}
+        assert v["verdict"] == "no verdict" and not v["clean"]
+
+
 def test_there_is_no_prefill_noise_band(tmp_path):
     # identical rounds that differ in prefill by 8x but agree on A/A would be unclean only through A/A; a spread among
     # rounds 2 and 3 that does not touch the A/A pair is not a rule

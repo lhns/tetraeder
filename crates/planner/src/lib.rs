@@ -57,8 +57,10 @@ pub use candidate::{
     footprint,
 };
 pub use cluster::{
-    ClusterCandidate, NodeRun, cluster_features, enumerate_cluster, predict_cluster_plan,
-    segment_layout, single_node_references, single_node_runs,
+    ClusterCandidate, NodeRun, RoutedPrediction, SegmentReplay, SegmentRouting, cluster_features,
+    cluster_features_routed, enumerate_cluster, predict_cluster_judged, predict_cluster_plan,
+    predict_cluster_routed, segment_layout, single_node_references, single_node_runs,
+    single_node_runs_replay, try_segment_layout,
 };
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};
@@ -81,7 +83,9 @@ pub use profile_quality::{
     group_of_tensor, mix_at_budget, tensor_formats,
 };
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
-pub use score::{RoutingSource, TierLayer, TierOutcome, read_tier_replay};
+pub use score::{
+    Replay, ReplayMeta, RoutingSource, TierLayer, TierOutcome, check_span_rows, read_tier_replay,
+};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
 pub use segment::{SegmentAnchor, SegmentPrediction, segment_predict};
 pub use serve::{

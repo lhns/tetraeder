@@ -2671,17 +2671,19 @@ nodes:
   title: Harden the cluster planner inputs
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/planner/tests/cluster_hardening.rs
+  verdict_quote: 'CI run 45527752415 ubuntu and windows - test a_node_name_is_one_path_segment ... ok; test forbid_node_also_rules_out_kv_workspace_and_slot_caches ... ok'
+  headline: 'inputs refused, not panicked'
   depends_on:
   - cluster-planner
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-25
+  end: 2026-11-25
   folded: []
   overview: false
   plain: Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors.
@@ -3904,17 +3906,20 @@ nodes:
   title: Cost model 6 remaining parts
   track: planner
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0092-costmodel-6-streamed-moe-segments.md
+  - crates/planner/tests/cluster_judged.rs
+  - crates/model/tests/replay_segments.rs
+  verdict_quote: 'CI run 45527752415 ubuntu and windows - test a_judged_segment_is_bit_identical_to_segment_predict ... ok; test cpu_replay_of_a_span_matches_the_segment_run_per_layer ... ok'
+  headline: 'seven ADR 0092 parts built'
   depends_on:
   - planner-costmodel-stream-terms
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-25
+  end: 2026-11-25
   folded: []
   overview: false
   plain: The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test.

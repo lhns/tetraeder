@@ -41,11 +41,11 @@ flowchart TB
     bench_235b_segment_confirm_2[/"✔ Rerun the segment<br/>confirmation"/]
     bench_30b_c4_gap[/"○ 30B concurrency-4<br/>gap"/]
     bench_phase6_rehearsal("⛔ First two-box<br/>cluster session")
+    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
+    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
-    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
-    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_magnitude_q36[/"○ Magnitude against<br/>llama-server on<br/>Qwen3.6"/]
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
@@ -85,17 +85,16 @@ flowchart TB
     bench_235b_stream_predict ~~~ bench_235b_segment_confirm_2
     bench_235b_segment_confirm ~~~ bench_30b_c4_gap
     bench_235b_segment_confirm_2 ~~~ bench_phase6_rehearsal
-    bench_30b_c4_gap ~~~ bench_phase8_exit
-    bench_30b_c4_gap ~~~ bench_phase9_exit
-    bench_phase6_rehearsal ~~~ bench_spec_rerun
-    bench_phase8_exit ~~~ bench_phase6_exit
-    bench_phase9_exit ~~~ bench_phase7_exit
-    bench_spec_rerun ~~~ bench_magnitude_q36
-    bench_phase6_exit ~~~ bench_strata_pairing
-    bench_phase7_exit ~~~ bench_d1_session
+    bench_30b_c4_gap ~~~ bench_phase6_rehearsal
+    bench_phase6_rehearsal ~~~ bench_phase6_exit
+    bench_phase6_rehearsal ~~~ bench_phase7_exit
+    bench_phase6_rehearsal ~~~ bench_phase8_exit
+    bench_phase6_exit ~~~ bench_phase9_exit
+    bench_phase7_exit ~~~ bench_spec_rerun
+    bench_phase8_exit ~~~ bench_magnitude_q36
+    bench_phase9_exit ~~~ bench_strata_pairing
+    bench_spec_rerun ~~~ bench_d1_session
     bench_magnitude_q36 ~~~ bench_open_records
-    bench_strata_pairing ~~~ bench_open_records
-    bench_d1_session ~~~ bench_open_records
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -123,7 +122,7 @@ flowchart TB
     bench_phase6_rehearsal --> bench_phase6_exit
     bench_strata_q36 --> bench_magnitude_q36
     bench_ttft --> bench_open_records
-    linkStyle 47,58 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 46,57 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
