@@ -138,6 +138,7 @@ price30() { # price30 HW OUT
 
 st_freeze() {
   put a "$out/link/hw.json" hw.json
+  put a "$out/plans/judged-plan.toml" judged-plan.toml
   price30 hw.json predict-cluster.json | tail -n 3
   get a predict-cluster.json "$out/predictions/predict-cluster.json"
   (cd "$out" && sha256sum plans/layout.json link/probe-start.json link/hw.json plans/judged-plan.toml plans/candidates.json predictions/predict-cluster.json \

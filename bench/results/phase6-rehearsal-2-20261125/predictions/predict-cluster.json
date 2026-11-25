@@ -3,30 +3,12 @@
   "judged": false,
   "kind": "predict-cluster",
   "layout_sha256": "8f42c8df185aea5dc6ddaa026a37ec96b743dfab5040d744b6d29f6dac73e685",
-  "plan_sha256": "6280d5fb87148c660316782693dbb8eb73381d29e70c92190a045c93578f6eeb",
+  "plan_sha256": "bb1f240982e2cb274663a2eb4cda7d74088c6b716c5f748d01455321331d2963",
   "prediction": {
     "hop_s_per_token": 0.0517402135,
-    "pp_tps": 253.4875362163844,
-    "request_s": 16.019177003618417,
+    "pp_tps": 253.48726882324556,
+    "request_s": 16.01918552612704,
     "segments": [
-      {
-        "binding": "compute:gpu0",
-        "pp_breakdown": [
-          [
-            "compute:gpu0",
-            0.1977135257942535
-          ]
-        ],
-        "pp_tok_s": 10358.421315753627,
-        "request_s": 1.446455461931006,
-        "tg_breakdown": [
-          [
-            "compute:gpu0",
-            0.009755796376068378
-          ]
-        ],
-        "tg_tok_s": 102.50316442162189
-      },
       {
         "binding": "compute:gpu0",
         "pp_breakdown": [
@@ -44,6 +26,24 @@
           ]
         ],
         "tg_tok_s": 4365.632546574209
+      },
+      {
+        "binding": "compute:gpu0",
+        "pp_breakdown": [
+          [
+            "compute:gpu0",
+            0.1977135257942535
+          ]
+        ],
+        "pp_tok_s": 10358.421315753627,
+        "request_s": 1.446455461931006,
+        "tg_breakdown": [
+          [
+            "compute:gpu0",
+            0.009755796376068378
+          ]
+        ],
+        "tg_tok_s": 102.50316442162189
       },
       {
         "binding": "compute:gpu0",
@@ -84,7 +84,7 @@
         "tg_tok_s": 3275.741504686382
       }
     ],
-    "tg_tps": 16.12114170036579
+    "tg_tps": 16.121141700365786
   },
   "routing": "uniform",
   "routing_trace": {
@@ -95,19 +95,19 @@
         "fnv1a64": null,
         "layers": [
           0,
-          47
+          1
         ],
-        "node": "a",
+        "node": "b",
         "prefill": "uniform",
         "routing": "uniform"
       },
       {
         "fnv1a64": null,
         "layers": [
-          47,
+          1,
           48
         ],
-        "node": "b",
+        "node": "a",
         "prefill": "uniform",
         "routing": "uniform"
       }
