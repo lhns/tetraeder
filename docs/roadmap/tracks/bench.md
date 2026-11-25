@@ -39,13 +39,13 @@ flowchart TB
     bench_235b_stream_predict[/"✔ Predict the 235B on<br/>one box"/]
     bench_235b_segment_confirm[/"✔ Confirm one exit<br/>segment"/]
     bench_30b_c4_gap[/"○ 30B concurrency-4<br/>gap"/]
-    bench_phase6_rehearsal("⛔ First two-box<br/>cluster session")
-    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
-    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
     bench_235b_segment_confirm_2[/"○ Rerun the segment<br/>confirmation"/]
+    bench_phase6_rehearsal("⛔ First two-box<br/>cluster session")
+    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
+    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
     bench_open_records("⏸ Box checks for open<br/>design records")
@@ -81,18 +81,19 @@ flowchart TB
     bench_ab30b ~~~ bench_235b_stream_predict
     bench_strata_q36 ~~~ bench_235b_segment_confirm
     bench_regression_gate ~~~ bench_30b_c4_gap
-    bench_235b_stream_predict ~~~ bench_phase6_rehearsal
-    bench_235b_segment_confirm ~~~ bench_phase6_rehearsal
-    bench_30b_c4_gap ~~~ bench_phase6_rehearsal
+    bench_235b_stream_predict ~~~ bench_phase8_exit
+    bench_235b_segment_confirm ~~~ bench_phase9_exit
+    bench_30b_c4_gap ~~~ bench_spec_rerun
+    bench_phase8_exit ~~~ bench_235b_segment_confirm_2
+    bench_phase9_exit ~~~ bench_235b_segment_confirm_2
+    bench_spec_rerun ~~~ bench_235b_segment_confirm_2
+    bench_235b_segment_confirm_2 ~~~ bench_phase6_rehearsal
     bench_phase6_rehearsal ~~~ bench_phase6_exit
     bench_phase6_rehearsal ~~~ bench_phase7_exit
-    bench_phase6_rehearsal ~~~ bench_phase8_exit
-    bench_phase6_exit ~~~ bench_phase9_exit
-    bench_phase7_exit ~~~ bench_spec_rerun
-    bench_phase8_exit ~~~ bench_235b_segment_confirm_2
-    bench_phase9_exit ~~~ bench_strata_pairing
-    bench_spec_rerun ~~~ bench_d1_session
-    bench_235b_segment_confirm_2 ~~~ bench_open_records
+    bench_phase6_rehearsal ~~~ bench_strata_pairing
+    bench_phase6_exit ~~~ bench_d1_session
+    bench_phase7_exit ~~~ bench_open_records
+    bench_strata_pairing ~~~ bench_open_records
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -115,11 +116,11 @@ flowchart TB
     bench_v2_verdict --> bench_30b_c4_gap
     bench_v4a_verdict --> bench_30b_c4_gap
     bench_ab30b --> bench_30b_c4_gap
-    bench_235b_segment_confirm --> bench_phase6_rehearsal
-    bench_phase6_rehearsal --> bench_phase6_exit
     bench_235b_segment_confirm --> bench_235b_segment_confirm_2
+    bench_235b_segment_confirm_2 --> bench_phase6_rehearsal
+    bench_phase6_rehearsal --> bench_phase6_exit
     bench_ttft --> bench_open_records
-    linkStyle 45,56 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 46,57 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -141,8 +142,8 @@ flowchart TB
     class bench_v4b_verdict dead
     class bench_235b_stream_predict bad
     class bench_30b_c4_gap,bench_235b_segment_confirm_2 next
-    class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
+    class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit blocked
 ```
 <!-- END GENERATED: track-bench -->
 
@@ -183,7 +184,7 @@ flowchart TB
 | `bench-m2-report` | Report milestone M2 | owner-decision | owner | done | n/a | 2026-11-22 | 2026-11-22 | bench-v2-verdict, bench-v4a-verdict, bench-d2a-probe, bench-d2a-30b, bench-ab30b |  |  |  | docs/m2-report.md |
 | `bench-30b-c4-gap` | 30B concurrency-4 gap | experiment | box-later | next | unrated |  |  | bench-m2-report |  |  |  |  |
 | `bench-235b-stream-predict` | Predict the 235B on one box | experiment | box | done | bad | 2026-11-24 | 2026-11-24 |  |  |  | e_pp +0.35 and e_tg -0.45 with every expert in RAM; +1.32 and -0.95 streamed from NVMe | bench/results/stream-predict-20261124/README.md; bench/results/stream-predict-20261124/errors.json; bench/results/stream-predict-20261124/predictions/FROZEN.sha256; bench/results/stream-predict-20261124/predictions/d2/FROZEN.sha256 |
-| `bench-phase6-rehearsal` | First two-box cluster session | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-failover, cluster-join-leave, cluster-mtls, cluster-owner-phase6-design, bench-235b-stream-predict, bench-235b-segment-confirm, cluster-integration |  |  |  |  |
+| `bench-phase6-rehearsal` | First two-box cluster session | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-failover, cluster-join-leave, cluster-mtls, cluster-owner-phase6-design, bench-235b-stream-predict, bench-235b-segment-confirm-2, cluster-integration |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | bench-phase6-rehearsal, cluster-remote-kv |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 | owner-decision | owner | blocked | n/a |  |  | bench-phase6-exit |  |  |  |  |
 | `bench-phase7-exit` | Phase 7 exit: day-long trace | session | cluster | blocked | unrated |  |  | planner-advisor-auto, cluster-replica-scaling, multi-live-reshard, multi-split-hardware, planner-split-layouts, planner-live-replan |  |  |  |  |

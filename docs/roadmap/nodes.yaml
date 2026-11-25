@@ -2587,7 +2587,7 @@ nodes:
   - cluster-mtls
   - cluster-owner-phase6-design
   - bench-235b-stream-predict
-  - bench-235b-segment-confirm
+  - bench-235b-segment-confirm-2
   - cluster-integration
   replaced_by: []
   lane: cluster

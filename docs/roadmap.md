@@ -144,14 +144,14 @@ flowchart TB
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
+        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
+        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
+        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
         bench_phase6_exit("bench · ⛔ Phase 6<br/>exit: multi-node test")
         cluster_experts_nodes["cluster · ⏸ Experts on<br/>other machines"]
         multi_live_reshard["multi · ⛔ Reshard<br/>while serving"]
         planner_advisor_auto["planner · ⛔ Advisor<br/>applies safe changes<br/>itself"]
         bench_phase7_exit("bench · ⛔ Phase 7<br/>exit: day-long trace")
-        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
-        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
-        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
         memory_prefill_misses["memory · ⏸ Stream<br/>expert misses during<br/>prefill"]
     end
     engine_libllama ~~~ memory_prefetch
@@ -197,18 +197,18 @@ flowchart TB
     cluster_pipeline_nodes ~~~ bench_30b_c4_gap
     cluster_failover ~~~ planner_cost_model_v5_host2
     cluster_failover ~~~ engine_dense_amx
-    bench_30b_c4_gap ~~~ bench_phase6_exit
-    planner_cost_model_v5_host2 ~~~ bench_phase6_exit
-    engine_dense_amx ~~~ bench_phase6_exit
-    bench_phase6_exit ~~~ cluster_experts_nodes
-    bench_phase6_exit ~~~ multi_live_reshard
+    bench_30b_c4_gap ~~~ engine_backend_parity
+    planner_cost_model_v5_host2 ~~~ engine_backend_parity
+    engine_dense_amx ~~~ engine_backend_parity
+    engine_backend_parity ~~~ bench_phase8_exit
+    engine_backend_parity ~~~ bench_phase9_exit
+    engine_backend_parity ~~~ bench_phase6_exit
+    bench_phase8_exit ~~~ cluster_experts_nodes
+    bench_phase9_exit ~~~ multi_live_reshard
     bench_phase6_exit ~~~ planner_advisor_auto
     cluster_experts_nodes ~~~ bench_phase7_exit
-    multi_live_reshard ~~~ engine_backend_parity
-    planner_advisor_auto ~~~ engine_backend_parity
-    bench_phase7_exit ~~~ bench_phase8_exit
-    engine_backend_parity ~~~ bench_phase9_exit
-    engine_backend_parity ~~~ memory_prefill_misses
+    multi_live_reshard ~~~ memory_prefill_misses
+    planner_advisor_auto ~~~ memory_prefill_misses
     memory_prefetch --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -230,11 +230,11 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
+    engine_backend_parity --> bench_phase8_exit
     bench_phase6_exit --> cluster_experts_nodes
     bench_phase6_exit --> multi_live_reshard
     bench_phase6_exit --> planner_advisor_auto
     planner_advisor_auto --> bench_phase7_exit
-    engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
     linkStyle 56,63,67 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
