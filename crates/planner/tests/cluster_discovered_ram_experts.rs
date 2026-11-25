@@ -8,48 +8,91 @@
 //!
 //! Hardware label: none (the graph is a copy of the rehearsal's `a/hw.json`).
 
+use std::path::PathBuf;
 use tetraeder_plan::{Hints, Phase, Plan};
 use tetraeder_planner::layout::fixtures;
 use tetraeder_planner::{ClusterCandidate, Priors, enumerate_cluster, fill_from_priors};
-use tetraeder_profiler::{DeviceKind, HardwareGraph};
+use tetraeder_profiler::{DeviceKind, HardwareGraph, LinkKind, Volume, add_disks};
 
 const HW: &str = include_str!("../fixtures/phase6-rehearsal/hw.json");
 /// The Case S RAM budget per node (`EMULATE_RAM_GB=64`).
 const RAM: u64 = 64 << 30;
 
-/// The graph `tetraeder cluster profile` wrote for two 3090 boxes, with the 64 GB budgets and
-/// the one thing a judged session adds (`scripts/sp_make_hw.py`): each node's experts live on a
-/// builder disk named `nvme0` (discovery names disks `disk0`, `disk1`, ...; the planner reads
-/// the builder's experts from `nvme0`, and without it homes every expert in RAM, which a 235B
-/// does not fit). The disk rates are the committed NVMe prior.
-fn discovered() -> HardwareGraph {
-    let mut hw = tetraeder_planner::multi_cli::parse_hw(HW).unwrap();
-    let prior = HardwareGraph::from_toml(include_str!("../fixtures/rtx3090_prior.toml")).unwrap();
-    for node in ["a", "b"] {
-        hw.devices
-            .retain(|d| !d.id.starts_with(&format!("{node}/disk")));
-        hw.links
-            .retain(|l| !l.id.starts_with(&format!("{node}/storage-disk")));
-        let mut disk = prior.device("nvme0").unwrap().clone();
-        disk.id = format!("{node}/nvme0");
-        disk.node = Some(node.to_owned());
-        hw.devices.push(disk);
-        let mut link = prior
-            .links
-            .iter()
-            .find(|l| l.id == "nvme-cpu0")
-            .unwrap()
-            .clone();
-        link.id = format!("{node}/nvme-cpu0");
-        link.a = format!("{node}/nvme0");
-        link.b = format!("{node}/cpu0");
-        hw.links.push(link);
-    }
-    for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
+/// The file system root of the machine running the test, so the mount points below are
+/// absolute on Windows and Linux alike.
+fn root() -> PathBuf {
+    std::env::current_dir()
+        .unwrap()
+        .ancestors()
+        .last()
+        .unwrap()
+        .to_path_buf()
+}
+
+/// The volumes the rehearsal's nodes listed (container overlay, two bind mounts), as recorded in
+/// `hw.json`; the models live on the third.
+fn recorded_volumes() -> Vec<Volume> {
+    let v = |name: &str, mount: PathBuf, gib: u64, media: &str| Volume {
+        name: name.into(),
+        mount,
+        total_bytes: gib << 30,
+        media: media.into(),
+    };
+    vec![
+        v("overlay", root(), 80, "unknown"),
+        v("/dev/loop8", root().join("mnt").join("loop8"), 773, "ssd"),
+        v(
+            "/dev/mapper/ubuntu--vg-ubuntu--lv",
+            root().join("mnt").join("models"),
+            914,
+            "unknown",
+        ),
+    ]
+}
+
+/// One node's graph as the daemon builds it for `NodeRequest::Profile`: the rehearsal node's CPU
+/// and GPUs (a recorded probe, with the 64 GB budget the box reports), its disks from the
+/// discovery code with the models dir, the priors filled, and the JSON round trip of the wire.
+fn node_graph(all: &HardwareGraph, node: &str, fill: bool, models: bool) -> HardwareGraph {
+    let mut g = all.node_graph(Some(node));
+    g.devices.retain(|d| d.kind != DeviceKind::Disk);
+    g.links.retain(|l| l.kind != LinkKind::Storage);
+    for d in g.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
         d.capacity_bytes = RAM;
         // The fixture was written before discovery filled the CPU rate.
         d.compute = None;
     }
+    add_disks(
+        &mut g,
+        &recorded_volumes(),
+        models
+            .then(|| root().join("mnt").join("models").join("hf"))
+            .as_deref(),
+        &root().join("tmp"),
+        None,
+    );
+    if fill {
+        fill_from_priors(&mut g, &Priors::builtin());
+    }
+    HardwareGraph::from_json(&g.to_json().unwrap()).unwrap()
+}
+
+/// The graph `tetraeder cluster profile` writes for two nodes: each node's graph, merged as
+/// `client::profile_cluster` does, no edit after that.
+fn discovered(fill: bool, models: bool) -> HardwareGraph {
+    let all = tetraeder_planner::multi_cli::parse_hw(HW).unwrap();
+    let nodes: Vec<(String, HardwareGraph)> = ["a", "b"]
+        .iter()
+        .map(|n| (n.to_string(), node_graph(&all, n, fill, models)))
+        .collect();
+    let links = all
+        .links
+        .iter()
+        .filter(|l| l.kind == LinkKind::Network)
+        .cloned()
+        .collect();
+    let hw = HardwareGraph::merge_cluster(&nodes, links, all.collectives.clone());
+    hw.validate().unwrap();
     hw
 }
 
@@ -80,7 +123,18 @@ fn spanning_with_ram_experts(cands: &[ClusterCandidate]) -> Vec<&ClusterCandidat
 #[test]
 fn a_graph_without_a_cpu_rate_has_no_ram_expert_candidate() {
     // What the rehearsal fix left: the placements with RAM experts are skipped as unpriced.
-    let hw = discovered();
+    let hw = discovered(false, true);
+    let (cands, _) = enumerate_cluster(&hw, &fixtures::moe_235b(), &Hints::default(), Phase(6));
+    assert!(spanning_with_ram_experts(&cands).is_empty());
+}
+
+// hardware: none
+#[test]
+fn without_a_models_dir_no_node_has_a_builder_disk_and_the_235b_has_no_candidate() {
+    // What the pre-exit check found: discovery named the disks `disk0..`, the planner homed
+    // every expert in RAM and the validator rejected the 235B with MemoryExceeded.
+    let hw = discovered(true, false);
+    assert!(hw.device("a/nvme0").is_none() && hw.device("a/disk0").is_some());
     let (cands, _) = enumerate_cluster(&hw, &fixtures::moe_235b(), &Hints::default(), Phase(6));
     assert!(spanning_with_ram_experts(&cands).is_empty());
 }
@@ -88,16 +142,13 @@ fn a_graph_without_a_cpu_rate_has_no_ram_expert_candidate() {
 // hardware: none
 #[test]
 fn discovery_gives_the_235b_a_spanning_candidate_with_ram_experts() {
-    let mut hw = discovered();
-    let notes = fill_from_priors(&mut hw, &Priors::builtin());
-    assert_eq!(
-        notes
-            .iter()
-            .filter(|n| n.contains("cpu0: compute is a prior"))
-            .count(),
-        2,
-        "{notes:?}"
-    );
+    let hw = discovered(true, true);
+    // No edit after the merge: the builder disk is the discovery's `nvme0`, with a rate.
+    for n in ["a", "b"] {
+        let d = hw.device(&format!("{n}/nvme0")).unwrap();
+        assert!(d.disk_rate(1).is_some(), "{n}/nvme0 has no read rate");
+        assert!(hw.device(&format!("{n}/cpu0")).unwrap().compute.is_some());
+    }
     let layout = fixtures::moe_235b();
     let (cands, pruned) = enumerate_cluster(&hw, &layout, &Hints::default(), Phase(6));
     let ram = spanning_with_ram_experts(&cands);
@@ -122,6 +173,13 @@ fn discovery_gives_the_235b_a_spanning_candidate_with_ram_experts() {
         pick.prediction.tg_tps,
         pick.notes.join(" ")
     );
+    let plan = serde_json::to_string(&pick.plan).unwrap();
+    for n in ["a", "b"] {
+        assert!(
+            plan.contains(&format!("{n}/nvme0")),
+            "the pick keeps experts on {n}'s builder disk"
+        );
+    }
     assert_eq!(
         pick.plan.replicas[0].stages.len(),
         2,
@@ -140,7 +198,11 @@ fn discovery_gives_the_235b_a_spanning_candidate_with_ram_experts() {
 fn a_skipped_unpriced_placement_is_named_in_the_candidate_notes() {
     // The 30B on the same graph: placements with RAM experts are feasible but unpriced, the
     // others compete, and the candidate says what was left out and why.
-    let hw = discovered();
+    let mut hw = discovered(true, true);
+    // A node whose CPU rate is unknown.
+    for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
+        d.compute = None;
+    }
     let layout = tetraeder_planner::multi_cli::parse_layout(include_str!(
         "../fixtures/phase6-rehearsal/layout.json"
     ))

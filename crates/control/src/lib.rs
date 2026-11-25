@@ -18,7 +18,7 @@ pub mod proto;
 pub mod replica;
 pub mod router;
 
-pub use cluster::{ClusterConfig, NodeConfig};
+pub use cluster::{ClusterConfig, NodeConfig, PAUSE_STEP};
 pub use membership::{Membership, NodeEvent, NodeState};
 pub use replan::{
     Clock, Config, EngineControl, FakeClock, Outcome, OutcomeHook, PlanSource, Proposal, Replanner,

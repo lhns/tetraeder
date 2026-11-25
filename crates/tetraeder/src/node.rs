@@ -383,12 +383,14 @@ pub fn run(a: &NodeArgs) -> Result<()> {
         },
     );
     let cached: Mutex<Option<String>> = Mutex::new(None);
+    let models_dir = a.models_dir.clone();
     let profile = Arc::new(move || {
         let mut c = cached
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if c.is_none() {
-            let (hw, notes) = crate::replan::source::HwSource::Discover.read(true)?;
+            let (hw, notes) =
+                crate::replan::source::HwSource::Discover.read_in(true, Some(&models_dir))?;
             for n in notes {
                 tracing::info!("hardware: {n}");
             }

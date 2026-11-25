@@ -152,6 +152,11 @@ impl Membership {
         self.nodes.iter().find(|e| &e.id == id).map(|e| e.state)
     }
 
+    /// When the last frame from `id` came, on the caller's clock.
+    pub fn last_heard(&self, id: &NodeId) -> Option<Duration> {
+        self.nodes.iter().find(|e| &e.id == id).and_then(|e| e.last)
+    }
+
     pub fn states(&self) -> Vec<(NodeId, NodeState)> {
         self.nodes.iter().map(|e| (e.id.clone(), e.state)).collect()
     }

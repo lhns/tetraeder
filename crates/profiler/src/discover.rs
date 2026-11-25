@@ -25,6 +25,9 @@ pub struct DiscoverOpts {
     /// Directory (and so the volume) the disk probe uses; default is the temp dir.
     pub disk_probe_dir: Option<PathBuf>,
     pub disk_probe_bytes: u64,
+    /// Where the node keeps its models (and so its expert files). The volume holding it is the
+    /// builder disk, named [`BUILDER_DISK`]; without it every disk keeps its `diskN` name.
+    pub models_dir: Option<PathBuf>,
     pub gpus: bool,
     pub device_probe: Option<Arc<dyn DeviceProbe>>,
 }
@@ -37,10 +40,25 @@ impl Default for DiscoverOpts {
             probe_disk: false,
             disk_probe_dir: None,
             disk_probe_bytes: 64 << 20,
+            models_dir: None,
             gpus: true,
             device_probe: None,
         }
     }
+}
+
+/// Id of the disk that holds the node's expert files; the planner reads the builder's experts
+/// from the device of this id (`tetraeder_planner::score::BUILDER_DISK`).
+pub const BUILDER_DISK: &str = "nvme0";
+
+/// A mounted volume as the OS lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Volume {
+    pub name: String,
+    pub mount: PathBuf,
+    pub total_bytes: u64,
+    /// `ssd`, `hdd` or `unknown`.
+    pub media: String,
 }
 
 /// NUMA nodes under a sysfs node directory (`/sys/devices/system/node`); 1 when absent
@@ -219,7 +237,7 @@ fn discover_disks(opts: &DiscoverOpts, g: &mut HardwareGraph) {
             return;
         }
     };
-    let mut vols: Vec<(String, PathBuf, u64, &'static str)> = Vec::new();
+    let mut vols: Vec<Volume> = Vec::new();
     for d in disks.iter() {
         let fs = d.file_system().to_string_lossy().to_lowercase();
         if d.total_space() == 0 || PSEUDO_FS.contains(&fs.as_str()) {
@@ -230,57 +248,105 @@ fn discover_disks(opts: &DiscoverOpts, g: &mut HardwareGraph) {
             DiskKind::HDD => "hdd",
             _ => "unknown",
         };
-        vols.push((
-            d.name().to_string_lossy().into_owned(),
-            d.mount_point().to_path_buf(),
-            d.total_space(),
-            media,
-        ));
+        vols.push(Volume {
+            name: d.name().to_string_lossy().into_owned(),
+            mount: d.mount_point().to_path_buf(),
+            total_bytes: d.total_space(),
+            media: media.into(),
+        });
     }
-
-    // The probe measures the volume holding the probe dir: the longest matching mount point.
     let probe_dir = opts
         .disk_probe_dir
         .clone()
         .unwrap_or_else(std::env::temp_dir);
-    let probe_vol = vols
-        .iter()
-        .enumerate()
-        .filter(|(_, v)| probe_dir.starts_with(&v.1))
-        .max_by_key(|(_, v)| v.1.as_os_str().len())
-        .map(|(i, _)| i);
-    let mut probed: Option<(usize, Measurement)> = None;
-    if opts.probe_disk {
+    let probed = if opts.probe_disk {
         match probe_disk_read(&probe_dir, opts.disk_probe_bytes, opts.repeats) {
-            Ok(m) => match probe_vol {
-                Some(i) => probed = Some((i, m)),
-                None => g.notes.push(format!(
-                    "disk probe on {} matched no listed volume",
-                    probe_dir.display()
-                )),
-            },
-            Err(e) => g.notes.push(format!("disk probe failed: {e}")),
+            Ok(m) => Some(m),
+            Err(e) => {
+                g.notes.push(format!("disk probe failed: {e}"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    add_disks(g, &vols, opts.models_dir.as_deref(), &probe_dir, probed);
+}
+
+/// Index of the volume holding `dir`: the longest matching mount point. A relative `dir` is
+/// made absolute first (`canonicalize` would add a `\?\` prefix on Windows that matches no
+/// mount point).
+fn volume_of(vols: &[Volume], dir: &Path) -> Option<usize> {
+    let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
+    vols.iter()
+        .enumerate()
+        .filter(|(_, v)| dir.starts_with(&v.mount))
+        .max_by_key(|(_, v)| v.mount.as_os_str().len())
+        .map(|(i, _)| i)
+}
+
+/// Adds one disk device and storage link per distinct volume. The volume holding `models_dir`
+/// is the builder disk (`nvme0`), the others are `diskN`. `probed` is the read rate measured on
+/// the volume holding `probe_dir`.
+pub fn add_disks(
+    g: &mut HardwareGraph,
+    vols: &[Volume],
+    models_dir: Option<&Path>,
+    probe_dir: &Path,
+    probed: Option<Measurement>,
+) {
+    let probe_vol = volume_of(vols, probe_dir);
+    let mut probed_at: Option<(usize, Measurement)> = None;
+    if let Some(m) = probed {
+        match probe_vol {
+            Some(i) => probed_at = Some((i, m)),
+            None => g.notes.push(format!(
+                "disk probe on {} matched no listed volume",
+                probe_dir.display()
+            )),
         }
     }
-
     let keys: Vec<&OsStr> = vols
         .iter()
-        .map(|v| volume_key(&v.0, &v.1, cfg!(windows)))
+        .map(|v| volume_key(&v.name, &v.mount, cfg!(windows)))
         .collect();
+    let models_key = match models_dir {
+        None => {
+            g.notes.push(format!(
+                "no models dir: no disk is named {BUILDER_DISK}, the planner homes experts in RAM"
+            ));
+            None
+        }
+        Some(d) => {
+            let i = volume_of(vols, d);
+            if i.is_none() {
+                g.notes.push(format!(
+                    "models dir {} matched no listed volume: no disk is named {BUILDER_DISK}",
+                    d.display()
+                ));
+            }
+            i.map(|i| keys[i])
+        }
+    };
     let mut seen: Vec<&OsStr> = Vec::new();
-    for (i, (name, mount, total, media)) in vols.iter().enumerate() {
+    for (i, v) in vols.iter().enumerate() {
         // Subvolumes and bind mounts list one device several times; keep the first, but a probe
         // result on a later duplicate still applies to it.
         let dup = seen.iter().position(|k| *k == keys[i]);
         let idx = dup.unwrap_or(seen.len());
-        let id = format!("disk{idx}");
+        let builder = models_key == Some(keys[i]);
+        let id = if builder {
+            BUILDER_DISK.to_owned()
+        } else {
+            format!("disk{idx}")
+        };
         if dup.is_none() {
             seen.push(keys[i]);
-            let mut dev = Device::new(&id, DeviceKind::Disk, name, Tier::Nvme, *total);
-            dev.mount = Some(mount.to_string_lossy().into_owned());
-            dev.media = Some((*media).into());
+            let mut dev = Device::new(&id, DeviceKind::Disk, &v.name, Tier::Nvme, v.total_bytes);
+            dev.mount = Some(v.mount.to_string_lossy().into_owned());
+            dev.media = Some(v.media.clone());
             g.devices.push(dev);
-            let (beta, alpha) = disk_prior(media);
+            let (beta, alpha) = disk_prior(&v.media);
             g.links.push(Link {
                 id: format!("storage-{id}"),
                 a: id.clone(),
@@ -291,7 +357,7 @@ fn discover_disks(opts: &DiscoverOpts, g: &mut HardwareGraph) {
                 lane_group: None,
             });
         }
-        if let Some((pi, m)) = probed
+        if let Some((pi, m)) = probed_at
             && pi == i
         {
             if let Some(dev) = g.devices.iter_mut().find(|d| d.id == id) {
@@ -433,6 +499,81 @@ mod tests {
         assert_eq!(numa_node_count(&dir), 2);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(numa_node_count(&dir), 1, "missing dir means one node");
+    }
+
+    fn vol(name: &str, mount: &Path, media: &str) -> Volume {
+        Volume {
+            name: name.into(),
+            mount: mount.to_path_buf(),
+            total_bytes: 1 << 40,
+            media: media.into(),
+        }
+    }
+
+    fn root() -> PathBuf {
+        std::env::current_dir()
+            .unwrap()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf()
+    }
+
+    #[test]
+    fn the_volume_with_the_models_dir_is_the_builder_disk() {
+        let r = root();
+        let (m1, m2) = (r.join("mnt").join("a"), r.join("mnt").join("b"));
+        let vols = vec![
+            vol("overlay", &r, "unknown"),
+            vol("/dev/a", &m1, "ssd"),
+            vol("/dev/b", &m2, "ssd"),
+        ];
+        let mut g = HardwareGraph::default();
+        add_disks(&mut g, &vols, Some(&m2.join("models")), &r, None);
+        let ids: Vec<&str> = g.devices.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, ["disk0", "disk1", BUILDER_DISK]);
+        let links: Vec<&str> = g.links.iter().map(|l| l.a.as_str()).collect();
+        assert_eq!(links, ids, "one storage link per disk, from the disk");
+        assert!(g.notes.is_empty(), "{:?}", g.notes);
+    }
+
+    #[test]
+    fn a_probe_on_the_models_volume_is_the_builder_disks_rate() {
+        let r = root();
+        let m = r.join("mnt").join("m");
+        let vols = vec![vol("overlay", &r, "unknown"), vol("/dev/m", &m, "ssd")];
+        let mut g = HardwareGraph::default();
+        let rate = Measurement::prior(2.0e9);
+        add_disks(&mut g, &vols, Some(&m), &m.join("tmp"), Some(rate));
+        assert_eq!(g.device(BUILDER_DISK).unwrap().disk_rate(1), Some(2.0e9));
+        assert_eq!(g.device("disk0").unwrap().disk_rate(1), None);
+    }
+
+    #[test]
+    fn without_a_models_dir_no_disk_is_the_builder_disk() {
+        let r = root();
+        let vols = vec![vol("overlay", &r, "unknown")];
+        let mut g = HardwareGraph::default();
+        add_disks(&mut g, &vols, None, &r, None);
+        assert_eq!(g.devices[0].id, "disk0");
+        assert!(g.notes.iter().any(|n| n.contains("no models dir")));
+        // A models dir on no listed volume says so too.
+        let mut g = HardwareGraph::default();
+        add_disks(&mut g, &[], Some(Path::new("models")), &r, None);
+        assert!(g.devices.is_empty());
+        assert!(
+            g.notes
+                .iter()
+                .any(|n| n.contains("matched no listed volume"))
+        );
+    }
+
+    #[test]
+    fn a_relative_models_dir_is_made_absolute() {
+        let vols = vec![vol("cwd", &root(), "ssd")];
+        let mut g = HardwareGraph::default();
+        add_disks(&mut g, &vols, Some(Path::new(".hf_cache")), &root(), None);
+        assert_eq!(g.devices[0].id, BUILDER_DISK);
     }
 
     struct FakeProbe;

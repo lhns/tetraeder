@@ -120,6 +120,27 @@ pub fn fill_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> 
             d.id
         ));
     }
+    // A discovered disk has its prior on the storage link only; the planner reads the builder's
+    // expert rate from the disk device (`Device::disk_rate`).
+    let link_rates: Vec<(String, Measurement)> = hw
+        .links
+        .iter()
+        .filter(|l| l.kind == LinkKind::Storage)
+        .map(|l| (l.a.clone(), l.beta_bytes_per_s))
+        .collect();
+    for d in hw
+        .devices
+        .iter_mut()
+        .filter(|d| d.kind == DeviceKind::Disk && d.disk_rate(1).is_none())
+    {
+        if let Some((_, m)) = link_rates.iter().find(|(a, _)| *a == d.id) {
+            d.bandwidth_bytes_per_s = Some(*m);
+            notes.push(format!(
+                "{}: read rate is the storage link prior; measure it with `tetraeder-bench disk-curve`",
+                d.id
+            ));
+        }
+    }
     for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Gpu) {
         if d.compute.is_some() && d.bandwidth_bytes_per_s.is_some() {
             continue;
