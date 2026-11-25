@@ -195,6 +195,12 @@ st_trials() {
   local A B mode n d label
   A=$(p6dir a)
   B=$(p6dir b)
+  say "the head answers /health (a real head loads its engine first)"
+  local t0=$SECONDS
+  until bx a 30 "python3 -I -c 'import http.client, sys; c = http.client.HTTPConnection(\"127.0.0.1\", $head_port, timeout=5); c.request(\"GET\", \"/health\"); sys.exit(0 if c.getresponse().status == 200 else 1)'" > /dev/null 2>&1; do
+    [ $((SECONDS - t0)) -lt "${HEAD_WAIT_S:-300}" ] || die "the head does not answer on port $head_port after ${HEAD_WAIT_S:-300} s: look at logs/serve.log on box a"
+    sleep 1
+  done
   say "prompt size through the head's tokenizer"
   cal=$(bx a 120 "python3 scripts/phase6_load.py $(head_url) --key-file $A/api-key.txt --calibrate --prompt-tokens $prompt_tokens" | tail -n 1)
   cpt=$(python3 -I -c 'import json, sys; print(json.loads(sys.argv[1])["chars_per_token"])' "$cal")
