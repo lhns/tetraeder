@@ -1,0 +1,11 @@
+model_sha256 = "0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5"
+
+[[replica]]
+leader = "a"
+cap = 4
+prefill_tps = 5
+
+[[replica]]
+leader = "b"
+cap = 4
+prefill_tps = 5

@@ -34,6 +34,10 @@ flowchart TB
     cluster_leader_move["⏸ Move a replica's<br/>leader"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
+    cluster_prefix_fetch_not_observed>"⚠ Prefix fetch between<br/>real processes not<br/>demonstrated"]
+    cluster_head_led_plan_ignores_segments>"⚠ A plan led by the<br/>head runs the whole<br/>model in process"]
+    cluster_second_cold_request_empty>"⚠ Second cold request<br/>through a split plan<br/>returns an empty<br/>stream"]
+    cluster_probe_control_idle>"⚠ cluster probe to 64<br/>MiB dies on the daemon<br/>control-idle limit"]
     cluster_transport_wan ~~~ cluster_transport
     cluster_transport_wan ~~~ cluster_planner
     cluster_transport ~~~ cluster_mtls
@@ -58,6 +62,12 @@ flowchart TB
     cluster_plan_source_gpu_segments ~~~ cluster_leader_move
     cluster_drain_without_plan ~~~ cluster_experts_nodes
     cluster_judged_round_cmd ~~~ cluster_replica_scaling
+    cluster_leader_move ~~~ cluster_prefix_fetch_not_observed
+    cluster_experts_nodes ~~~ cluster_head_led_plan_ignores_segments
+    cluster_replica_scaling ~~~ cluster_second_cold_request_empty
+    cluster_prefix_fetch_not_observed ~~~ cluster_probe_control_idle
+    cluster_head_led_plan_ignores_segments ~~~ cluster_probe_control_idle
+    cluster_second_cold_request_empty ~~~ cluster_probe_control_idle
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
     cluster_transport --> cluster_mtls
@@ -95,6 +105,7 @@ flowchart TB
     class cluster_judged_round_cmd next
     class cluster_leader_move,cluster_experts_nodes parked
     class cluster_replica_scaling blocked
+    class cluster_prefix_fetch_not_observed,cluster_head_led_plan_ignores_segments,cluster_second_cold_request_empty,cluster_probe_control_idle finding
 ```
 <!-- END GENERATED: track-cluster -->
 
@@ -131,6 +142,10 @@ flowchart TB
 | `cluster-prefix-fetch-not-triggered` | No prefix fetch between replicas on two GPU nodes | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | the head replica now reports its KV size and serves its cache | bench/results/phase6-rehearsal-20261125/README.md; docs/adr/0091-phase6-multi-node.md; crates/control/tests/local_holder_fetch.rs |
 | `cluster-plan-source-gpu-segments` | Planner proposes no plan for two real GPU boxes | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | the planner prices an all-GPU segment and proposes splits for two GPU boxes | bench/results/phase6-rehearsal-20261125/README.md; docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster_gpu_segments.rs |
 | `cluster-drain-without-plan` | Node drain does not move load without a cluster plan | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | a drained node takes no new request without a plan | bench/results/phase6-rehearsal-20261125/README.md; docs/adr/0091-phase6-multi-node.md; crates/control/tests/join_loop.rs |
+| `cluster-prefix-fetch-not-observed` | Prefix fetch between real processes not demonstrated | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | a fetch priced to win was not seen, no grant log line, no readable counter | bench/results/phase6-rehearsal-2-20261125/README.md |
+| `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | serve --cluster-plan with the head as leader silently drops the other nodes segments | bench/results/phase6-rehearsal-2-20261125/README.md |
+| `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | after one cold 2048-token request the next cold one ends with nothing | bench/results/phase6-rehearsal-2-20261125/README.md |
+| `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | a slow link makes the full probe exceed the 30 s idle limit | bench/results/phase6-rehearsal-2-20261125/README.md |
 
 ### Details per node
 
@@ -164,6 +179,10 @@ flowchart TB
 | `cluster-prefix-fetch-not-triggered` | No prefix fetch between replicas on two GPU nodes | local_holder_fetch fetched=1 served=1 puts=1 tokens_equal=true (CI run 45565416727) | the head replica now reports its KV size and serves its cache | The head process never gave the router its own replica snapshot format and size, never set the grants for fetches from it, and nothing served its cache to other nodes; now it does all three and a remote replica fetches from the head replica with equal tokens; the head replica as the fetcher stays unreachable and a real-process run of the relay is open. |  |  |  |  |  |
 | `cluster-plan-source-gpu-segments` | Planner proposes no plan for two real GPU boxes | gpu_segments hand_split pp_tps=2415.1 tg_tps=10.11; gpu_segments proposed=40 best_pp_tps=4144.7 best_tg_tps=11.37 (CI run 45565416727) | the planner prices an all-GPU segment and proposes splits for two GPU boxes | An all-GPU segment is read as every expert resident and a placement that the graph cannot price no longer aborts the whole search, so the rehearsal profile now gives the hand split a price and 40 candidates; tetraeder-plan candidates --cluster writes them, and a replan that changes a replica leader is still refused by the control. |  |  |  |  |  |
 | `cluster-drain-without-plan` | Node drain does not move load without a cluster plan | drain_without_plan drained_after_s=0.18 in_flight_ok=6 later_on_other=10 (CI run 45565416727) | a drained node takes no new request without a plan | With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains. |  |  |  |  |  |
+| `cluster-prefix-fetch-not-observed` | Prefix fetch between real processes not demonstrated | prefix: no fetch line, x2 recomputed (common=0) with declared prefill 5 tok/s and --cluster-hw (bench/results/phase6-rehearsal-2-20261125/README.md, step 2) | a fetch priced to win was not seen, no grant log line, no readable counter | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |  |  |  |  |  |
+| `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | c00 leader a: node b idle, pp 5200 tok/s, tg 190 tok/s (bench/results/phase6-rehearsal-2-20261125/split30/c00-local-run) | serve --cluster-plan with the head as leader silently drops the other nodes segments | The planner picked a plan whose leader is the head; the head started its in-process engine for the whole model and never used node b; the plan source should refuse or serve it. |  |  |  |  |  |
+| `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | round r2 and r3: status 200, no token (bench/results/phase6-rehearsal-2-20261125/split30, runs 2 to 4) | after one cold 2048-token request the next cold one ends with nothing | Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read. |  |  |  |  |  |
+| `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | error: node a: probe of b failed: write failed: Broken pipe (bench/results/phase6-rehearsal-2-20261125/README.md, deviations) | a slow link makes the full probe exceed the 30 s idle limit | On a link with bulk 2 to 15 s per 4 to 32 MiB the probe to 64 MiB with 10 repeats is cut by the control connection idle limit, so no start probe could be taken at the specified sizes. |  |  |  |  |  |
 
 ### Folded items per node
 

@@ -47,7 +47,7 @@
 # MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94" instead of the pick's).
 # LOOPBACK=1: the dry run with the stand-in tools of scripts/phase6_loopback.py (LB_SCENARIO breaks one rule on purpose); no GPU.
 cd "$(dirname "$0")/.." || exit 1
-repo=$PWD
+repo=$(pwd -W 2> /dev/null || pwd) # a Windows driver needs C:/ paths for python3
 export MSYS_NO_PATHCONV=1
 LOOPBACK="${LOOPBACK:-0}"
 say() { echo "[$(date +%T)] $*"; }

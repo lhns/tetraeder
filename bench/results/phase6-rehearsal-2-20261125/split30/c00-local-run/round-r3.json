@@ -1,0 +1,32 @@
+{
+  "label": "r3",
+  "prompt": {
+    "prompt_tokens": 2048,
+    "chars": 8207,
+    "sha256": "65d51fd45ad4cc17a8ab32b710ad6a9926131e4cc8a1b24a3e62902bf1695f11",
+    "fnv1a64": "352eab807a227192",
+    "source": "bench/prompts/exit_prompt.txt"
+  },
+  "gen_asked": 128,
+  "t_submit": 1795614566.468312,
+  "t_first": 1795614566.8944094,
+  "t_last": 1795614567.539905,
+  "chunks": 128,
+  "usage": {
+    "prompt_tokens": 2048,
+    "completion_tokens": 128,
+    "total_tokens": 2176,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "error": null,
+  "text": "## Decision\n\nCost model from measured per-op curves, c0 plus f(M), with c0 per graph mode.\n\n## Consequences\n\nPer-op cost curves are the only source of truth; no heuristics.\n# 0008. No dynamic shapes, ",
+  "status": 200,
+  "t_end": 1795614567.539953,
+  "ttft_s": 0.4261,
+  "pp_tok_s": 4806.41,
+  "gen_tokens": 128,
+  "tg_tok_s": 196.748,
+  "wall_s": 1.072
+}

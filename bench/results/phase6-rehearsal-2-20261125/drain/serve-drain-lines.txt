@@ -1,0 +1,2 @@
+[2m2026-11-25T13:40:19.580665Z[0m [32m INFO[0m [2mtetraeder_control::monitor[0m[2m:[0m node state [3mnode[0m[2m=[0mb [3mto[0m[2m=[0m"draining"
+[2m2026-11-25T13:40:19.585480Z[0m [32m INFO[0m [2mtetraeder_control::head[0m[2m:[0m node drain: replica takes no new request [3mreplica[0m[2m=[0m1 [3mnode[0m[2m=[0mb [3mdraining[0m[2m=[0mtrue

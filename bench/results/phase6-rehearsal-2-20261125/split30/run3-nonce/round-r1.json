@@ -1,0 +1,32 @@
+{
+  "label": "r1",
+  "prompt": {
+    "prompt_tokens": 2050,
+    "chars": 8163,
+    "sha256": "0f5d168410231b804e69bdce608fac6d47f9ee40b0deeeeb0a331d2eb1ad3370",
+    "fnv1a64": "819ef261e5ab9895",
+    "source": "bench/prompts/exit_prompt.txt"
+  },
+  "gen_asked": 128,
+  "t_submit": 1795615312.717628,
+  "t_first": 1795615315.8098998,
+  "t_last": 1795615323.8972623,
+  "chunks": 128,
+  "usage": {
+    "prompt_tokens": 2050,
+    "completion_tokens": 128,
+    "total_tokens": 2178,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "error": null,
+  "text": "ques and memory; per-op cost is c0 + f(M), where M is the number of tokens.\n\n## Decision\n\nCost model from measured per-op curves, c0 plus f(M), with c0 per graph mode.\n\n## Consequences\n\nPer-op cost is",
+  "status": 200,
+  "t_end": 1795615323.8975196,
+  "ttft_s": 3.0923,
+  "pp_tok_s": 662.94,
+  "gen_tokens": 128,
+  "tg_tok_s": 15.704,
+  "wall_s": 11.18
+}

@@ -1,0 +1,3494 @@
+{
+  "candidates": [
+    {
+      "id": "c00",
+      "notes": [
+        "a>b, cuts [47], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c00.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.4875362163844,
+        "request_s": 16.019177003618417,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1977135257942535
+              ]
+            ],
+            "pp_tok_s": 10358.421315753627,
+            "request_s": 1.446455461931006,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.009755796376068378
+              ]
+            ],
+            "tg_tok_s": 102.50316442162189
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.004410296869859155
+              ]
+            ],
+            "pp_tok_s": 464367.8329221869,
+            "request_s": 0.033730217553619844,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00022906188034188036
+              ]
+            ],
+            "tg_tok_s": 4365.632546574209
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c01",
+      "notes": [
+        "b>a, cuts [1], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c01.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.004410296869859155
+              ]
+            ],
+            "pp_tok_s": 464367.8329221869,
+            "request_s": 0.033730217553619844,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00022906188034188036
+              ]
+            ],
+            "tg_tok_s": 4365.632546574209
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1977135257942535
+              ]
+            ],
+            "pp_tok_s": 10358.421315753627,
+            "request_s": 1.446455461931006,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.009755796376068378
+              ]
+            ],
+            "tg_tok_s": 102.50316442162189
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c02",
+      "notes": [
+        "b>a, cuts [2], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c02.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.00880059373971831
+              ]
+            ],
+            "pp_tok_s": 232711.57157920944,
+            "request_s": 0.06488043510723968,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0004381237606837607
+              ]
+            ],
+            "tg_tok_s": 2282.4600940139458
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1933232289243944
+              ]
+            ],
+            "pp_tok_s": 10593.657117122431,
+            "request_s": 1.4153052443773861,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.009546734495726497
+              ]
+            ],
+            "tg_tok_s": 104.74785911849128
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c03",
+      "notes": [
+        "b>a, cuts [3], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c03.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.013190890609577465
+              ]
+            ],
+            "pp_tok_s": 155258.65998107934,
+            "request_s": 0.09603065266085953,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0006471856410256411
+              ]
+            ],
+            "tg_tok_s": 1545.1517101263694
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.18893293205453524
+              ]
+            ],
+            "pp_tok_s": 10839.825422329483,
+            "request_s": 1.3841550268237661,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.009337672615384617
+              ]
+            ],
+            "tg_tok_s": 107.09306710458173
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c04",
+      "notes": [
+        "b>a, cuts [4], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c04.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.01758118747943662
+              ]
+            ],
+            "pp_tok_s": 116488.1497564024,
+            "request_s": 0.12718087021447938,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0008562475213675215
+              ]
+            ],
+            "tg_tok_s": 1167.8865924223524
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1845426351846761
+              ]
+            ],
+            "pp_tok_s": 11097.706489075106,
+            "request_s": 1.3530048092701463,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.009128610735042736
+              ]
+            ],
+            "tg_tok_s": 109.54569419432238
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c05",
+      "notes": [
+        "b>a, cuts [5], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c05.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.021971484349295772
+              ]
+            ],
+            "pp_tok_s": 93211.7269567016,
+            "request_s": 0.1583310877680992,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0010653094017094018
+              ]
+            ],
+            "tg_tok_s": 938.6944284875306
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.18015233831481697
+              ]
+            ],
+            "pp_tok_s": 11368.156634309744,
+            "request_s": 1.3218545917165263,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.008919548854700855
+              ]
+            ],
+            "tg_tok_s": 112.11329365307212
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c06",
+      "notes": [
+        "b>a, cuts [6], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c06.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026361781219154928
+              ]
+            ],
+            "pp_tok_s": 77688.22535071673,
+            "request_s": 0.18948130532171903,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0012743712820512821
+              ]
+            ],
+            "tg_tok_s": 784.700670898953
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1757620414449578
+              ]
+            ],
+            "pp_tok_s": 11652.117733517325,
+            "request_s": 1.2907043741629067,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.008710486974358975
+              ]
+            ],
+            "tg_tok_s": 114.80414389501941
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c07",
+      "notes": [
+        "b>a, cuts [7], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c07.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.030391643626967137
+              ]
+            ],
+            "pp_tok_s": 67386.94442253749,
+            "request_s": 0.2197904910799586,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0014796784957264958
+              ]
+            ],
+            "tg_tok_s": 675.822486363173
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.17173217903714558
+              ]
+            ],
+            "pp_tok_s": 11925.545995413118,
+            "request_s": 1.260395188404667,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00850517976068376
+              ]
+            ],
+            "tg_tok_s": 117.5754102955734
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c08",
+      "notes": [
+        "b>a, cuts [8], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c08.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.034421506034779344
+              ]
+            ],
+            "pp_tok_s": 59497.68722875488,
+            "request_s": 0.25009967683819817,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0016849857094017096
+              ]
+            ],
+            "tg_tok_s": 593.4768434060319
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.16770231662933335
+              ]
+            ],
+            "pp_tok_s": 12212.115140464182,
+            "request_s": 1.2300860026464275,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.008299872547008548
+              ]
+            ],
+            "tg_tok_s": 120.48377783348269
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c09",
+      "notes": [
+        "b>a, cuts [9], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c09.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.0388118029046385
+              ]
+            ],
+            "pp_tok_s": 52767.45337061469,
+            "request_s": 0.281249894391818,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00189404758974359
+              ]
+            ],
+            "tg_tok_s": 527.9698384639727
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.16331201975947418
+              ]
+            ],
+            "pp_tok_s": 12540.411924463937,
+            "request_s": 1.1989357850928075,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.008090810666666667
+              ]
+            ],
+            "tg_tok_s": 123.59700915013379
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c10",
+      "notes": [
+        "b>a, cuts [10], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c10.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.042841665312450705
+              ]
+            ],
+            "pp_tok_s": 47803.93070772642,
+            "request_s": 0.31155908015005757,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0020993548034188036
+              ]
+            ],
+            "tg_tok_s": 476.33682423356834
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.159282157351662
+              ]
+            ],
+            "pp_tok_s": 12857.686222057127,
+            "request_s": 1.1686265993345681,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.007885503452991454
+              ]
+            ],
+            "tg_tok_s": 126.81498473260307
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c11",
+      "notes": [
+        "b>a, cuts [11], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c11.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.04687152772026291
+              ]
+            ],
+            "pp_tok_s": 43693.90330570844,
+            "request_s": 0.34186826590829716,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0023046620170940175
+              ]
+            ],
+            "tg_tok_s": 433.9031027468899
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.15525229494384982
+              ]
+            ],
+            "pp_tok_s": 13191.431410020066,
+            "request_s": 1.1383174135763285,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00768019623931624
+              ]
+            ],
+            "tg_tok_s": 130.20500633575335
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c12",
+      "notes": [
+        "b>a, cuts [12], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c12.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.05126182459012206
+              ]
+            ],
+            "pp_tok_s": 39951.757791989345,
+            "request_s": 0.37301848346191696,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0025137238974358976
+              ]
+            ],
+            "tg_tok_s": 397.81616470291004
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.15086199807399064
+              ]
+            ],
+            "pp_tok_s": 13575.32066488708,
+            "request_s": 1.1071671960227087,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00747113435897436
+              ]
+            ],
+            "tg_tok_s": 133.84848296815804
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c13",
+      "notes": [
+        "b>a, cuts [13], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c13.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.05529168699793427
+              ]
+            ],
+            "pp_tok_s": 37039.92609370943,
+            "request_s": 0.4033276692201565,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0027190311111111114
+              ]
+            ],
+            "tg_tok_s": 367.77806473547764
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.14683213566617842
+              ]
+            ],
+            "pp_tok_s": 13947.900374180419,
+            "request_s": 1.0768580102644691,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.007265827145299146
+              ]
+            ],
+            "tg_tok_s": 137.6305794237042
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c14",
+      "notes": [
+        "b>a, cuts [14], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c14.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.05932154940574647
+              ]
+            ],
+            "pp_tok_s": 34523.71053210573,
+            "request_s": 0.43363685497839605,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.002924338324786325
+              ]
+            ],
+            "tg_tok_s": 341.9576974128217
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1428022732583662
+              ]
+            ],
+            "pp_tok_s": 14341.508389678356,
+            "request_s": 1.0465488245062295,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.007060519931623932
+              ]
+            ],
+            "tg_tok_s": 141.6326289967711
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c15",
+      "notes": [
+        "b>a, cuts [15], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c15.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.06371184627560562
+              ]
+            ],
+            "pp_tok_s": 32144.728488022967,
+            "request_s": 0.4647870725320159,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0031334002051282054
+              ]
+            ],
+            "tg_tok_s": 319.14212501913215
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.13841197638850705
+              ]
+            ],
+            "pp_tok_s": 14796.407460084894,
+            "request_s": 1.0153986069526098,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006851458051282052
+              ]
+            ],
+            "tg_tok_s": 145.9543344664978
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c16",
+      "notes": [
+        "b>a, cuts [16], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c16.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.06774170868341783
+              ]
+            ],
+            "pp_tok_s": 30232.48217093349,
+            "request_s": 0.49509625829025544,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.003338707418803419
+              ]
+            ],
+            "tg_tok_s": 299.51711083398754
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.13438211398069483
+              ]
+            ],
+            "pp_tok_s": 15240.123401349478,
+            "request_s": 0.9850894211943702,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006646150837606838
+              ]
+            ],
+            "tg_tok_s": 150.46303107380007
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c17",
+      "notes": [
+        "b>a, cuts [17], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c17.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.07177157109123003
+              ]
+            ],
+            "pp_tok_s": 28534.97518393116,
+            "request_s": 0.525405444048495,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0035440146324786327
+              ]
+            ],
+            "tg_tok_s": 282.16587788200366
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.13035225157288263
+              ]
+            ],
+            "pp_tok_s": 15711.274452784737,
+            "request_s": 0.9547802354361306,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006440843623931624
+              ]
+            ],
+            "tg_tok_s": 155.2591645424205
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c18",
+      "notes": [
+        "b>a, cuts [18], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c18.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.07616186796108919
+              ]
+            ],
+            "pp_tok_s": 26890.09677449502,
+            "request_s": 0.5565556616021149,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.003753076512820513
+              ]
+            ],
+            "tg_tok_s": 266.44807175766306
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1259619547030235
+              ]
+            ],
+            "pp_tok_s": 16258.877570044897,
+            "request_s": 0.9236300178825108,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006231781743589744
+              ]
+            ],
+            "tg_tok_s": 160.46775082080487
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c19",
+      "notes": [
+        "b>a, cuts [19], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c19.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.0801917303689014
+              ]
+            ],
+            "pp_tok_s": 25538.792972526015,
+            "request_s": 0.5868648473603544,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.003958383726495727
+              ]
+            ],
+            "tg_tok_s": 252.62836275988806
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.12193209229521126
+              ]
+            ],
+            "pp_tok_s": 16796.234374799067,
+            "request_s": 0.8933208321242712,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00602647452991453
+              ]
+            ],
+            "tg_tok_s": 165.93449371372063
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c20",
+      "notes": [
+        "b>a, cuts [20], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c20.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.08422159277671361
+              ]
+            ],
+            "pp_tok_s": 24316.804426028983,
+            "request_s": 0.617174033118594,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0041636909401709405
+              ]
+            ],
+            "tg_tok_s": 240.17152434444256
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.11790222988739907
+              ]
+            ],
+            "pp_tok_s": 17370.324564309893,
+            "request_s": 0.8630116463660316,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005821167316239316
+              ]
+            ],
+            "tg_tok_s": 171.78685058756153
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c21",
+      "notes": [
+        "b>a, cuts [21], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c21.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.08861188964657275
+              ]
+            ],
+            "pp_tok_s": 23112.02264355741,
+            "request_s": 0.6483242506722138,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004372752820512821
+              ]
+            ],
+            "tg_tok_s": 228.6888925687603
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.11351193301753991
+              ]
+            ],
+            "pp_tok_s": 18042.1559703643,
+            "request_s": 0.8318614288124118,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005612105435897436
+              ]
+            ],
+            "tg_tok_s": 178.18624603942231
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c22",
+      "notes": [
+        "b>a, cuts [22], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c22.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.09264175205438498
+              ]
+            ],
+            "pp_tok_s": 22106.663082081282,
+            "request_s": 0.6786334364304534,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0045780600341880345
+              ]
+            ],
+            "tg_tok_s": 218.43313380169778
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.10948207060972769
+              ]
+            ],
+            "pp_tok_s": 18706.259286057306,
+            "request_s": 0.8015522430541722,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005406798222222222
+              ]
+            ],
+            "tg_tok_s": 184.95234312424458
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c23",
+      "notes": [
+        "b>a, cuts [23], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c23.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.09667161446219719
+              ]
+            ],
+            "pp_tok_s": 21185.122555296282,
+            "request_s": 0.708942622188693,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004783367247863248
+              ]
+            ],
+            "tg_tok_s": 209.05775119957693
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.10545220820191548
+              ]
+            ],
+            "pp_tok_s": 19421.12009715885,
+            "request_s": 0.7712430572959327,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005201491008547009
+              ]
+            ],
+            "tg_tok_s": 192.25256726519675
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c24",
+      "notes": [
+        "b>a, cuts [24], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c24.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.10106191133205635
+              ]
+            ],
+            "pp_tok_s": 20264.80573151781,
+            "request_s": 0.7400928397423128,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004992429128205128
+              ]
+            ],
+            "tg_tok_s": 200.30329411196243
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.10106191133205633
+              ]
+            ],
+            "pp_tok_s": 20264.805731517812,
+            "request_s": 0.7400928397423128,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004992429128205128
+              ]
+            ],
+            "tg_tok_s": 200.30329411196243
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c25",
+      "notes": [
+        "b>a, cuts [25], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c25.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.10509177373986854
+              ]
+            ],
+            "pp_tok_s": 19487.728935562278,
+            "request_s": 0.7704020255005524,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005197736341880342
+              ]
+            ],
+            "tg_tok_s": 192.39144393350244
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.09703204892424412
+              ]
+            ],
+            "pp_tok_s": 21106.428470854367,
+            "request_s": 0.7097836539840732,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0047871219145299146
+              ]
+            ],
+            "tg_tok_s": 208.89378166133417
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c26",
+      "notes": [
+        "b>a, cuts [26], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c26.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.10912163614768076
+              ]
+            ],
+            "pp_tok_s": 18768.047037237608,
+            "request_s": 0.800711211258792,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005403043555555556
+              ]
+            ],
+            "tg_tok_s": 185.08086964647413
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.09300218651643191
+              ]
+            ],
+            "pp_tok_s": 22020.987642458847,
+            "request_s": 0.6794744682258336,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004581814700854701
+              ]
+            ],
+            "tg_tok_s": 218.25413406907487
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c27",
+      "notes": [
+        "b>a, cuts [27], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c27.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.11351193301753992
+              ]
+            ],
+            "pp_tok_s": 18042.155970364296,
+            "request_s": 0.8318614288124118,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.005612105435897436
+              ]
+            ],
+            "tg_tok_s": 178.18624603942231
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.08861188964657275
+              ]
+            ],
+            "pp_tok_s": 23112.02264355741,
+            "request_s": 0.6483242506722138,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004372752820512821
+              ]
+            ],
+            "tg_tok_s": 228.6888925687603
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c28",
+      "notes": [
+        "b>a, cuts [28], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c28.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.11754179542535213
+              ]
+            ],
+            "pp_tok_s": 17423.589563089783,
+            "request_s": 0.8621706145706514,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00581741264957265
+              ]
+            ],
+            "tg_tok_s": 171.89772502616958
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.08458202723876057
+              ]
+            ],
+            "pp_tok_s": 24213.181769914863,
+            "request_s": 0.6180150649139742,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.004167445606837607
+              ]
+            ],
+            "tg_tok_s": 239.95514143226754
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c29",
+      "notes": [
+        "b>a, cuts [29], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c29.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.12157165783316433
+              ]
+            ],
+            "pp_tok_s": 16846.03168618889,
+            "request_s": 0.892479800328891,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006022719863247864
+              ]
+            ],
+            "tg_tok_s": 166.03794011776125
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.08055216483094836
+              ]
+            ],
+            "pp_tok_s": 25424.518438431252,
+            "request_s": 0.5877058791557348,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.003962138393162394
+              ]
+            ],
+            "tg_tok_s": 252.38896292106716
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c30",
+      "notes": [
+        "b>a, cuts [30], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c30.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1259619547030235
+              ]
+            ],
+            "pp_tok_s": 16258.877570044897,
+            "request_s": 0.9236300178825108,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006231781743589744
+              ]
+            ],
+            "tg_tok_s": 160.46775082080487
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.0761618679610892
+              ]
+            ],
+            "pp_tok_s": 26890.096774495014,
+            "request_s": 0.5565556616021149,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.003753076512820513
+              ]
+            ],
+            "tg_tok_s": 266.44807175766306
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c31",
+      "notes": [
+        "b>a, cuts [31], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c31.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1299918171108357
+              ]
+            ],
+            "pp_tok_s": 15754.837846860786,
+            "request_s": 0.9539392036407504,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006437088957264958
+              ]
+            ],
+            "tg_tok_s": 155.3497251069353
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.07213200555327698
+              ]
+            ],
+            "pp_tok_s": 28392.38954041475,
+            "request_s": 0.5262464758438753,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0035477692991452993
+              ]
+            ],
+            "tg_tok_s": 281.86725676917945
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c32",
+      "notes": [
+        "b>a, cuts [32], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c32.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1340216795186479
+              ]
+            ],
+            "pp_tok_s": 15281.10979772522,
+            "request_s": 0.98424838939899,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006642396170940172
+              ]
+            ],
+            "tg_tok_s": 150.54808148524796
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.0681021431454648
+              ]
+            ],
+            "pp_tok_s": 30072.475041284877,
+            "request_s": 0.4959372900856358,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.003342462085470086
+              ]
+            ],
+            "tg_tok_s": 299.1806561836765
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c33",
+      "notes": [
+        "b>a, cuts [33], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c33.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.13841197638850708
+              ]
+            ],
+            "pp_tok_s": 14796.40746008489,
+            "request_s": 1.0153986069526098,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.006851458051282052
+              ]
+            ],
+            "tg_tok_s": 145.9543344664978
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.06371184627560564
+              ]
+            ],
+            "pp_tok_s": 32144.72848802296,
+            "request_s": 0.4647870725320159,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0031334002051282054
+              ]
+            ],
+            "tg_tok_s": 319.14212501913215
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c34",
+      "notes": [
+        "b>a, cuts [34], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c34.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.14244183879631928
+              ]
+            ],
+            "pp_tok_s": 14377.798105572621,
+            "request_s": 1.0457077927108493,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.007056765264957266
+              ]
+            ],
+            "tg_tok_s": 141.70798693926173
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.05968198386779343
+              ]
+            ],
+            "pp_tok_s": 34315.2131895732,
+            "request_s": 0.43447788677377636,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0029280929914529915
+              ]
+            ],
+            "tg_tok_s": 341.51920820785665
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c35",
+      "notes": [
+        "b>a, cuts [35], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c35.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1464717012041315
+              ]
+            ],
+            "pp_tok_s": 13982.223072194593,
+            "request_s": 1.0760169784690887,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.007262072478632479
+              ]
+            ],
+            "tg_tok_s": 137.70173775356068
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.055652121459981226
+              ]
+            ],
+            "pp_tok_s": 36800.03468462011,
+            "request_s": 0.4041687010155368,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.002722785777777778
+              ]
+            ],
+            "tg_tok_s": 367.2709062026016
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c36",
+      "notes": [
+        "b>a, cuts [36], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c36.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.15086199807399064
+              ]
+            ],
+            "pp_tok_s": 13575.32066488708,
+            "request_s": 1.1071671960227087,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00747113435897436
+              ]
+            ],
+            "tg_tok_s": 133.84848296815804
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.05126182459012206
+              ]
+            ],
+            "pp_tok_s": 39951.757791989345,
+            "request_s": 0.37301848346191696,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0025137238974358976
+              ]
+            ],
+            "tg_tok_s": 397.81616470291004
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.121141700365786
+      }
+    },
+    {
+      "id": "c37",
+      "notes": [
+        "b>a, cuts [37], head Leader, ubatch 2048, micro 4: pp 253.5 tg 16.12 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c37.toml",
+      "prediction": {
+        "hop_s_per_token": 0.0517402135,
+        "pp_tps": 253.48726882324556,
+        "request_s": 16.01918552612704,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.15489186048180287
+              ]
+            ],
+            "pp_tok_s": 13222.127964823592,
+            "request_s": 1.1374763817809481,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.007676441572649573
+              ]
+            ],
+            "tg_tok_s": 130.26869162437248
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.047231962182309864
+              ]
+            ],
+            "pp_tok_s": 43360.46832217046,
+            "request_s": 0.3427092977036774,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.002308416683760684
+              ]
+            ],
+            "tg_tok_s": 433.1973542882568
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.026199598435355242
+              ],
+              [
+                "offload_compute:cpu0",
+                0.0
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.00525288
+              ]
+            ],
+            "pp_tok_s": 65114.10552937141,
+            "request_s": 0.07052760076014157,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0002927143931623932
+              ],
+              [
+                "compute:cpu0",
+                0.0
+              ],
+              [
+                "switches",
+                0.000012560000000000002
+              ]
+            ],
+            "tg_tok_s": 3275.741504686382
+          }
+        ],
+        "tg_tps": 16.12114170036579
+      }
+    },
+    {
+      "id": "c38",
+      "notes": [
+        "a>b, cuts [1], head Last, ubatch 2048, micro 1: pp 257.4 tg 14.69 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c38.toml",
+      "prediction": {
+        "hop_s_per_token": 0.05780916759244792,
+        "pp_tps": 257.37738551263436,
+        "request_s": 16.669729805003882,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.004410296869859155
+              ]
+            ],
+            "pp_tok_s": 464367.8329221869,
+            "request_s": 0.033730217553619844,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.00022906188034188036
+              ]
+            ],
+            "tg_tok_s": 4365.632546574209
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.22389312422960875
+              ]
+            ],
+            "pp_tok_s": 9147.221501539805,
+            "request_s": 1.5075425026911473,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.01002851076923077
+              ]
+            ],
+            "tg_tok_s": 99.71570286070543
+          }
+        ],
+        "tg_tps": 14.691463061759146
+      }
+    },
+    {
+      "id": "c39",
+      "notes": [
+        "b>a, cuts [47], head Last, ubatch 2048, micro 4: pp 2642.2 tg 2.67 tok/s"
+      ],
+      "plan": "Qwen3_30B_Gptq_Fp16-c39.toml",
+      "prediction": {
+        "hop_s_per_token": 0.3645246845872396,
+        "pp_tps": 2642.1827470073026,
+        "request_s": 48.74724563703899,
+        "segments": [
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.1977135257942535
+              ]
+            ],
+            "pp_tok_s": 10358.421315753627,
+            "request_s": 1.446455461931006,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.009755796376068378
+              ]
+            ],
+            "tg_tok_s": 102.50316442162189
+          },
+          {
+            "binding": "compute:gpu0",
+            "pp_breakdown": [
+              [
+                "compute:gpu0",
+                0.030589895305214394
+              ]
+            ],
+            "pp_tok_s": 66950.21279300995,
+            "request_s": 0.0948172583137614,
+            "tg_breakdown": [
+              [
+                "compute:gpu0",
+                0.0005017762735042735
+              ]
+            ],
+            "tg_tok_s": 1992.9200578103525
+          }
+        ],
+        "tg_tps": 2.668215959241992
+      }
+    }
+  ],
+  "hw_sha256": "c3397a66f1205f09ffbb668214e271cbf708634a02dcf7114d1678836373c583",
+  "kind": "candidates-cluster",
+  "workload": {
+    "gen": 128,
+    "prompt": 2048
+  }
+}
