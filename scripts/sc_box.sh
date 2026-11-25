@@ -2,8 +2,9 @@
 # Session segment-confirm (tree node bench-235b-segment-confirm, ADR 0092 section 6, ADR 0091 Case S): one exit segment of the
 # Qwen3-235B-A22B (layers SPLIT..END, no head, VRAM slots and RAM slots per layer, ubatch 2048) predicted from a routing trace
 # and anchors, then measured. Stages (STAGES, in order; each ends with a marker in runs/sc/sc_box.log):
-#   gates    first, before the model download (run it alone: STAGES=gates): lscpu shows exactly one NUMA node and the co-tenant
-#            reading of `engine_sample.py cotenant` is under the limit (ADR 0091 answer 8; scripts/sc_gates.py), else abort
+#   gates    first, before the model download (run it alone: STAGES=gates): `power_gate.sh` (every GPU at its default power
+#            limit), `idle_gate.sh` (clock event reasons), lscpu shows exactly one NUMA node and the co-tenant reading of
+#            `engine_sample.py cotenant` is under the limit (ADR 0091 answer 8; scripts/sc_gates.py), else abort
 #   env      host facts of the box -> env/
 #   build    cargo release build: tetraeder (CUDA), tetraeder-plan, tetraeder-bench and the exit_regime test binary
 #   disk     stage 1: `tetraeder plan layout`, `tetraeder-bench disk-curve` (idle, with copy_bytes_per_s), the node graph
@@ -29,15 +30,17 @@
 # MODEL (the first shard), PROMPT_FILE (default bench/prompts/exit_prompt.txt; empty = pseudo-random ids), SPLIT, END, A1_END,
 # A2_END, V, R, DUMP_V, DUMP_R, UBATCH, PREFILL, DECODE. Defaults are the 235B segment; the rehearsal on the synthetic model
 # overrides them (docs in bench/results/<name>/README.md). Never overwrite this file while it runs.
+# The session ends with `$out/DONE` (also on an abort): taxameter's fetch and destroy need it. Tests (tests/test_sc_box.py) set
+# SC_LOCK, RESULTS_ROOT, SC_LOG and SC_BOX_OVERRIDES (a file sourced before main, to replace run_one and the gates).
 if [ -n "${PIN_CPUS:-}" ] && [ -z "${SC_PINNED:-}" ]; then SC_PINNED=1 exec taskset -c "$PIN_CPUS" bash "$0" "$@"; fi
-exec 8> /root/tetraeder_sc_box.lock
+exec 8> "${SC_LOCK:-/root/tetraeder_sc_box.lock}"
 flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 root=$PWD
 name="${RESULTS_NAME:?set RESULTS_NAME}"
-out="$root/bench/results/$name"
+out="${RESULTS_ROOT:-$root/bench/results}/$name"
 mkdir -p "$out"/{env,disk,trace,anchors,predictions,judged,report,build} runs/sc
-log=runs/sc/sc_box.log
+log="${SC_LOG:-runs/sc/sc_box.log}"
 stages="${STAGES:-gates env build disk balloon trace anchors predict}"
 say() { echo "[$(date +%T)] $*"; }
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
@@ -68,7 +71,13 @@ hidden="$root/runs/sc/hidden.bin"
 trace="$root/runs/sc/routing.trace"
 p="$out/predictions"
 export EMULATE_RAM_GB="${EMULATE_RAM_GB:-64}"
-die() { say "FATAL: $*"; echo "SC_BOX_DONE rc=1"; touch "$out/gpu-sampler.stop"; exit 1; }
+die() {
+  say "FATAL: $*"
+  echo "SC_BOX_DONE rc=1"
+  echo "SC_BOX_DONE rc=1 stages='$stages' $(date -Is)" > "$out/DONE" # fetch and destroy need it, also after an abort
+  touch "$out/gpu-sampler.stop"
+  exit 1
+}
 
 # ---- one engine run: the exit_regime test with the sampler, balloon check and host blocks (as scripts/sp_arms.sh) ----------
 run_one() { # run_one TAG JSON [ENV=VALUE...]
@@ -116,6 +125,8 @@ seg_env() { # seg_env END
 # ADR 0091 answer 8 and docs/box-driver.md: one NUMA node and a quiet host, read by the repo's own sampler. Run it before the
 # model download (STAGES=gates); the judged stages check both again from the files it writes.
 st_gates() {
+  bash scripts/power_gate.sh > "$out/env/power-gate.txt" 2>&1 || { cat "$out/env/power-gate.txt"; die "a GPU is not at its default power limit: destroy the box"; }
+  bash scripts/idle_gate.sh > "$out/env/idle-gate.txt" 2>&1 || { cat "$out/env/idle-gate.txt"; die "idle gate: clock event reasons set while idle: destroy the box"; }
   lscpu > "$out/env/lscpu.txt" 2>&1
   python3 -I scripts/sc_gates.py numa "$out/env/lscpu.txt" || die "not a one-NUMA-node host: destroy the box before the download"
   python3 scripts/engine_sample.py cotenant --seconds "${COTENANT_S:-20}" --out "$out/env/cotenant.json" \
@@ -366,5 +377,8 @@ main() {
   done
   touch "$out/gpu-sampler.stop"
   say "SC_BOX_DONE rc=0 stages='$stages'"
+  echo "SC_BOX_DONE rc=0 stages='$stages' $(date -Is)" > "$out/DONE"
 }
+# shellcheck disable=SC1090
+[ -n "${SC_BOX_OVERRIDES:-}" ] && . "$SC_BOX_OVERRIDES"
 main >> "$log" 2>&1

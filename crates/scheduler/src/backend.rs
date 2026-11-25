@@ -223,6 +223,35 @@ pub trait SegmentBackend: BatchBackend {
     fn last_step_time(&self) -> Option<std::time::Duration> {
         None
     }
+    /// Whether the segment computes a step apart from the caller (a worker on another node), so
+    /// [`start_step`](Self::start_step) returns before the step is done and a pipelined prefill
+    /// (ADR 0077) can overlap segments. Default: no, `step` is the only call.
+    fn can_overlap(&self) -> bool {
+        false
+    }
+    /// Sends a step and returns. Up to a few steps may be started before the first is finished;
+    /// each [`finish_step`](Self::finish_step) takes the oldest, in order, and the segment runs
+    /// them in that order. No other call to the segment between a start and its finish.
+    fn start_step(
+        &mut self,
+        _inputs: &[SeqInput<'_>],
+        _feed: Feed<'_>,
+    ) -> Result<(), BackendError> {
+        Err(BackendError::Failed(
+            "this segment cannot start a step apart from its finish".into(),
+        ))
+    }
+    /// Whether the oldest started step has its result, waiting up to `wait` for it (a worker's
+    /// reply, read off the link). A step that cannot come (the worker is gone, its deadline is
+    /// over) counts as ready: [`finish_step`](Self::finish_step) then returns the error. Lets the
+    /// caller serve whichever segment answers first. Default: ready.
+    fn reply_ready(&mut self, _wait: std::time::Duration) -> bool {
+        true
+    }
+    /// The result of the oldest started step, as `step` returns it.
+    fn finish_step(&mut self) -> Result<StepOut<'_>, BackendError> {
+        Err(BackendError::Failed("no step was started".into()))
+    }
 }
 
 /// Inputs shorter than this are decoders (1 token, or 1 + drafts); longer ones are prompt chunks.

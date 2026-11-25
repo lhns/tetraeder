@@ -164,6 +164,18 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         let metrics = telemetry.metrics().clone();
+        // The plan's prefill micro-batches (ADR 0077): the replica's plan file, when it reads.
+        let micro = std::env::var_os("TETRAEDER_REPLICA_PLAN")
+            .and_then(|f| {
+                let read = std::fs::read_to_string(&f).map_err(|e| e.to_string());
+                let plan = read
+                    .and_then(|t| tetraeder_plan::Plan::from_toml(&t).map_err(|e| e.to_string()));
+                plan.map_err(|e| {
+                    eprintln!("warning: prefill is not pipelined, the plan is unreadable: {e}")
+                })
+                .ok()
+            })
+            .map_or(1, |p| p.knobs.prefill_micro_batches);
         // The backend is built on the scheduler's thread: it is not `Send`.
         let (s, p) = scheduler_over(&a.serve, &telemetry, move || {
             let mut backs: Vec<Box<dyn SegmentBackend>> = Vec::new();
@@ -173,7 +185,8 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
                     RemoteBackend::start(rc).map_err(|e| format!("segment {i}: {e}"))?,
                 ));
             }
-            let p = replica_pipeline(backs, Some(metrics), &predicted)?;
+            let p = replica_pipeline(backs, Some(metrics), &predicted)?
+                .with_prefill_micro_batches(micro);
             Ok(Box::new(p) as Box<dyn BatchBackend>)
         })?;
         (Some(s), p)

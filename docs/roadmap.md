@@ -288,6 +288,7 @@ flowchart TB
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
 | Price decode at measured clocks | ✔ done · successful | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
 | Cost model 5 second host | ○ next | Cost model 5 (clock-aware decode) is fitted and confirmed only on host 20210; check its predictions on a second 4-GPU host when one is usable. |
+| Planner footprint against the validator | ⚠ open | A 7-node plan on 24 GB cards passes the planner's footprint but fails the validator with MemoryExceeded; find which accounting differs and make them agree, with a property test over the cluster fixtures (found by planner-costmodel-v6-rest; does not affect the two-node exit). |
 | Replan without draining | ⛔ blocked | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). |
 | Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
 | Separate prefill and decode layouts | ⛔ blocked | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). |
@@ -347,8 +348,8 @@ flowchart TB
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
+| Replica step size from the plan | ⚠ open | The replica must set its scheduler step tokens from the plan's micro-batches times ubatch, so pipelined prefill runs exactly the flow shop the planner priced; today it follows --step-tokens (default 2048), which equals the priced step only for the exit's pp2048 at ubatch 512 and four micro-batches. |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
-| Prefill pipelined across stages | ○ next | A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
@@ -366,7 +367,8 @@ flowchart TB
 
 **ci**
 
-- `cluster-pipeline-prefill`: Prefill pipelined across stages
+- `cluster-step-tokens-from-plan`: Replica step size from the plan
+- `planner-footprint-validator-gap`: Planner footprint against the validator
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
@@ -417,7 +419,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 133 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 134 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -835,6 +837,7 @@ Generated on 2026-11-25.
 - `planner-node-predict-check`: Node prediction equals the cluster reference (✔ done · unrated). A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix).
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 - `bench-235b-segment-confirm-2`: Rerun the segment confirmation (✔ done · successful). Rerun of the one-segment confirmation on a one-NUMA-node host (EPYC 7542, RTX A6000 planned against 24 GiB) with real-hidden anchors and the gates as code. The prediction (pp 445.08, tg 17.426 tok/s, fit band 0.050) was frozen and pushed before the judged rounds; the median of the three clean rounds is pp 452.46 and tg 17.761, within 2%, the routing gate held and the A/A (early and last) are inside 0.08. Two of the first three rounds were unclean (co-tenant over the limit), so two more rounds were run on the same frozen prediction; the five-round median agrees (e_pp -0.013, e_tg +0.008).
+- `cluster-pipeline-prefill`: Prefill pipelined across stages (✔ done · unrated). A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes).
 - `cluster-planner-hardening`: Harden the cluster planner inputs (✔ fixed). Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors.
 - `ops-review-phase6-serving`: Review the cluster serving code (✔ done · unrated). A read-only review of Phase 6 steps 3 to 5 and cluster-integration found 9 issues; 7 are fixed (per-IP handshake cap and TLS deadline, leader-only segment use, single-use prefix grants, request frame caps, snapshot checks, tokened prefix relay, bounded outbox, key required for a public cluster head) and 2 partly (snapshots served whole, no per-peer rate limit beyond grants; probe frames stay at 64 MiB for the link probe).
 - `planner-costmodel-v6-rest`: Cost model 6 remaining parts (✔ done · unrated). The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test.
@@ -867,10 +870,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (13 done, 1 next, 6 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (12 done, 1 next, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 28 nodes (19 done, 2 next, 3 blocked, 4 parked)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (36 done, 3 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 18 nodes (15 done, 1 next, 1 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 19 nodes (16 done, 1 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
