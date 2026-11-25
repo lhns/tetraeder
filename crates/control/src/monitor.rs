@@ -194,6 +194,15 @@ impl Monitor {
             .record(secs, &[KeyValue::new("node", node.0.clone())]);
     }
 
+    /// Time since the last frame from `id` (its hello or a reply), for tests that place a fault
+    /// right after one.
+    pub fn silent_for(&self, id: &NodeId) -> Option<Duration> {
+        let now = self.shared.now();
+        lock(&self.shared.mem)
+            .last_heard(id)
+            .map(|t| now.saturating_sub(t))
+    }
+
     /// The heartbeat interval in use.
     pub fn heartbeat_every(&self) -> Duration {
         self.shared.cfg.heartbeat_every()
@@ -224,13 +233,13 @@ fn pause(s: &Shared, d: Duration) -> bool {
         if s.stop.load(Ordering::SeqCst) {
             return false;
         }
-        std::thread::sleep(Duration::from_millis(5).min(d));
+        std::thread::sleep(crate::cluster::PAUSE_STEP.min(d));
     }
     !s.stop.load(Ordering::SeqCst)
 }
 
 fn ticker(s: &Arc<Shared>) {
-    let every = (s.cfg.heartbeat_every() / 4).max(Duration::from_millis(5));
+    let every = s.cfg.tick_every();
     let after = s.cfg.node_down_after();
     while pause(s, every) {
         s.apply(|m, now| m.tick(now));

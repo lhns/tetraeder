@@ -2714,6 +2714,48 @@ nodes:
   overview: false
   plain: The daemon waited for the killed engine to be reaped before it dropped the head's connection, and a process with a CUDA context takes seconds to leave (rehearsal mode 1 took 2.79 s against 1 ms simulated); it now drops the connection first. The cause on the real box is inferred from the code and the logs, not measured.
 
+- id: cluster-discovery-disk-names
+  title: Discovery names the builder disk
+  track: cluster
+  kind: defect
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/planner/tests/cluster_discovered_ram_experts.rs
+  - crates/profiler/src/discover.rs
+  verdict_quote: 'case_s_candidate pick=c00 stages=2 ubatch=Some(2048) ram_expert_stages=2, discovery_gives_the_235b_a_spanning_candidate_with_ram_experts ok (CI of branch cluster-discovery-disks)'
+  headline: 'an unedited cluster profile graph gives the 235B its spanning candidate'
+  depends_on:
+  - bench-phase6-rehearsal
+  replaced_by: []
+  lane: ci
+  start: '2026-11-25'
+  end: '2026-11-25'
+  folded: []
+  overview: false
+  plain: Discovery named every disk disk0 and gave the device no read rate, so the planner homed every 235B expert in RAM and the validator rejected all candidates; the volume that holds the node's models dir is now nvme0 with its link prior as the rate, and the test builds the graph from recorded volumes with no edit. The RAM budget of a judged session is still a graph edit unless the box's RAM is the budget.
+- id: cluster-failover-bound
+  title: Failover bound per Case F mode
+  track: cluster
+  kind: experiment
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/control/tests/case_f.rs
+  - crates/control/src/cluster.rs
+  verdict_quote: 'case_f_bound mode=KillWorker worst_error_s=0.001 computed_bound_s=0.000, mode=KillDaemon 0.001 and 0.000, mode=Blackhole worst_error_s=1.044 computed_bound_s=1.067 at node_down_after 1 s (CI of branch cluster-discovery-disks)'
+  headline: 'worst case 2.13 s at the default, under the 3 s rule'
+  depends_on:
+  - cluster-mode1-detection
+  replaced_by: []
+  lane: ci
+  start: '2026-11-25'
+  end: '2026-11-25'
+  folded: []
+  overview: false
+  plain: The worst time from a node fault to the in-flight error on the head, from the code, a killed engine or daemon closes the connection with no timer, a partition costs node_down_after plus the tick plus one pause step, 2.13 s at 2 s, plus one one-way delay on a real link. Simulated nodes confirm each mode within its bound. Findings, an engine that hangs with its daemon alive has no timer, and a receiver that does not drain delays the errors by up to 60 s each.
 - id: planner-footprint-validator-gap
   title: Planner footprint against the validator
   track: planner

@@ -9,7 +9,9 @@ mod graph;
 mod pcie;
 mod probe;
 
-pub use discover::{DeviceProbe, DiscoverOpts, discover, numa_node_count};
+pub use discover::{
+    BUILDER_DISK, DeviceProbe, DiscoverOpts, Volume, add_disks, discover, numa_node_count,
+};
 pub use gpu::{GpuInfo, discover_gpus, pcie_lane_bytes_per_s, pcie_prior_bytes_per_s};
 pub use graph::{
     CollectiveCurve, CollectiveOp, ComputeSpec, DecodeClocks, Device, DeviceKind, HardwareGraph,

@@ -594,3 +594,115 @@ fn case_f_a_child_that_is_slow_to_be_reaped_does_not_delay_the_errors() {
         "the in-flight errors came {late:?} after the kill, with the reap taking 3 s"
     );
 }
+
+/// Scheduler slack of a loaded CI machine on top of a computed bound: thread hops, the 1 ms
+/// delivery poll and the clients' 1 ms receive poll.
+const SLACK: Duration = Duration::from_millis(400);
+
+/// Worst-case time from the fault to the in-flight error on the head, per mode, from the code
+/// (ADR 0091 History, "failover bound"):
+///
+/// - mode 0, the engine killed, and mode 1, the daemon and the engine killed: no timer. The
+///   daemon (mode 0) or the OS (mode 1) closes the head's replica connection when the engine's
+///   pipe or the process ends, the head's reader sees the end and fails every request. Terms:
+///   the close propagating (a one-way network delay, nil in the simulation).
+/// - mode 2, a partition or a stopped process: nothing closes. The node is `Down` at the first
+///   tick with `node_down_after` of silence, and that tick closes the watched connections.
+///   `ClusterConfig::silent_detect_bound` is `node_down_after + tick + one pause step`.
+fn bound(mode: Fault) -> Duration {
+    let cfg = config(DOWN_MS, &["a", "b"], &[1, 2]);
+    match mode {
+        Fault::KillWorker | Fault::KillDaemon => Duration::ZERO,
+        Fault::Blackhole => cfg.silent_detect_bound(),
+    }
+}
+
+/// One fault at its worst phase, with requests in flight on R_B: the time to the last error.
+fn error_after_fault(mode: Fault) -> Duration {
+    let rig = rig();
+    let t0 = Instant::now();
+    let stop = Arc::new(AtomicBool::new(false));
+    let out = Arc::new(Mutex::new(Vec::new()));
+    let clients: Vec<_> = (0..CLIENTS)
+        .map(|n| {
+            let (e, s, o) = (Arc::clone(&rig.engine), Arc::clone(&stop), Arc::clone(&out));
+            std::thread::spawn(move || client(&e, n, t0, &s, &o))
+        })
+        .collect();
+    std::thread::sleep(Duration::from_millis(1500));
+    let b = id("b");
+    if matches!(mode, Fault::Blackhole) {
+        // The worst phase of the heartbeat: the fault just after a reply, so the silence is
+        // the whole of `node_down_after`.
+        wait_until(Duration::from_secs(5), || {
+            rig._monitor
+                .silent_for(&b)
+                .is_some_and(|d| d < Duration::from_millis(10))
+        })
+        .expect("a heartbeat reply arrives");
+    }
+    let t_fault = t0.elapsed();
+    let mut rig = rig;
+    match mode {
+        Fault::KillWorker => rig.launcher_b.crash(),
+        Fault::KillDaemon => rig.daemon_b.take().unwrap().stop(),
+        Fault::Blackhole => {
+            rig.board.fault(&id("a"), &b, LinkFault::Blackhole);
+            rig.board.fault(&b, &id("a"), LinkFault::Blackhole);
+        }
+    }
+    std::thread::sleep(Duration::from_secs(1) + bound(mode) + SLACK);
+    stop.store(true, Ordering::SeqCst);
+    for c in clients {
+        c.join().unwrap();
+    }
+    let recs = out.lock().unwrap();
+    let errors: Vec<&Rec> = recs
+        .iter()
+        .filter(|r| r.error.is_some() && r.end >= t_fault)
+        .collect();
+    assert!(!errors.is_empty(), "requests were in flight on R_B");
+    errors
+        .iter()
+        .map(|r| r.end.saturating_sub(t_fault))
+        .max()
+        .unwrap()
+}
+
+fn assert_bound(mode: Fault) {
+    let worst = error_after_fault(mode);
+    let limit = bound(mode) + SLACK;
+    println!(
+        "case_f_bound mode={mode:?} worst_error_s={:.3} computed_bound_s={:.3} slack_s={:.1} three_s_rule={}",
+        worst.as_secs_f64(),
+        bound(mode).as_secs_f64(),
+        SLACK.as_secs_f64(),
+        limit < Duration::from_secs(3)
+    );
+    assert!(
+        worst <= limit,
+        "{mode:?}: the last in-flight error came {worst:?} after the fault, bound {limit:?}"
+    );
+}
+
+// hardware: none
+#[test]
+fn case_f_bound_kill_the_engine() {
+    assert_bound(Fault::KillWorker);
+}
+
+// hardware: none
+#[test]
+fn case_f_bound_kill_the_daemon_and_the_engine() {
+    assert_bound(Fault::KillDaemon);
+}
+
+// hardware: none
+#[test]
+fn case_f_bound_partition_after_the_last_heartbeat() {
+    assert_bound(Fault::Blackhole);
+    // The production default (2 s) stays under the 3 s rule with the slack; the test runs the
+    // shorter 1 s to keep the suite fast, the terms are the same.
+    let prod = config(2000, &["a", "b"], &[1, 2]);
+    assert!(prod.silent_detect_bound() + SLACK < Duration::from_secs(3));
+}

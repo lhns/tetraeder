@@ -12,6 +12,9 @@ use std::time::Duration;
 use tetraeder_transport::identity::{certs_from_pem, check_node_id, node_id_of};
 use tetraeder_transport::{CertificateDer, NodeId, Peer};
 
+/// The monitor sleeps in steps of this length, so a period can run this much long.
+pub const PAUSE_STEP: Duration = Duration::from_millis(5);
+
 const DEFAULT_DOWN_AFTER_MS: u64 = 2000;
 
 fn two_seconds_ms() -> u64 {
@@ -109,6 +112,21 @@ impl ClusterConfig {
         self.node_down_after() / 4
     }
 
+    /// The monitor's ticker (membership check and stale-connection cut) runs every
+    /// `heartbeat_every / 4`, at least [`PAUSE_STEP`].
+    pub fn tick_every(&self) -> Duration {
+        (self.heartbeat_every() / 4).max(PAUSE_STEP)
+    }
+
+    /// Worst case from the last frame heard from a node that went silent (a partition, a stopped
+    /// process: no connection closes) to the head's calls on it failing: the node is `Down` at
+    /// the first tick with `node_down_after` of silence, and that tick closes the replica and
+    /// segment connections (ADR 0091, Case F mode 2). The fault comes just after a reply, so
+    /// the silence starts at the fault.
+    pub fn silent_detect_bound(&self) -> Duration {
+        self.node_down_after() + self.tick_every() + PAUSE_STEP
+    }
+
     pub fn node(&self, id: &NodeId) -> Option<&NodeConfig> {
         self.nodes.iter().find(|n| &n.id == id)
     }
@@ -187,6 +205,25 @@ anchor = "b.pem"
         assert_eq!(c.listen_addr(&NodeId::new("a")), Some("10.0.0.1:7000"));
         assert_eq!(c.listen_addr(&NodeId::new("b")), Some("0.0.0.0:7000"));
         assert_eq!(c.peer(&NodeId::new("b")).unwrap().addr, "203.0.113.5:41000");
+    }
+
+    #[test]
+    fn a_silent_node_is_cut_off_within_the_3_s_rule_at_the_default() {
+        let c = ClusterConfig::parse(OK).unwrap();
+        assert_eq!(c.tick_every(), Duration::from_millis(125));
+        assert_eq!(
+            c.silent_detect_bound(),
+            Duration::from_millis(2000) + Duration::from_millis(125) + PAUSE_STEP
+        );
+        assert!(c.silent_detect_bound() < Duration::from_secs(3));
+        // The shortest `node_down_after` the file allows.
+        let f = ClusterConfig::parse(&OK.replace(
+            "head = \"a\"",
+            "head = \"a\"
+node_down_after_ms = 200",
+        ))
+        .unwrap();
+        assert_eq!(f.tick_every(), Duration::from_micros(12_500));
     }
 
     #[test]
