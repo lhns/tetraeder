@@ -4549,41 +4549,47 @@ nodes:
   title: Case F clock offset between the boxes is 2 to 6 s uncertain
   track: bench
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
-  - bench/results/phase6-rehearsal-2-20261125/README.md
-  verdict_quote: 'clock_offset FAIL offset 0.2872 s, uncertainty 2.5298 s against 0.5 (bench/results/phase6-rehearsal-2-20261125/verdict-f.json)'
-  headline: 'the offset by ssh round trips misses the 0.5 s rule and moved a fault out of its window'
+  - scripts/phase6_trigger.py
+  - scripts/phase6_exit_f.sh
+  - scripts/phase6_loopback_check.py
+  - docs/box-driver.md
+  verdict_quote: 'P6_LOOPBACK_REAL fault time known within 0.059 s at most, clock rule ok (offset 0.0001 s, worst uncertainty 0.0004 s over 9 measurement(s) against 0.5) (CI run 45646670539, loopback on one machine)'
+  headline: 'the fault goes over a direct connection to B and the offset is read there, not through ssh'
   depends_on:
   - bench-phase6-rehearsal-2
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-25'
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: 'taxameter ssh latency of 1 to 3 s makes the three-exchange offset uncertain by 2.3 to 6.3 s, so the clock_offset rule fails and daemon trial 2 had no request in flight at its fault; the offset needs a better source.'
+  plain: 'The load generator on A fires the fault on B through a small trigger service and the clock offset is measured over that connection; on loopback the fault time is known within 59 ms, a WAN pair is not yet measured, and attempts that hit nothing in flight on B are repeated.'
 
 - id: bench-phase6-serve-node-state
   title: phase6_box.sh serve lacks --node-state
   track: bench
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
-  - bench/results/phase6-rehearsal-2-20261125/README.md
-  verdict_quote: 'node a: a prefix connection arrived and no replica listens for it; closed (bench/results/phase6-rehearsal-2-20261125/README.md, step 2)'
-  headline: 'the head replica registers its prefix listener where the daemon does not look'
+  - scripts/phase6_box.sh
+  - scripts/phase6_loopback_check.py
+  - .github/workflows/ci.yml
+  - docs/box-driver.md
+  verdict_quote: 'P6_LOOPBACK_REAL serve --node-state wired, prefix-head registered in the daemon''s node-state (CI run 45646670539, step phase 6 loopback)'
+  headline: 'serve passes --node-state and the head replica registers its prefix listener where the daemon looks'
   depends_on:
   - bench-phase6-rehearsal-2
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-25'
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: 'The serve stage starts the head from the repo directory, so its in-process replica registers in ./node-state while the daemon reads /root/p6/node-state; a fetch from the head replica is closed.'
+  plain: 'The serve stage now passes --node-state, and a CI step runs a real head and two real daemons through the box commands and checks that the head registered its prefix listener in the daemon directory; the prefix fetch itself is still open (cluster-prefix-fetch-not-observed).'
 
 - id: cluster-prefix-fetch-not-observed
   title: Prefix fetch between real processes not demonstrated

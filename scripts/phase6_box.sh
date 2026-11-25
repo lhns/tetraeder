@@ -15,11 +15,15 @@
 #   gates                 the exit sessions' gates before any download (power, idle, one NUMA node, co-tenant by
 #                         engine_sample.py), written to gates/ ; exit 1 and `P6_GATES_DONE rc=1` when one fails
 #   admits OUT            epochs of the `admit` lines of logs/node.log (the replica engine's requests) into OUT
-#   clock                 `date +%s.%N`, for the driver's clock offset between the boxes
+#   clock                 `date +%s.%N`
+#   trigger               start the Case F fault trigger (scripts/phase6_trigger.py, own pid file) on TRIGGER_PORT (7001); token in
+#                         $P6/trigger-token.txt; node b only
+#   endpoint [PORT]       this box's public address and the mapped port (default 7000, the trigger's 7001)
 #   judged-round LABEL SHA  one judged Case S round (`tetraeder cluster judged-round`, node a, the head) into judged/LABEL; ends with
 #                         a `ROUND_DONE rc=N` line in logs/launch-judged-LABEL.log (scripts/phase6_exit_s.sh)
 # Env: THREADS (CPU quota, default cpu_quota.sh), PAR (parallel, 4), CTX (4096), WORKER_EXTRA (more worker flags of `node`, e.g. --miss cpu), P6, HEAD_HOST and HEAD_PORT (the head, 0.0.0.0:8080), TETRAEDER_BIN (the binary to run; the
-# loopback dry run sets it), P6_LOOPBACK (1: no hardware, no CUDA; `gates` writes fixture readings).
+# loopback dry run sets it), P6_LOOPBACK (1: no hardware, no CUDA; `gates` writes fixture readings; `build` only checks that TETRAEDER_BIN
+# exists; `model` links the tiny MoE fixture, P6_LB_MODEL to change it), TRIGGER_PORT and TRIGGER_HOST (the trigger).
 cd "$(dirname "$0")/.." || exit 1
 root=$PWD
 P6="${P6:-/root/p6}"
@@ -60,6 +64,12 @@ detached() { # detached NAME CMD...: refuses a second start while pids/NAME is a
 
 case "$stage" in
   build)
+    if [ -n "${P6_LOOPBACK:-}" ]; then # CI builds the binary; this only proves it is there, in the same log line the real build ends with
+      echo "=== RUN $(date +%FT%T) build (loopback: $bin) ===" >> "$P6/logs/build.log"
+      if [ -x "$bin" ]; then echo "P6_BUILD_DONE rc=0" >> "$P6/logs/build.log"; else echo "P6_BUILD_DONE rc=1 (no $bin)" >> "$P6/logs/build.log"; fi
+      tail -n 1 "$P6/logs/build.log"
+      exit 0
+    fi
     exec 8> "$P6/pids/build.lock"
     flock -n 8 || { echo "build already running"; exit 0; }
     archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
@@ -74,6 +84,15 @@ case "$stage" in
     echo "build started $(date +%T)"
     ;;
   model)
+    if [ -n "${P6_LOOPBACK:-}" ]; then # the tiny MoE fixture under its own sha256, as a box holds the 30B
+      src="${P6_LB_MODEL:-$root/tests/fixtures/tiny-qwen3moe-f16.gguf}"
+      h=$(sha256sum "$src" | cut -d' ' -f1)
+      echo "$h" > "$P6/model.sha256"
+      cp "$src" "$P6/models/$h.gguf"
+      echo "P6_MODEL_DONE rc=0 sha256=$h bytes=$(stat -c %s "$src")" >> "$P6/logs/model.log"
+      tail -n 1 "$P6/logs/model.log"
+      exit 0
+    fi
     (
       cd "$root" || exit 1
       if [ ! -s "$gguf_rel" ]; then
@@ -107,7 +126,7 @@ case "$stage" in
   serve)
     args=(serve --cluster "$P6/cluster.toml" --key "$P6/keys/key.pem" --cert "$P6/keys/cert.pem"
       -m "$P6/models/$(sha).gguf" --model-sha256 "$(sha)" --host "${HEAD_HOST:-0.0.0.0}" --port "${HEAD_PORT:-8080}" --api-key-file "$P6/api-key.txt"
-      --request-log "$P6/logs/head-requests.jsonl" --metrics "${engine_flags[@]}" "$@")
+      --node-state "$P6/node-state" --request-log "$P6/logs/head-requests.jsonl" --metrics "${engine_flags[@]}" "$@")
     RUST_LOG="${RUST_LOG:-info}" detached serve "$bin" "${args[@]}"
     ;;
   solo)
@@ -161,13 +180,21 @@ case "$stage" in
     date +%s.%N
     ;;
   endpoint)
-    # this box's public address and the mapped port of 7000 (`create --ports 7000`), as the container sees them
+    # this box's public address and the mapped port of PORT (`create --ports 7000,7001`), as the container sees them
+    port="${1:-7000}"
     if [ -n "${P6_LOOPBACK:-}" ]; then
-      echo "127.0.0.1:${P6_LB_PORT:?}"
+      if [ "$port" = 7000 ]; then echo "127.0.0.1:${P6_LB_PORT:?}"; else echo "127.0.0.1:${TRIGGER_PORT:?}"; fi
       exit 0
     fi
-    eval "$(xargs -0 -n1 < /proc/1/environ | grep -E '^(VAST_TCP_PORT_7000|PUBLIC_IPADDR)=' | sed 's/^/export /')"
-    echo "${PUBLIC_IPADDR:?no PUBLIC_IPADDR}:${VAST_TCP_PORT_7000:?no VAST_TCP_PORT_7000}"
+    [[ "$port" =~ ^[0-9]+$ ]] || { echo "bad port $port" >&2; exit 2; }
+    eval "$(xargs -0 -n1 < /proc/1/environ | grep -E "^(VAST_TCP_PORT_$port|PUBLIC_IPADDR)=" | sed 's/^/export /')"
+    p="VAST_TCP_PORT_$port"
+    echo "${PUBLIC_IPADDR:?no PUBLIC_IPADDR}:${!p:?no $p (create --ports 7000,7001)}"
+    ;;
+  trigger)
+    # not a child of the daemon: the faults kill the daemon's children and the daemon itself, never this
+    detached trigger python3 -I "$root/scripts/phase6_trigger.py" serve --host "${TRIGGER_HOST:-0.0.0.0}" --port "${TRIGGER_PORT:-7001}" \
+      --token-file "$P6/trigger-token.txt" --p6 "$P6" --repo "$root"
     ;;
   launch)
     # launch TAG CMD...: starts CMD detached once. taxameter repeats a command after a dropped connection (AGENTS.md), so a

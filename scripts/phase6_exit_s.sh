@@ -5,12 +5,19 @@
 # (its stages, with its gates), the verdict is scripts/phase6_exit_s_summary.py. No Rust, no cargo locally.
 #
 # Two invocations, with a commit between them (the frozen prediction goes to git before any judged run):
-#   STAGES="gates setup budget plan calib predict" bash scripts/phase6_exit_s.sh   ... commit predictions/, link/, plans/, calib/
+#   STAGES="gates setup linkgate fetch budget plan calib predict" bash scripts/phase6_exit_s.sh   ... commit predictions/, link/, plans/, calib/
 #   FROZEN_SHA=<FROZEN.sha256> STAGES="judged aalast linkend summary" bash scripts/phase6_exit_s.sh
 # Stages:
 #   gates     both boxes, before any download: power, idle, one NUMA node, co-tenant by engine_sample.py. A miss ends the session
-#   setup     certificates, cluster.toml after create, the 142 GB model on both boxes (`create` went through scripts/sc_offers.sh:
-#             real --download-gb 150, disk_gb 230), build, the node daemons
+#   setup     build on both boxes, then certificates (they need the binary), cluster.toml after create, the node daemons. No
+#             download yet (`create` went through scripts/sc_offers.sh: real --download-gb 150, disk_gb 230, --ports 7000)
+#   linkgate  the link gate BEFORE the download (advisor, delegated by the owner, 2026-11-25): a full probe (frames to 64 MiB, no
+#             --max-bytes), the graph with the builder disks and a nominal RAM budget, the pick among plans that compute on both nodes
+#             on the committed 235B layout (GATE_LAYOUT, default bench/results/segment-confirm-20261125b/layout.json, no model needed),
+#             that candidate priced; 10 minutes later (LINK_GATE_WAIT_S, never below 600 on a box) a second full probe, the same candidate
+#             priced again with only the link curves swapped. Pp or tg moving by more than 0.08, or probes less than 600 s apart, aborts
+#             the pair: destroy both boxes, nothing was downloaded. Files link/probe-gate{1,2}.json, link/gate-times.json, link/gate/
+#   fetch     the 142 GB model on both boxes (REQUIRE_ONE_NUMA=1); refuses unless the link gate passed
 #   budget    per node, sc_box.sh: env, disk (the NVMe curve and the one-thread copy rate), balloon: the RAM budget under
 #             EMULATE_RAM_GB is measured before anything is profiled (ADR 0092 section 4)
 #   plan      the start link probe (band 0.08 later) and `cluster profile --ram-budget` (each node's measured RAM budget on its CPU;
@@ -42,7 +49,7 @@
 # `after:` nvidia-smi lines of sc_box.sh run_one) and balloon_ok and cotenant_ok in each seg file. REFERENCE_CMD (optional, node a, env
 # ROUND_FILE) writes the report-only single-node round.
 #
-# Env: RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
+# Env: LINK_GATE_WAIT_S (600), GATE_LAYOUT, RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
 # V and R (the slots the anchors run: 32 VRAM and 96 RAM, the covering regime the confirmation validated; the judged workers run the plan's
 # own `expert_cache`, and the plan stage refuses a pick whose slots differ), A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first),
 # MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94" instead of the pick's).
@@ -55,13 +62,17 @@ say() { echo "[$(date +%T)] $*"; }
 die() { say "FATAL: $*"; exit 1; }
 name="${RESULTS_NAME:?set RESULTS_NAME}"
 out="${RESULTS_ROOT:-$repo/bench/results}/$name"
-stages="${STAGES:-gates setup budget plan calib predict}"
+stages="${STAGES:-gates setup linkgate fetch budget plan calib predict}"
 spans="${SPANS:-}" # the pick's, from plans/spans.txt, once the plan stage has run
 vs="${V:-32}" rs="${R:-96}"
 if [ "$LOOPBACK" = 1 ]; then
   lb="${LB_DIR:-$repo/runs/phase6-loopback-s}"
   port_a="${LB_PORT_A:-17401}" port_b="${LB_PORT_B:-17402}" head_port="${LB_HEAD_PORT:-18480}" poll_s=0.1 wait_step=0.5
+  gate_wait="${LINK_GATE_WAIT_S:-2}"
+  export P6_MIN_GAP_S=1 # the summary's 600 s between the gate probes, shortened for the dry run only
 else
+  gate_wait="${LINK_GATE_WAIT_S:-600}"
+  [ "$gate_wait" -ge 600 ] || { echo "LINK_GATE_WAIT_S below 600: the gate needs probes at least 10 minutes apart"; exit 2; }
   head_port=8080 poll_s=0.2 wait_step=5
 fi
 mkdir -p "$out"/{gates,certs,cluster,link,plans,calib,env,hidden,trace,predictions,judged,reference}
@@ -129,7 +140,15 @@ st_gates() {
 
 st_setup() {
   local b ea eb now
-  if [ "$LOOPBACK" = 1 ]; then rm -rf "$lb"; loopback_tools; fi
+  if [ "$LOOPBACK" = 1 ]; then
+    rm -rf "$lb"
+    loopback_tools
+  else
+    # `cluster cert` is the tetraeder binary: build first, or the certificate stays empty (rehearsal 2). The tag differs from the budget stage's
+    say "build on both boxes (the certificates need the binary)"
+    for b in a b; do scbox "$b" bld "build" > /dev/null; done
+    for b in a b; do scbox_wait "$b" build; done
+  fi
   for b in a b; do
     bx "$b" 120 "bash scripts/phase6_box.sh cert $b" | tail -n 1
     get "$b" keys/cert.pem "$out/certs/$b.pem"
@@ -150,15 +169,6 @@ st_setup() {
     sess t_created "{\"a\": $(awk -v n="$now" 'BEGIN { printf "%.3f", n - 30 }'), \"b\": $(awk -v n="$now" 'BEGIN { printf "%.3f", n - 20 }')}"
   else
     sess t_created "{\"a\": ${T_CREATED_A:?set T_CREATED_A}, \"b\": ${T_CREATED_B:?set T_CREATED_B}}"
-    say "the 142 GB model on both boxes (REQUIRE_ONE_NUMA=1) and the build"
-    for b in a b; do
-      bx "$b" 120 "bash scripts/phase6_box.sh launch fetch-235b env REQUIRE_ONE_NUMA=1 bash scripts/fetch_exit_model.sh" | tail -n 1
-      scbox "$b" b1 "build" > /dev/null
-    done
-    for b in a b; do
-      wait_line "$b" ../tetraeder/runs/vast/fetch_exit.log 'FETCH_DONE rc=0' 14400 > /dev/null || die "the model download on $b did not finish ok"
-      scbox_wait "$b" build
-    done
   fi
   # the workers compute the experts outside their slots on the CPU (the exit harness's MissPolicy::Cpu); the slot counts are the plan's;
   # one sequence of ctx tokens (2048 prompt and 128 generated need 2176)
@@ -166,6 +176,66 @@ st_setup() {
   sess band_source '"bench/spec/phase0.toml"'
   sess boxes "{\"a\": {\"id\": \"${ID_A:-loopback}\"}, \"b\": {\"id\": \"${ID_B:-loopback}\"}}"
   say "setup done"
+}
+
+# the link gate before the download: two full probes 10 minutes apart, the frozen candidate priced with each
+gate_time() { # gate_time KEY: the driver's clock at the end of a gate probe
+  python3 -I -c 'import json, os, sys, time; p, k = sys.argv[1:3]; d = json.load(open(p)) if os.path.exists(p) else {}; d[k] = time.time(); json.dump(d, open(p, "w"))' \
+    "$out/link/gate-times.json" "$1"
+}
+gate_price() { # gate_price HW_FILE OUT_FILE (under the work dir of node a): the gate candidate, uniform routing, no replay
+  local P
+  P=$(p6dir a)
+  bx a 600 "$(tplan) predict --cluster $P/gate-plan.toml --hw $P/$1 --layout $P/gate-layout.json --prompt 2048 --gen 128 --out $P/$2" | tail -n 2
+  get a "$2" "$out/link/gate/$2"
+}
+
+st_linkgate() {
+  local P cl ram
+  P=$(p6dir a)
+  [ "$LOOPBACK" = 1 ] && [ ! -x "$lb/tetraeder-plan" ] && loopback_tools
+  mkdir -p "$out/link/gate"
+  rm -f "$out/link/gate-times.json"
+  cl="--cluster $P/cluster.toml --key $P/keys/key.pem --cert $P/keys/cert.pem"
+  ram=$((${EMULATE_RAM_GB:-64} * 1000000000)) # nominal: the balloon has not measured the budget yet, the gate needs only the link's weight in the price
+  say "link gate: the first full probe"
+  probe_link gate1 || die "the first full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
+  gate_time gate1
+  bx a 300 "$(tet) cluster profile $cl --probe $P/probe-gate1.json --ram-budget a=$ram --ram-budget b=$ram -o $P/hw-gate1-builder.json" | tail -n 2
+  get a hw-gate1-builder.json "$out/link/gate/hw-gate1-builder.json"
+  put a "${GATE_LAYOUT:-$repo/bench/results/segment-confirm-20261125b/layout.json}" gate-layout.json
+  bx a 300 "rm -rf $P/gate-candidates; $(tplan) candidates --cluster --hw $P/hw-gate1-builder.json --layout $P/gate-layout.json --plans-dir $P/gate-candidates --out $P/gate-candidates.json --prompt 2048" | tail -n 3
+  get a gate-candidates.json "$out/link/gate/candidates.json"
+  mkdir -p "$out/link/gate/candidates"
+  local f
+  for f in $(python3 -I -c 'import json, sys; print(" ".join(c["plan"] for c in json.load(open(sys.argv[1]))["candidates"] if c.get("plan")))' "$out/link/gate/candidates.json"); do
+    get a "gate-candidates/$f" "$out/link/gate/candidates/$f"
+  done
+  summ pick "$out/link/gate/candidates.json" "$out/link/gate/candidates" "$out/link/gate/gate-plan.toml" > /dev/null \
+    || die "no plan that computes on both nodes in the gate's candidates: the pair cannot be gated, destroy both boxes"
+  put a "$out/link/gate/gate-plan.toml" gate-plan.toml
+  gate_price hw-gate1-builder.json predict-gate1.json
+  say "link gate: waiting $gate_wait s for the second probe"
+  sleep "$gate_wait"
+  probe_link gate2 || die "the second full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
+  gate_time gate2
+  bx a 300 "$(tet) cluster merge $P/hw-gate1-builder.json --swap-link $P/probe-gate2.json -o $P/hw-gate2-builder.json" | tail -n 1
+  get a hw-gate2-builder.json "$out/link/gate/hw-gate2-builder.json"
+  gate_price hw-gate2-builder.json predict-gate2.json
+  summ gate "$out" || die "the link gate failed: destroy both boxes, nothing was downloaded (the 142 GB model comes only after this gate)"
+  say "linkgate done: the pair passes, the download may start"
+}
+
+st_fetch() {
+  [ "$LOOPBACK" = 1 ] && { say "loopback: no download"; return 0; }
+  local b
+  summ gate "$out" > /dev/null || die "the link gate has not passed (link/gate.json): no download"
+  say "the 142 GB model on both boxes (REQUIRE_ONE_NUMA=1)"
+  for b in a b; do bx "$b" 120 "bash scripts/phase6_box.sh launch fetch-235b env REQUIRE_ONE_NUMA=1 bash scripts/fetch_exit_model.sh" | tail -n 1; done
+  for b in a b; do
+    wait_line "$b" ../tetraeder/runs/vast/fetch_exit.log 'FETCH_DONE rc=0' 14400 > /dev/null || die "the model download on $b did not finish ok"
+  done
+  say "fetch done"
 }
 
 # the RAM budget of each node is measured under the balloon before the graph is profiled (ADR 0092 section 4)

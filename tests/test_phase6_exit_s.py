@@ -66,7 +66,7 @@ def make_round(d, *, t_start, frozen, pp=295.0, tg=5.1, share=0.39, prompt=PH, *
 
 def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, plan=PLAN, probe_end=None, hidden_b=None,
           anchor_b_seed=False, anchor_a_prompt=PH, cand_single_faster=True, mutate=None, frozen_t=1000.0, freeze_pp=300.0, freeze_tg=5.0, end_move=(1.0, 1.0),
-          second=None):
+          second=None, gate=(700.0, 1.0, 1.0)):
     res = tmp_path / "res"
     write(res / "session.json", {"model_sha256": "ab" * 32, "prompt": {"tokens": 2048, "gen": 128, "fnv1a64": PH},
                                  "segments": [{"node": "a", "span": [0, 47], "embed": True, "head": False},
@@ -84,6 +84,12 @@ def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, pla
                                                                "replay_ram_hit_rate": 1.0}})
     write(res / "trace" / "routing.sha256", "t" * 64 + "  routing\n")
     write(res / "trace" / "hidden.sha256", "h" * 64 + "  hidden\n")
+    if gate is not None:  # the link gate before the download: (seconds between the probes, pp and tg of the second price / the first)
+        write(res / "link" / "probe-gate1.json", probe())
+        write(res / "link" / "probe-gate2.json", probe(1.02))
+        write(res / "link" / "gate-times.json", {"gate1": 100.0, "gate2": 100.0 + gate[0]})
+        write(res / "link" / "gate" / "predict-gate1.json", {"prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
+        write(res / "link" / "gate" / "predict-gate2.json", {"prediction": {"pp_tps": 280.0 * gate[1], "tg_tps": 4.8 * gate[2], "request_s": 30.0}})
     write(res / "link" / "probe-start.json", probe())
     write(res / "link" / "probe-end.json", probe_end or probe(1.02))
     (res / "plans" / "candidates").mkdir(parents=True)
@@ -432,3 +438,50 @@ def test_the_plans_slots_must_be_the_anchors(tmp_path):
     assert len(why) == 1 and "cpu0 has 96 slots" in why[0]
     plan.write_text('[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n')
     assert s6.check_slots(str(plan), 1, 1) == []  # no cache, nothing to compare
+
+# ---- the link gate before the download -----------------------------------------------------------------------------------------
+
+
+def test_the_link_gate_passes_when_two_full_probes_ten_minutes_apart_move_the_prediction_within_the_band(tmp_path):
+    res, _ = build(tmp_path, gate=(600.0, 1.07, 0.93))
+    o = summary(res)
+    assert failed(o) == [] and o["link_gate"]["pp_move"] == pytest.approx(0.07) and o["link_gate"]["tg_move"] == pytest.approx(-0.07)
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "gate", str(res)], capture_output=True, text=True)
+    assert r.returncode == 0 and "passes" in r.stdout
+    g = json.loads((res / "link" / "gate.json").read_text())
+    assert g["pass"] is True and g["gap_s"] == 600.0 and g["min_gap_s"] == 600.0
+
+
+@pytest.mark.parametrize("gate,why", [
+    ((599.0, 1.0, 1.0), "599 s apart"),
+    ((900.0, 1.09, 1.0), "pp moves +0.090"),
+    ((900.0, 1.0, 0.90), "tg moves -0.100"),
+    ((900.0, 0.5, 1.0), "pp moves -0.500"),
+])
+def test_the_link_gate_aborts_a_pair_whose_probes_are_too_close_or_whose_prediction_moves(tmp_path, gate, why):
+    res, _ = build(tmp_path, gate=gate)
+    o = summary(res)
+    assert "link_gate" in failed(o) and why in next(r["detail"] for r in o["rules"] if r["name"] == "link_gate")
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "gate", str(res)], capture_output=True, text=True)
+    assert r.returncode == 1 and "GATE FAILED link_gate" in r.stdout and json.loads((res / "link" / "gate.json").read_text())["pass"] is False
+
+
+def test_the_link_gate_needs_full_probes_and_all_its_evidence(tmp_path):
+    def truncated(res, frozen):
+        pts = [[x, y] for x, y in POINTS if x <= 4194304]  # --max-bytes 4 MiB, as the rehearsal fell back to
+        write(res / "link" / "probe-gate2.json", {"curves": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "comm": "tls", "points": pts}]})
+
+    o = summary(build(tmp_path, mutate=truncated)[0])
+    assert "link_gate" in failed(o) and "a full probe reaches" in next(r["detail"] for r in o["rules"] if r["name"] == "link_gate")
+    res, _ = build(tmp_path / "none", gate=None)  # nothing recorded: the rule fails, the session is not a verdict
+    o = summary(res)
+    assert "link_gate" in failed(o) and o["verdict"] != "pass"
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "precheck", str(res), "calib"], capture_output=True, text=True)
+    assert r.returncode == 1 and "link_gate" in r.stdout  # the calibration refuses without the gate
+
+
+def test_the_gate_files_are_not_frozen(tmp_path):
+    # the freeze covers the prediction and what it was priced from; the gate predicts another thing (uniform routing, a committed layout)
+    res, _ = build(tmp_path)
+    sums = (res / "predictions" / "SHA256SUMS").read_text()
+    assert "gate" not in sums
