@@ -425,6 +425,86 @@ fn cpu_serve_cluster_plan_runs_a_pipeline_replica_across_two_nodes_like_one_node
     }
 }
 
+/// The shape of the rehearsal's head: one 4096-token pool of four sequences.
+const BIG_ARGS: [&str; 10] = [
+    "--engine",
+    "moe",
+    "--ngl",
+    "0",
+    "--threads",
+    "2",
+    "--ctx",
+    "4096",
+    "--parallel",
+    "4",
+];
+
+/// hardware: cpu. Two different cold prompts, each longer than the plan's step (ubatch 512 times
+/// 4 micro-batches), one after the other through the real head and a replica across two nodes:
+/// both answer with tokens, and the same ones as one node (rehearsal 2: the second cold request
+/// after a head start came back as an empty 200).
+#[test]
+fn cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node() {
+    let mut c = Cluster::new("it-cold2", &["a", "b", "c"], "tiny-qwen3moe-f16.gguf");
+    for n in ["a", "b", "c"] {
+        c.spawn_daemon(n, &BIG_ARGS, &BIG_ARGS);
+    }
+    let mut plan = two_stage_plan("tiny", 2, 1, "b/cpu0", "c/cpu0", None);
+    plan.knobs.prefill_micro_batches = 4;
+    plan.knobs.ubatch = Some(512);
+    std::fs::write(c.dir.join("plan.toml"), plan.to_toml().unwrap()).unwrap();
+    let port = free_port();
+    let mut cmd = serve_args(&c, port, &c.model.clone());
+    cmd.arg("--cluster-plan").arg(c.dir.join("plan.toml"));
+    let mut guard = Procs(vec![cmd.spawn().unwrap()]);
+    wait_healthy(port, &mut guard.0[0]);
+    let ref_port = free_port();
+    guard.0.push(
+        tetraeder()
+            .arg("serve")
+            .arg("-m")
+            .arg(&c.model)
+            .args(["--engine", "moe", "--ngl", "0", "--ctx", "4096"])
+            .args(["--parallel", "4", "--threads", "2"])
+            .args(["--host", "127.0.0.1", "--port"])
+            .arg(ref_port.to_string())
+            .arg("--accept-any-model")
+            .arg("--chat-template-file")
+            .arg(fixture("chatml.jinja"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap(),
+    );
+    wait_healthy(ref_port, &mut guard.0[1]);
+    for tag in ["alpha", "bravo", "charlie"] {
+        let prompt = format!("{tag} the quick brown fox jumps over the lazy dog. ").repeat(40);
+        let got = chat(port, &prompt, ",\"max_tokens\":8").unwrap();
+        let want = chat(ref_port, &prompt, ",\"max_tokens\":8").unwrap();
+        assert!(!want.is_empty());
+        assert_eq!(got, want, "cold prompt {tag}");
+    }
+    // The rehearsal's shape: streamed, ignore_eos, a fresh prompt each time.
+    for tag in ["delta", "echo", "foxtrot"] {
+        let prompt = format!("{tag} the quick brown fox jumps over the lazy dog. ").repeat(40);
+        let body = format!(
+            "{{\"messages\":[{{\"role\":\"user\",\"content\":{}}}],\"temperature\":0,\"max_tokens\":12,\"stream\":true,\"ignore_eos\":true}}",
+            serde_json::Value::String(prompt)
+        );
+        let (status, text) = http(port, "/v1/chat/completions", Some(&body));
+        assert_eq!(status, 200, "{text}");
+        let chunks = text.matches("\"content\"").count();
+        assert!(
+            chunks >= 6,
+            "streamed prompt {tag}: {chunks} chunks in {text}"
+        );
+    }
+    for p in &mut c.procs.0 {
+        assert!(p.try_wait().unwrap().is_none(), "a daemon exited");
+    }
+}
+
 fn greedy_request(prompt: &[u32], n: u32) -> GenerateRequest {
     GenerateRequest {
         model: "tiny".into(),
