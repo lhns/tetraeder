@@ -29,6 +29,16 @@
 
 Autotuning wins: equal a to b, 6 to 7 times faster b to a. The explicit setting kept the dialer's sender (B to A) at about 8 to 9 MB/s, where autotuning reaches 50 MB/s (about 400 Mbit/s). `net.core.{r,w}mem_max` cannot be read in the container; `tcp_rmem` and `tcp_wmem` max is 128 MiB on A. Source for the rest of the session: `a/probe-auto.json` (`hw.json` carries it). Not explained: why the explicit buffers cost only one direction.
 
+## Link band check (added with the pre-exit checks)
+
+Question: would a start probe against an end probe have held ADR 0091's Case S link rule (agree within the band 0.08 at 16 KiB and at 32 MiB), given the round trip moved from 57 to 68 ms? The session took no end probe, so this is an estimate from the start probes (`a/probe-auto.json`) and the heartbeat histogram, not a measurement.
+
+- Round trip 57 to 68 ms is +19.3%. The one-way floor moves by half of it, +5.5 ms (28.5 to 34.0 ms).
+- 16 KiB (a point of the probe): a to b 46.0 ms, b to a 36.1 ms at the start. With +5.5 ms: 51.5 ms (+12.0%) and 41.6 ms (+15.2%). Both exceed 0.08: the rule would not have held.
+- 32 MiB is not a probe point (sizes go 4 KiB to 64 MiB). Interpolating the start curve between 16 MiB and 64 MiB linearly: a to b 0.663 s, b to a 0.576 s, so +5.5 ms is +0.8% and +1.0%. At 64 MiB: 1.342 s and 1.148 s, +0.4% and +0.5%. The bulk point would have held, unless the bandwidth moved as well (unknown).
+- Noise of the start probe itself, three probes minutes apart: 16 KiB a to b 46.0, 45.8 and 45.2 ms (1.8% spread); 64 MiB a to b 1.342, 1.282 and 1.313 s (4.6%). The explicit-buffer runs are not comparable in the b to a direction (step 2).
+- Reading: the small-frame point is latency, so on a public link whose round trip drifts by a fifth the rule fires on the 16 KiB point alone while bulk throughput may be unchanged. The rule is unchanged (owner decision); a judged session on a link like this one should expect to rerun its rounds after a new probe.
+
 ## Step 3: split parity (`a/parity-pipeline.json`, `a/parity-solo-a.json`, `b/parity-solo.json`)
 
 - Plan `a/plan-pipeline.toml` (`scripts/phase6_plan.py`): one replica, stage 0 layers 0..24 and the embedding on `b/gpu0`, stage 1 layers 24..48 and the head on `a/gpu0`; the leader is B (so the head only tokenizes), `serve --cluster-plan --cluster-hw`. Written by hand, not by the planner: there is no CLI that emits a cluster plan, and `tetraeder-plan predict --cluster` refuses it ("a segment is a builder placement or all on the CPU", so the cost model cannot price an all-GPU segment; the head logs the same warning and starts without predictions).

@@ -424,6 +424,7 @@ pub struct HeadGuard {
     _engine: Arc<ClusterEngine>,
     _head: ClusterHead,
     _monitor: Arc<Monitor>,
+    _prefix_file: Option<PrefixFile>,
 }
 
 /// The engine of a head that leads no replica: the vocabulary of `-m` and nothing else.
@@ -452,17 +453,38 @@ fn serve_local_prefixes(
     r: u32,
     store: Arc<dyn PrefixStore>,
     node_state: &Path,
-) -> Result<()> {
+) -> Result<PrefixFile> {
     let grants = Arc::new(PrefixGrants::default());
     engine.set_local_replica(r, Arc::clone(&store), Arc::clone(&grants));
     let token = new_token();
     let port = crate::replica::serve_prefix_on_loopback(store, grants, token.clone())
         .context("cannot serve prefixes")?;
-    std::fs::create_dir_all(node_state)
+    crate::replica::create_private_dir(node_state)
         .with_context(|| format!("cannot create {}", node_state.display()))?;
     let file = crate::node::head_prefix_file(node_state);
     crate::replica::write_atomic(&file, &format!("{port} {token}"))
         .with_context(|| format!("cannot write {}", file.display()))?;
+    Ok(PrefixFile(file))
+}
+
+/// The head's `prefix-head` file, removed when the head stops: the daemon would otherwise relay
+/// to a port that another process may hold by then (it also checks the listener's answer).
+pub(crate) struct PrefixFile(PathBuf);
+
+impl Drop for PrefixFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// The head runs one engine in process, so it can lead one replica; two would share that engine
+/// and its slots under two router entries.
+fn check_one_head_led<'a>(leaders: impl Iterator<Item = &'a NodeId>, me: &NodeId) -> Result<()> {
+    let n = leaders.filter(|l| *l == me).count();
+    anyhow::ensure!(
+        n <= 1,
+        "{n} replicas are led by the head `{me}`: the head runs one engine in process and leads at most one replica;          lead the others from other nodes"
+    );
     Ok(())
 }
 
@@ -499,6 +521,7 @@ pub fn start(
     anyhow::ensure!(!resolved.is_empty(), "the cluster has no replica");
 
     // The replica the head leads itself runs in process; without one, the head only tokenizes.
+    check_one_head_led(resolved.iter().map(|r| &r.leader), &me)?;
     let local = resolved.iter().any(|r| r.leader == me);
     let mut local_store: Option<Arc<dyn PrefixStore>> = None;
     let (front, front_cap): (Arc<dyn GatewayEngine>, usize) = if local && a.fake {
@@ -555,11 +578,17 @@ pub fn start(
         )) as Arc<dyn FetchPolicy>
     });
     let engine = Arc::new(ClusterEngine::new(front, targets, MIN_PREFIX, policy));
+    let mut prefix_file = None;
     for (i, r) in resolved.iter().enumerate() {
         if r.leader == me {
             let i = u32::try_from(i)?;
             if let Some(store) = &local_store {
-                serve_local_prefixes(&engine, i, Arc::clone(store), &a.node_state)?;
+                prefix_file = Some(serve_local_prefixes(
+                    &engine,
+                    i,
+                    Arc::clone(store),
+                    &a.node_state,
+                )?);
             }
             engine.set_up(i, true);
         }
@@ -580,6 +609,7 @@ pub fn start(
             _engine: engine,
             _head: head,
             _monitor: monitor,
+            _prefix_file: prefix_file,
         },
     ))
 }
@@ -645,6 +675,32 @@ fn start_replanner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// hardware: none. Two replicas led by the head are refused with a message that says why.
+    #[test]
+    fn a_plan_with_two_head_led_replicas_is_refused() {
+        let (a, b) = (NodeId::new("a"), NodeId::new("b"));
+        assert!(check_one_head_led([&a, &b, &b].into_iter(), &a).is_ok());
+        assert!(check_one_head_led([&b, &b].into_iter(), &a).is_ok());
+        let e = check_one_head_led([&a, &b, &a].into_iter(), &a).unwrap_err();
+        assert!(
+            e.to_string().contains("2 replicas are led by the head"),
+            "{e}"
+        );
+    }
+
+    /// hardware: none. The head's prefix file goes when the head's guard does.
+    #[test]
+    fn the_head_removes_its_prefix_file_on_exit() {
+        let dir =
+            std::env::temp_dir().join(format!("tetraeder-prefix-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = crate::node::head_prefix_file(&dir);
+        std::fs::write(&file, "1 t").unwrap();
+        drop(PrefixFile(file.clone()));
+        assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     const HW: &str = include_str!("../../costmodel/fixtures/cluster/cluster_three_mixed.toml");
 

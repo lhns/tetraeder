@@ -123,6 +123,8 @@ struct Pending {
     prompt: Vec<u32>,
     /// What the client asked for: a leader that streams more is cut off at this many tokens.
     max_tokens: u32,
+    /// When it entered the router's queue.
+    queued_at: std::time::Instant,
 }
 
 struct State {
@@ -142,7 +144,13 @@ struct Inner {
     local_grants: Mutex<Option<Arc<PrefixGrants>>>,
     stop: AtomicBool,
     counts: [AtomicU64; 4],
+    /// How long a request may wait at the router for a replica with room.
+    queue_deadline: Mutex<Duration>,
 }
+
+/// The default for [`ClusterEngine::set_queue_deadline`]: a request that no replica took in this
+/// long ends with an error instead of waiting for a cluster that does not come back.
+const QUEUE_DEADLINE: Duration = Duration::from_secs(120);
 
 /// What the router did, as the `tetraeder.router.requests` results count it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -194,6 +202,7 @@ impl ClusterEngine {
             local_grants: Mutex::new(None),
             stop: AtomicBool::new(false),
             counts: Default::default(),
+            queue_deadline: Mutex::new(QUEUE_DEADLINE),
         });
         let t = Arc::clone(&inner);
         let tick = std::thread::Builder::new()
@@ -206,6 +215,11 @@ impl ClusterEngine {
             })
             .ok();
         Self { inner, tick }
+    }
+
+    /// Sets how long a request may wait at the router before it ends with an error.
+    pub fn set_queue_deadline(&self, d: Duration) {
+        *lock(&self.inner.queue_deadline) = d;
     }
 
     /// The grants served by a replica that runs on the head's node (a target without a
@@ -385,10 +399,27 @@ impl Inner {
         self.execute(actions);
     }
 
-    /// Drops requests whose client left while they waited.
+    /// Drops requests whose client left while they waited, and ends those that waited longer than
+    /// the queue deadline.
     fn sweep(self: &Arc<Self>) {
+        let deadline = *lock(&self.queue_deadline);
         let actions = {
             let mut st = lock(&self.state);
+            let expired: Vec<ReqId> = st
+                .reqs
+                .iter()
+                .filter(|(_, p)| p.req.is_some() && p.queued_at.elapsed() >= deadline)
+                .map(|(id, _)| *id)
+                .collect();
+            let mut out = Vec::new();
+            for id in expired {
+                out.extend(st.router.cancel(id));
+                if let Some(p) = st.reqs.remove(&id) {
+                    p.slot.finish(GenEvent::Error(format!(
+                        "no replica took the request within {deadline:?}"
+                    )));
+                }
+            }
             let gone: Vec<ReqId> = st
                 .reqs
                 .iter()
@@ -399,7 +430,6 @@ impl Inner {
                 })
                 .map(|(id, _)| *id)
                 .collect();
-            let mut out = Vec::new();
             for id in gone {
                 st.reqs.remove(&id);
                 out.extend(st.router.cancel(id));
@@ -651,8 +681,11 @@ impl Engine for ClusterEngine {
         });
         let actions = {
             let mut st = lock(&self.inner.state);
+            // No replica is up (a draining one still is: a planned drain replaces it and the
+            // requests wait for that). Waiting for a cluster that is gone is no answer: the
+            // gateway turns this into its overloaded response with a retry hint.
             if st.router.up_count() == 0 {
-                return Err(EngineError::Other("no replica is up".into()));
+                return Err(EngineError::Overloaded);
             }
             let id = st.next;
             st.next += 1;
@@ -665,6 +698,7 @@ impl Engine for ClusterEngine {
                     slot,
                     prompt: prompt.clone(),
                     max_tokens,
+                    queued_at: std::time::Instant::now(),
                 },
             );
             st.router.submit(id, prompt)
@@ -869,6 +903,22 @@ impl Drop for ClusterHead {
 /// Pause between two tries to start and join a replica, first and longest.
 const RETRY_MIN: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(2);
+/// A joined replica that stays up this long has joined for good: its backoff starts over. One
+/// that is lost sooner is a failed join (a crash loop), counted so and paced by the backoff.
+const STABLE_AFTER: Duration = Duration::from_secs(30);
+
+/// What a lost replica does to the join loop: `Some(pause)` before the next try when it was up
+/// for less than `STABLE_AFTER` (and the backoff doubles), `None` when it was stable (the
+/// backoff starts over and the next try is at once).
+fn after_loss(stayed: Duration, backoff: &mut Duration) -> Option<Duration> {
+    if stayed >= STABLE_AFTER {
+        *backoff = RETRY_MIN;
+        return None;
+    }
+    let pause = *backoff;
+    *backoff = (*backoff * 2).min(RETRY_MAX);
+    Some(pause)
+}
 
 fn sleep_unless(stop: &AtomicBool, d: Duration) {
     let t0 = std::time::Instant::now();
@@ -905,7 +955,8 @@ fn join_loop(
 ) {
     // The spec the last attempt started: what a new spec must clean up.
     let mut previous: Option<StartSpec> = None;
-    // Pause between failed tries: doubles up to `RETRY_MAX`, starts over after a join.
+    // Pause between failed tries: doubles up to `RETRY_MAX`, starts over after a join that
+    // stayed up for `STABLE_AFTER`.
     let mut backoff = RETRY_MIN;
     let mut attempts = 0u64;
     while !stop.load(Ordering::SeqCst) {
@@ -990,7 +1041,7 @@ fn join_loop(
         match attempt() {
             Ok(info) => {
                 metrics::join_attempt(r, "joined");
-                backoff = RETRY_MIN;
+                let joined_at = std::time::Instant::now();
                 tracing::info!(replica = r, %node, "replica joined");
                 e.set_kv_format(r, &info.kv_format);
                 e.set_kv_row_bytes(r, info.kv_row_bytes);
@@ -1016,8 +1067,17 @@ fn join_loop(
                     }
                     std::thread::sleep(Duration::from_millis(10));
                 }
+                // Lost, as opposed to stopped or replaced by a new spec.
+                let lost = !stop.load(Ordering::SeqCst)
+                    && current()
+                    && (!remote.is_connected() || !alive());
                 e.set_up(r, false);
                 remote.disconnect();
+                if lost && let Some(pause) = after_loss(joined_at.elapsed(), &mut backoff) {
+                    metrics::join_attempt(r, "failed");
+                    tracing::warn!(replica = r, %node, attempts, "replica lost {:?} after it joined; next try in {pause:?}", joined_at.elapsed());
+                    sleep_unless(stop, pause);
+                }
             }
             Err(err) => {
                 metrics::join_attempt(r, "failed");
@@ -1092,4 +1152,29 @@ pub fn specs_from_plan(
         ));
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod join_tests {
+    use super::*;
+
+    /// A replica lost soon after it joined is a failed join and backs off; one that stayed up
+    /// starts over (a crash loop must not retry at full speed or look healthy).
+    #[test]
+    fn a_join_lost_within_the_stable_time_backs_off() {
+        let mut b = RETRY_MIN;
+        let mut pauses = Vec::new();
+        for _ in 0..6 {
+            pauses.push(after_loss(Duration::from_secs(1), &mut b).unwrap());
+        }
+        assert_eq!(pauses[0], RETRY_MIN);
+        assert!(pauses.windows(2).all(|w| w[1] >= w[0]));
+        assert_eq!(*pauses.last().unwrap(), RETRY_MAX);
+        assert_eq!(after_loss(STABLE_AFTER, &mut b), None);
+        assert_eq!(b, RETRY_MIN, "a stable replica resets the backoff");
+        assert_eq!(
+            after_loss(STABLE_AFTER - Duration::from_millis(1), &mut b),
+            Some(RETRY_MIN)
+        );
+    }
 }

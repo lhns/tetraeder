@@ -165,6 +165,9 @@ pub struct ReplicaLauncher {
     /// How long a launched "process" takes to load its engine before it reads a frame: the pipes
     /// are open at once, so what the daemon relays queues up, as with a real process.
     pub load: Mutex<Duration>,
+    /// How long `kill` takes to return: a real one waits for the process to be reaped, and a
+    /// process with a CUDA context can take seconds to leave.
+    pub kill_delay: Arc<Mutex<Duration>>,
 }
 
 impl ReplicaLauncher {
@@ -179,6 +182,7 @@ impl ReplicaLauncher {
             current: Mutex::new(None),
             kv: Mutex::new(None),
             load: Mutex::new(Duration::ZERO),
+            kill_delay: Arc::new(Mutex::new(Duration::ZERO)),
         }
     }
 
@@ -203,10 +207,15 @@ impl Launcher for ReplicaLauncher {
             server.serve(in_rx, out_tx);
         });
         let d = Arc::clone(&dead);
+        let delay = Arc::clone(&self.kill_delay);
         Ok(WorkerIo {
             stdin: Box::new(in_tx),
             stdout: Box::new(out_rx),
-            kill: Arc::new(move || d.store(true, Ordering::SeqCst)),
+            kill: Arc::new(move || {
+                d.store(true, Ordering::SeqCst);
+                let wait = *delay.lock().unwrap();
+                std::thread::sleep(wait);
+            }),
         })
     }
 }

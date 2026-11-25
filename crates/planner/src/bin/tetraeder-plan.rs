@@ -1047,7 +1047,11 @@ fn main() -> Result<()> {
                 std::fs::create_dir_all(&dir)?;
                 let mut summary = Vec::new();
                 for c in &cands {
-                    let p = dir.join(format!("{}-{}.toml", layout.model, c.id));
+                    let p = dir.join(format!(
+                        "{}-{}.toml",
+                        multi_cli::plan_file_stem(&layout.model),
+                        c.id
+                    ));
                     std::fs::write(&p, c.plan.to_toml()?)
                         .with_context(|| format!("write {}", p.display()))?;
                     println!("{}: {}", c.id, c.notes.join("; "));
@@ -1089,7 +1093,11 @@ fn main() -> Result<()> {
                 if let Some(dir) = plans_dir {
                     std::fs::create_dir_all(&dir)?;
                     for c in &file.candidates {
-                        let p = dir.join(format!("{}-{}.toml", file.model, c.id));
+                        let p = dir.join(format!(
+                            "{}-{}.toml",
+                            multi_cli::plan_file_stem(&file.model),
+                            c.id
+                        ));
                         std::fs::write(&p, c.plan.to_toml()?)
                             .with_context(|| format!("write {}", p.display()))?;
                     }

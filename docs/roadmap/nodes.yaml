@@ -2676,20 +2676,44 @@ nodes:
   title: Replica step size from the plan
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/tetraeder/src/replica.rs
+  verdict_quote: 'the_step_is_the_plans_micro_batches_times_its_ubatch gave 4 micro-batches at ubatch 2048 give 8192, at ubatch 512 give 2048 (CI of branch cluster-preexit)'
+  headline: 'a replica steps the tokens its plan priced'
   depends_on:
   - cluster-pipeline-prefill
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-25'
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: The replica must set its scheduler step tokens from the plan's micro-batches times ubatch, so pipelined prefill runs exactly the flow shop the planner priced; today it follows --step-tokens (default 2048), which equals the priced step only for the exit's pp2048 at ubatch 512 and four micro-batches.
+  plain: The replica now sets its scheduler step tokens from the plan's micro-batches times its ubatch (an explicit --step-tokens still wins), so pipelined prefill runs the flow shop the planner priced; the Case S pick of 4 micro-batches at ubatch 2048 steps 8192 tokens.
+- id: cluster-mode1-detection
+  title: Head learns of a killed replica engine at once
+  track: cluster
+  kind: defect
+  state: done
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-20261125/README.md
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/control/tests/case_f.rs
+  verdict_quote: 'case_f_a_child_that_is_slow_to_be_reaped_does_not_delay_the_errors gave errors under 500 ms with a 3 s reap, 3.002 s before the fix (CI of branch cluster-preexit)'
+  headline: 'a slow reap of a killed engine no longer delays the in-flight errors'
+  depends_on:
+  - bench-phase6-rehearsal
+  replaced_by: []
+  lane: ci
+  start: '2026-11-25'
+  end: '2026-11-25'
+  folded: []
+  overview: false
+  plain: The daemon waited for the killed engine to be reaped before it dropped the head's connection, and a process with a CUDA context takes seconds to leave (rehearsal mode 1 took 2.79 s against 1 ms simulated); it now drops the connection first. The cause on the real box is inferred from the code and the logs, not measured.
+
 - id: planner-footprint-validator-gap
   title: Planner footprint against the validator
   track: planner

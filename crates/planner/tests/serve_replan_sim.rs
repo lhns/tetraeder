@@ -392,12 +392,18 @@ fn fill_from_priors_names_the_gpu() {
     );
     assert_eq!(g.bandwidth_bytes_per_s.unwrap().value, 9.36e11);
     assert!(hw.device("gpu1").unwrap().compute.is_none());
-    assert!(
-        hw.device("cpu0").unwrap().compute.is_none(),
-        "CPUs are not filled"
+    // A CPU gets a per-core prior (8 threads, so 4 cores at 5e10), noted as such.
+    assert_eq!(
+        hw.device("cpu0").unwrap().compute.unwrap().flops_per_s,
+        2.0e11
     );
-    assert_eq!(notes.len(), 1);
-    assert!(notes[0].contains("gpu1"));
+    assert_eq!(notes.len(), 2);
+    assert!(notes.iter().any(|n| n.contains("gpu1")));
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.starts_with("cpu0: compute is a prior"))
+    );
 }
 
 #[test]
