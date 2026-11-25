@@ -204,7 +204,7 @@ st_trials() {
   for mode in $modes; do
     for n in $(seq 1 "$trials"); do
       d="$out/trials/$mode-$n"
-      label="$mode-t$n"
+      label="$mode-t$n-$(date +%s)" # one attempt: its launches, its load nonces and its files carry the stamp, so a rerun starts clean
       [ -s "$d/meta.json" ] && { say "$mode trial $n exists, skipped"; continue; }
       mkdir -p "$d"
       say "=== $mode trial $n"
