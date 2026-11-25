@@ -34,6 +34,37 @@ pub enum ClusterCommand {
     /// a timed pp and tg request that computes every prompt token, with each segment's counters
     /// (ADR 0092). Run it with the head's key and certificate.
     JudgedRound(JudgedArgs),
+    /// Print the id a model goes by on every node: the sha256 of a single file, or for a split
+    /// GGUF (give the `-00001-of-0000N` file) the sha256 of the manifest of all shards. With
+    /// `--install DIR` link the model into the node's models folder under that id.
+    ModelId(ModelIdArgs),
+}
+
+#[derive(Args)]
+pub struct ModelIdArgs {
+    /// The GGUF file, or the first shard of a split one.
+    pub path: PathBuf,
+    /// A node's models folder: the model is linked (never copied) there as `<id>.gguf`, or as
+    /// `<id>/` with its manifest and shards.
+    #[arg(long, value_name = "DIR")]
+    pub install: Option<PathBuf>,
+}
+
+fn model_id(a: &ModelIdArgs) -> Result<()> {
+    use tetraeder_model::model_id::{identify, install};
+    let m = identify(&a.path).with_context(|| format!("cannot identify {}", a.path.display()))?;
+    println!("{}", m.id);
+    eprintln!(
+        "{} file(s){}",
+        m.files.len(),
+        if m.manifest.is_some() { ", split" } else { "" }
+    );
+    if let Some(dir) = &a.install {
+        let p =
+            install(&m, dir).with_context(|| format!("cannot install into {}", dir.display()))?;
+        eprintln!("installed: {}", p.display());
+    }
+    Ok(())
 }
 
 #[derive(Args)]
@@ -100,6 +131,7 @@ pub fn run(cmd: &ClusterCommand) -> Result<()> {
         ClusterCommand::Watch(a) => watch(a),
         ClusterCommand::Merge(a) => merge(a),
         ClusterCommand::JudgedRound(a) => judged_round(a),
+        ClusterCommand::ModelId(a) => model_id(a),
     }
 }
 

@@ -68,6 +68,11 @@ pub enum NodeRequest {
         buffers: Option<(usize, usize)>,
     },
     Drain,
+    /// Is the model `model_sha256` here and whole (a single file, or every shard of a split
+    /// one with the sizes its manifest lists)? Answered with `Model`.
+    CheckModel {
+        model_sha256: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +94,11 @@ pub enum NodeReply {
     Started,
     Released,
     Probe,
+    /// The model is here: its shard count and bytes.
+    Model {
+        shards: u32,
+        bytes: u64,
+    },
     /// One-way seconds by frame bytes, the empty round trip, and the socket buffers of the
     /// measuring connection when the transport knows them.
     Curve {

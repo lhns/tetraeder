@@ -314,4 +314,25 @@ mod tests {
         assert_eq!(hw["links"][1]["alpha_s"], 5);
         assert_eq!(hw["devices"].as_array().unwrap().len(), 4);
     }
+
+    /// hardware: none. The real rehearsal graph with a real probe swapped in reads as the planner
+    /// reads it, with the probe's own curve (the feasibility test of the planner does the same
+    /// swap by hand, `cluster_discovered_ram_experts.rs`).
+    #[test]
+    fn a_rehearsal_probe_swaps_into_the_rehearsal_graph() {
+        let mut hw: Value = serde_json::from_str(include_str!(
+            "../../planner/fixtures/phase6-rehearsal/hw.json"
+        ))
+        .unwrap();
+        let probe: Value = serde_json::from_str(include_str!(
+            "../../planner/fixtures/phase6-rehearsal/link-probes/probe-start.json"
+        ))
+        .unwrap();
+        swap_link(&mut hw, &probe).unwrap();
+        let g = check_reads(&hw).unwrap();
+        let c = g.network_curve("a", "b").unwrap();
+        assert_eq!(c.points.len(), 6);
+        assert_eq!(c.points[0].0, 4096.0);
+        assert!((c.points[5].1 - 1.981).abs() < 0.01, "{:?}", c.points);
+    }
 }

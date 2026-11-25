@@ -454,8 +454,9 @@ pub struct ServeArgs {
         requires = "cluster"
     )]
     pub node_state: PathBuf,
-    /// With `--cluster`: the sha256 of the model file, which every node keeps as
-    /// `<sha256>.gguf`; default the stem of `-m` when that is 64 hex digits.
+    /// With `--cluster`: the id of the model (`tetraeder cluster model-id`), which every node
+    /// keeps as `<id>.gguf` or, for a split GGUF, as the folder `<id>/` of its shards; default
+    /// the id `-m` names (`<id>.gguf`, or `<id>/<id>-00001-of-0000N.gguf`).
     #[arg(long, value_name = "HEX", requires = "cluster")]
     pub model_sha256: Option<String>,
     /// Hardware graph (TOML or JSON, typically from `tetraeder-plan score`); default: discover

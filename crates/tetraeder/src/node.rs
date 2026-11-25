@@ -17,7 +17,9 @@ use std::sync::{Arc, Mutex};
 use tetraeder_control::ClusterConfig;
 use tetraeder_control::client;
 use tetraeder_control::kv::{new_token, relay_prefix};
-use tetraeder_control::node::{Assignment, Daemon, Launcher, NodeOptions, RestartPolicy, WorkerIo};
+use tetraeder_control::node::{
+    Assignment, Daemon, Launcher, ModelStat, NodeOptions, RestartPolicy, WorkerIo,
+};
 use tetraeder_control::proto::NodeRequest;
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 use tetraeder_transport::{Identity, NodeId, SocketBuffers, TlsTransport, Transport};
@@ -219,25 +221,30 @@ struct ChildLauncher {
 }
 
 impl Launcher for ChildLauncher {
-    fn launch(&self, a: &Assignment) -> io::Result<WorkerIo> {
-        // The sha256 names a file: only hex, so it cannot name another path.
-        if a.model_sha256.len() != 64 || !a.model_sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "model_sha256 is not 64 hex digits",
-            ));
+    fn check_model(&self, sha256: &str) -> io::Result<ModelStat> {
+        match tetraeder_model::model_id::resolve(&self.models_dir, sha256) {
+            Ok(m) => Ok(ModelStat {
+                shards: u32::try_from(m.shards).unwrap_or(u32::MAX),
+                bytes: m.bytes,
+            }),
+            // The scripted engine needs no model file.
+            Err(_) if self.replica_args.iter().any(|x| x == "--fake") => Ok(ModelStat {
+                shards: 0,
+                bytes: 0,
+            }),
+            Err(e) => Err(e),
         }
-        let model = self
-            .models_dir
-            .join(format!("{}.gguf", a.model_sha256.to_ascii_lowercase()));
+    }
+
+    fn launch(&self, a: &Assignment) -> io::Result<WorkerIo> {
         // A replica of the scripted engine (`--replica-arg --fake`) needs no model file.
         let fake = a.is_replica() && self.replica_args.iter().any(|x| x == "--fake");
-        if !model.is_file() && !fake {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("no model {}", model.display()),
-            ));
-        }
+        // A single file, or the first shard of a split model whose manifest and shards check.
+        let model = match tetraeder_model::model_id::resolve(&self.models_dir, &a.model_sha256) {
+            Ok(m) => m.path,
+            Err(_) if fake => PathBuf::new(),
+            Err(e) => return Err(e),
+        };
         crate::replica::create_private_dir(&self.state_dir)?;
         let mut cmd = Command::new(&self.exe);
         // Set for a replica engine: its prefix listener's entry, removed when the child ends.

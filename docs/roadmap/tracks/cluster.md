@@ -31,13 +31,14 @@ flowchart TB
     cluster_prefix_fetch_not_triggered>"✔ No prefix fetch<br/>between replicas on<br/>two GPU nodes"]
     cluster_plan_source_gpu_segments>"✔ Planner proposes no<br/>plan for two real GPU<br/>boxes"]
     cluster_drain_without_plan>"✔ Node drain does not<br/>move load without a<br/>cluster plan"]
+    cluster_head_led_plan_ignores_segments>"✔ A plan led by the<br/>head runs the whole<br/>model in process"]
+    cluster_sharded_model_id["✔ One model id for a<br/>split GGUF on every<br/>node"]
+    cluster_probe_control_idle>"✔ cluster probe to 64<br/>MiB dies on the daemon<br/>control-idle limit"]
     cluster_leader_move["⏸ Move a replica's<br/>leader"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
     cluster_prefix_fetch_not_observed>"⚠ Prefix fetch between<br/>real processes not<br/>demonstrated"]
-    cluster_head_led_plan_ignores_segments>"⚠ A plan led by the<br/>head runs the whole<br/>model in process"]
     cluster_second_cold_request_empty>"⚠ Second cold request<br/>through a split plan<br/>returns an empty<br/>stream"]
-    cluster_probe_control_idle>"⚠ cluster probe to 64<br/>MiB dies on the daemon<br/>control-idle limit"]
     cluster_transport_wan ~~~ cluster_transport
     cluster_transport_wan ~~~ cluster_planner
     cluster_transport ~~~ cluster_mtls
@@ -59,15 +60,15 @@ flowchart TB
     cluster_discovery_disk_names ~~~ cluster_prefix_fetch_not_triggered
     cluster_failover_bound ~~~ cluster_plan_source_gpu_segments
     cluster_rejoin_after_restore ~~~ cluster_drain_without_plan
-    cluster_prefix_fetch_not_triggered ~~~ cluster_leader_move
-    cluster_plan_source_gpu_segments ~~~ cluster_experts_nodes
-    cluster_drain_without_plan ~~~ cluster_replica_scaling
+    cluster_prefix_fetch_not_triggered ~~~ cluster_head_led_plan_ignores_segments
+    cluster_plan_source_gpu_segments ~~~ cluster_sharded_model_id
+    cluster_drain_without_plan ~~~ cluster_probe_control_idle
+    cluster_head_led_plan_ignores_segments ~~~ cluster_leader_move
+    cluster_sharded_model_id ~~~ cluster_experts_nodes
+    cluster_probe_control_idle ~~~ cluster_replica_scaling
     cluster_leader_move ~~~ cluster_prefix_fetch_not_observed
-    cluster_experts_nodes ~~~ cluster_head_led_plan_ignores_segments
+    cluster_experts_nodes ~~~ cluster_second_cold_request_empty
     cluster_replica_scaling ~~~ cluster_second_cold_request_empty
-    cluster_prefix_fetch_not_observed ~~~ cluster_probe_control_idle
-    cluster_head_led_plan_ignores_segments ~~~ cluster_probe_control_idle
-    cluster_second_cold_request_empty ~~~ cluster_probe_control_idle
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
     cluster_transport --> cluster_mtls
@@ -100,12 +101,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound unrated
+    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound,cluster_sharded_model_id unrated
     class cluster_remote_kv next
-    class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan succ
+    class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan,cluster_head_led_plan_ignores_segments,cluster_probe_control_idle succ
     class cluster_leader_move,cluster_experts_nodes parked
     class cluster_replica_scaling blocked
-    class cluster_prefix_fetch_not_observed,cluster_head_led_plan_ignores_segments,cluster_second_cold_request_empty,cluster_probe_control_idle finding
+    class cluster_prefix_fetch_not_observed,cluster_second_cold_request_empty finding
 ```
 <!-- END GENERATED: track-cluster -->
 
@@ -143,9 +144,10 @@ flowchart TB
 | `cluster-plan-source-gpu-segments` | Planner proposes no plan for two real GPU boxes | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | the planner prices an all-GPU segment and proposes splits for two GPU boxes | bench/results/phase6-rehearsal-20261125/README.md; docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster_gpu_segments.rs |
 | `cluster-drain-without-plan` | Node drain does not move load without a cluster plan | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal |  |  | a drained node takes no new request without a plan | bench/results/phase6-rehearsal-20261125/README.md; docs/adr/0091-phase6-multi-node.md; crates/control/tests/join_loop.rs |
 | `cluster-prefix-fetch-not-observed` | Prefix fetch between real processes not demonstrated | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | a fetch priced to win was not seen, no grant log line, no readable counter | bench/results/phase6-rehearsal-2-20261125/README.md |
-| `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | serve --cluster-plan with the head as leader silently drops the other nodes segments | bench/results/phase6-rehearsal-2-20261125/README.md |
+| `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | a split replica the head leads starts through the head own daemon and computes on both nodes | bench/results/phase6-rehearsal-2-20261125/README.md; crates/tetraeder/tests/cluster_integration.rs |
 | `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | after one cold 2048-token request the next cold one ends with nothing | bench/results/phase6-rehearsal-2-20261125/README.md |
-| `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | defect | cluster | next | unrated |  |  | bench-phase6-rehearsal-2 |  |  | a slow link makes the full probe exceed the 30 s idle limit | bench/results/phase6-rehearsal-2-20261125/README.md |
+| `cluster-sharded-model-id` | One model id for a split GGUF on every node | feature | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | a split GGUF has one 64 hex id, a manifest of its shards, checked on every node before anything starts | bench/results/phase6-rehearsal-2-20261125/README.md; crates/model/tests/model_id.rs; crates/control/tests/check_model.rs; crates/tetraeder/tests/cluster_integration.rs |
+| `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | a probe connection is cut after 300 s without a byte, not 30 s between frames | bench/results/phase6-rehearsal-2-20261125/README.md; crates/control/tests/probe_limits.rs |
 
 ### Details per node
 
@@ -180,9 +182,10 @@ flowchart TB
 | `cluster-plan-source-gpu-segments` | Planner proposes no plan for two real GPU boxes | gpu_segments hand_split pp_tps=2415.1 tg_tps=10.11; gpu_segments proposed=40 best_pp_tps=4144.7 best_tg_tps=11.37 (CI run 45565416727) | the planner prices an all-GPU segment and proposes splits for two GPU boxes | An all-GPU segment is read as every expert resident and a placement that the graph cannot price no longer aborts the whole search, so the rehearsal profile now gives the hand split a price and 40 candidates; tetraeder-plan candidates --cluster writes them, and a replan that changes a replica leader is still refused by the control. |  |  |  |  |  |
 | `cluster-drain-without-plan` | Node drain does not move load without a cluster plan | drain_without_plan drained_after_s=0.18 in_flight_ok=6 later_on_other=10 (CI run 45565416727) | a drained node takes no new request without a plan | With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains. |  |  |  |  |  |
 | `cluster-prefix-fetch-not-observed` | Prefix fetch between real processes not demonstrated | prefix: no fetch line, x2 recomputed (common=0) with declared prefill 5 tok/s and --cluster-hw (bench/results/phase6-rehearsal-2-20261125/README.md, step 2) | a fetch priced to win was not seen, no grant log line, no readable counter | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |  |  |  |  |  |
-| `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | c00 leader a: node b idle, pp 5200 tok/s, tg 190 tok/s (bench/results/phase6-rehearsal-2-20261125/split30/c00-local-run) | serve --cluster-plan with the head as leader silently drops the other nodes segments | The planner picked a plan whose leader is the head; the head started its in-process engine for the whole model and never used node b; the plan source should refuse or serve it. |  |  |  |  |  |
-| `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | round r2 and r3: status 200, no token (bench/results/phase6-rehearsal-2-20261125/split30, runs 2 to 4) | after one cold 2048-token request the next cold one ends with nothing | Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read. | Not reproduced on CPU with the tiny MoE: cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node (cluster_integration.rs) sends three cold prompts of about 2000 tokens, then three streamed with ignore_eos, through serve --cluster-plan at 4 micro-batches of 512, ctx 4096 and 4 sequences, and every answer equals one node. What differs from rehearsal 2 is the 30B with expert slots, CUDA and a WAN link, so the cause is still open; the test stays as the guard. |  |  |  |  |
-| `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | error: node a: probe of b failed: write failed: Broken pipe (bench/results/phase6-rehearsal-2-20261125/README.md, deviations) | a slow link makes the full probe exceed the 30 s idle limit | On a link with bulk 2 to 15 s per 4 to 32 MiB the probe to 64 MiB with 10 repeats is cut by the control connection idle limit, so no start probe could be taken at the specified sizes. |  |  |  |  |  |
+| `cluster-head-led-plan-ignores-segments` | A plan led by the head runs the whole model in process | test cpu_a_plan_led_by_the_head_computes_on_both_nodes_like_one_node ... ok (local run 2026-11-25, workers_a 2 workers_b 1; before the fix workers_a 0 workers_b 0 and the test failed) | a split replica the head leads starts through the head own daemon and computes on both nodes | A replica the head leads that spans nodes now runs as a child of the head own daemon with its segments on the other nodes; only a whole model replica on the head node runs in process. The 235B pick leads from node a, the head, so it needed this. The plan of a split replica also reaches the leader now (it was sent empty). |  |  |  |  |  |
+| `cluster-second-cold-request-empty` | Second cold request through a split plan returns an empty stream | round r2 and r3: status 200, no token (bench/results/phase6-rehearsal-2-20261125/split30, runs 2 to 4) | after one cold 2048-token request the next cold one ends with nothing | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Not confirmed, because the leader log of that window was not kept. Hardened with a bulk deadline (120 s) for snapshots, restores and prefill steps, a loopback eviction test and logging; the node stays open until a box run shows it. | Not reproduced on CPU with the tiny MoE: cpu_two_cold_long_prompts_in_a_row_through_a_split_plan_both_answer_like_one_node (cluster_integration.rs) sends three cold prompts of about 2000 tokens, then three streamed with ignore_eos, through serve --cluster-plan at 4 micro-batches of 512, ctx 4096 and 4 sequences, and every answer equals one node. What differs from rehearsal 2 is the 30B with expert slots, CUDA and a WAN link, so the cause is still open; the test stays as the guard. |  |  |  |  |
+| `cluster-sharded-model-id` | One model id for a split GGUF on every node | test cpu_a_split_model_runs_through_the_daemons_like_the_whole_file ... ok and test a_split_model_has_one_id_that_both_nodes_resolve_and_load ... ok (local run 2026-11-25, three shards of the 4-layer fixture, tokens equal the whole file) | a split GGUF has one 64 hex id, a manifest of its shards, checked on every node before anything starts | The 235B is five GGUF shards while the daemon named a model by the sha256 of one file. The id of a split model is now the sha256 of a manifest of its shards, kept as a folder with the shards beside it; the daemon checks the manifest and the shard sizes and the head asks every node before it starts (serve and judged-round); tetraeder cluster model-id makes the id and the layout. The exit scripts still name sha256.gguf for the 235B and need cluster model-id --install. |  |  |  |  |  |
+| `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | test a_bulk_probe_frame_on_a_slow_link_arrives_within_the_probe_limit ... ok and test the_old_limit_cuts_that_same_probe ... ok (local run 2026-11-25, MemTransport slow-link fault) | a probe connection is cut after 300 s without a byte, not 30 s between frames | Every byte received restarts the clock of another node probe connection and the limit is 300 s, so a 64 MiB frame on a slow link arrives; the MemTransport slow-link test fails with the old limit and passes with the new one. |  |  |  |  |  |
 
 ### Folded items per node
 

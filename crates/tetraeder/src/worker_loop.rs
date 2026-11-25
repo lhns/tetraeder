@@ -24,7 +24,14 @@ pub enum Fault {
     Garbage,
     /// Send half a frame and exit.
     Truncate,
+    /// Answer a `decode` after `SLOW_DECODE` (a slow link or a long prefill step).
+    Slow,
+    /// Answer every `seq_snapshot` after TOKEN milliseconds (a snapshot over a slow link).
+    SlowSnapshot,
 }
+
+/// How long a `slow` fault holds a `decode`.
+pub const SLOW_DECODE: Duration = Duration::from_secs(2);
 
 /// Parses a `--fake-fault KIND:TOKEN` value.
 pub fn parse_fault(s: &str) -> Result<(Fault, i32), String> {
@@ -37,9 +44,11 @@ pub fn parse_fault(s: &str) -> Result<(Fault, i32), String> {
         "sticky" => Fault::Sticky,
         "garbage" => Fault::Garbage,
         "truncate" => Fault::Truncate,
+        "slow" => Fault::Slow,
+        "slowsnap" => Fault::SlowSnapshot,
         _ => {
             return Err(format!(
-                "`{kind}`: expected crash, hang, sticky, garbage or truncate"
+                "`{kind}`: expected crash, hang, sticky, garbage, truncate, slow or slowsnap"
             ));
         }
     };
@@ -215,7 +224,14 @@ fn handle(
         Request::SeqReserve { seq, n } => b.seq_reserve(*seq, *n),
         Request::SeqRm { seq, keep } => b.seq_rm(*seq, *keep),
         Request::SeqCp { src, dst, n } => b.seq_cp(*src, *dst, *n),
-        Request::SeqSnapshot { seq } => b.seq_snapshot(*seq).map(|snap| *payload = snap),
+        Request::SeqSnapshot { seq } => {
+            for &(kind, ms) in faults {
+                if kind == Fault::SlowSnapshot {
+                    std::thread::sleep(Duration::from_millis(u64::try_from(ms).unwrap_or(0)));
+                }
+            }
+            b.seq_snapshot(*seq).map(|snap| *payload = snap)
+        }
         Request::SeqRestore { seq, n } => b.seq_restore(*seq, bytes, *n),
         Request::Decode { inputs, .. } => {
             if let Some(fault) = fault_for(inputs, faults) {
@@ -224,6 +240,9 @@ fn handle(
                     Fault::Hang => loop {
                         std::thread::sleep(Duration::from_secs(3600));
                     },
+                    Fault::Slow => std::thread::sleep(SLOW_DECODE),
+                    // Not a decode fault.
+                    Fault::SlowSnapshot => {}
                     Fault::Garbage => {
                         let frame = encode_raw(b"not json", &[]).map_err(anyhow::Error::msg)?;
                         output.write_all(&frame)?;
@@ -283,9 +302,10 @@ fn handle(
 
 fn fault_for(inputs: &[WireInput], faults: &[(Fault, i32)]) -> Option<Fault> {
     faults.iter().find_map(|&(kind, token)| {
-        inputs
-            .iter()
-            .any(|i| i.tokens.len() >= 2 && i.tokens.contains(&token))
-            .then_some(kind)
+        (kind != Fault::SlowSnapshot
+            && inputs
+                .iter()
+                .any(|i| i.tokens.len() >= 2 && i.tokens.contains(&token)))
+        .then_some(kind)
     })
 }

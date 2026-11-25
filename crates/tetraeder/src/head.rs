@@ -177,18 +177,18 @@ fn resolve_file(file: &ReplicasFile, cfg: &ClusterConfig) -> Result<Vec<Resolved
 
 /// The sha256 that names the model file on every node.
 fn model_sha(a: &ServeArgs) -> Result<String> {
+    // The id of a single file is its stem, that of a split model the folder of its shards.
     let sha = match &a.model_sha256 {
         Some(s) => s.clone(),
         None => a
             .model
-            .as_ref()
-            .and_then(|m| m.file_stem())
-            .map(|s| s.to_string_lossy().into_owned())
+            .as_deref()
+            .and_then(tetraeder_model::model_id::id_of_path)
             .unwrap_or_default(),
     };
     anyhow::ensure!(
         is_sha256(&sha),
-        "--model-sha256 is not 64 hex digits (and the stem of -m is not either)"
+        "--model-sha256 is not 64 hex digits (and -m is not named `<id>.gguf` or `<id>/<id>-00001-of-0000N.gguf`)"
     );
     Ok(sha.to_ascii_lowercase())
 }
@@ -477,10 +477,21 @@ impl Drop for PrefixFile {
     }
 }
 
-/// The head runs one engine in process, so it can lead one replica; two would share that engine
-/// and its slots under two router entries.
-fn check_one_head_led<'a>(leaders: impl Iterator<Item = &'a NodeId>, me: &NodeId) -> Result<()> {
-    let n = leaders.filter(|l| *l == me).count();
+/// Whether the head runs replica `r` in process: it leads it and the replica is one whole model
+/// on one node. A replica the head leads that spans nodes runs as a child of the head's own
+/// daemon like any other leader's (the head process does not run the first segment itself: it
+/// would load the whole model and never use the other nodes).
+fn runs_in_process(r: &Resolved, me: &NodeId) -> bool {
+    r.leader == *me && r.spec.segments.is_empty()
+}
+
+/// The head runs one engine in process, so it can lead one such replica; two would share that
+/// engine and its slots under two router entries.
+fn check_one_head_led<'a>(
+    in_process: impl Iterator<Item = &'a Resolved>,
+    me: &NodeId,
+) -> Result<()> {
+    let n = in_process.filter(|r| runs_in_process(r, me)).count();
     anyhow::ensure!(
         n <= 1,
         "{n} replicas are led by the head `{me}`: the head runs one engine in process and leads at most one replica;          lead the others from other nodes"
@@ -519,10 +530,30 @@ pub fn start(
         (None, None) => anyhow::bail!("--replicas FILE or --cluster-plan FILE is required"),
     };
     anyhow::ensure!(!resolved.is_empty(), "the cluster has no replica");
+    // Every node that runs a part of a replica holds the whole model (every shard of a split
+    // one) before anything starts, so a missing or partial copy fails here with its node named.
+    if !a.fake {
+        let mut nodes: Vec<NodeId> = Vec::new();
+        for r in &resolved {
+            for n in r.spec.nodes(&r.leader) {
+                if !nodes.contains(&n) {
+                    nodes.push(n);
+                }
+            }
+        }
+        for r in &resolved {
+            let unreached =
+                client::check_model(transport.as_ref(), &cfg, &nodes, &r.spec.model_sha256)
+                    .map_err(anyhow::Error::msg)?;
+            for n in unreached {
+                tracing::warn!(node = %n, "model not checked: the node is not reachable yet");
+            }
+        }
+    }
 
     // The replica the head leads itself runs in process; without one, the head only tokenizes.
-    check_one_head_led(resolved.iter().map(|r| &r.leader), &me)?;
-    let local = resolved.iter().any(|r| r.leader == me);
+    check_one_head_led(resolved.iter(), &me)?;
+    let local = resolved.iter().any(|r| runs_in_process(r, &me));
     let mut local_store: Option<Arc<dyn PrefixStore>> = None;
     let (front, front_cap): (Arc<dyn GatewayEngine>, usize) = if local && a.fake {
         build_engine(a, telemetry)?
@@ -540,7 +571,7 @@ pub fn start(
     for (i, r) in resolved.iter().enumerate() {
         let cap = r.cap.map_or(front_cap, |c| c as usize);
         total += cap;
-        if r.leader == me {
+        if runs_in_process(r, &me) {
             targets.push(ReplicaTarget {
                 engine: Arc::clone(&front),
                 remote: None,
@@ -580,7 +611,7 @@ pub fn start(
     let engine = Arc::new(ClusterEngine::new(front, targets, MIN_PREFIX, policy));
     let mut prefix_file = None;
     for (i, r) in resolved.iter().enumerate() {
-        if r.leader == me {
+        if runs_in_process(r, &me) {
             let i = u32::try_from(i)?;
             if let Some(store) = &local_store {
                 prefix_file = Some(serve_local_prefixes(
@@ -676,17 +707,48 @@ fn start_replanner(
 mod tests {
     use super::*;
 
-    /// hardware: none. Two replicas led by the head are refused with a message that says why.
+    fn resolved(leader: &str, nodes: &[&str]) -> Resolved {
+        Resolved {
+            leader: NodeId::new(leader),
+            cap: None,
+            spec: StartSpec {
+                plan: String::new(),
+                model_sha256: "0".repeat(64),
+                segments: nodes
+                    .iter()
+                    .map(|n| SegmentAssign {
+                        peer: tetraeder_transport::Peer {
+                            id: NodeId::new(*n),
+                            addr: "127.0.0.1:1".into(),
+                        },
+                        plan: String::new(),
+                    })
+                    .collect(),
+                predicted_s: Vec::new(),
+            },
+            pp_tps: 0.0,
+        }
+    }
+
+    /// hardware: none. Two whole-model replicas led by the head are refused with a message that
+    /// says why; a replica the head leads across nodes runs through its daemon, so it does not
+    /// count (rehearsal 2: such a plan used to run the whole model in the head's process).
     #[test]
     fn a_plan_with_two_head_led_replicas_is_refused() {
-        let (a, b) = (NodeId::new("a"), NodeId::new("b"));
-        assert!(check_one_head_led([&a, &b, &b].into_iter(), &a).is_ok());
-        assert!(check_one_head_led([&b, &b].into_iter(), &a).is_ok());
-        let e = check_one_head_led([&a, &b, &a].into_iter(), &a).unwrap_err();
+        let a = NodeId::new("a");
+        let whole = |l: &str| resolved(l, &[]);
+        assert!(check_one_head_led([whole("a"), whole("b"), whole("b")].iter(), &a).is_ok());
+        assert!(check_one_head_led([whole("b"), whole("b")].iter(), &a).is_ok());
+        let e = check_one_head_led([whole("a"), whole("b"), whole("a")].iter(), &a).unwrap_err();
         assert!(
             e.to_string().contains("2 replicas are led by the head"),
             "{e}"
         );
+        // Led by the head, two segments: not in process.
+        let split = resolved("a", &["a", "b"]);
+        assert!(!runs_in_process(&split, &a));
+        assert!(runs_in_process(&whole("a"), &a));
+        assert!(check_one_head_led([split, whole("a")].iter(), &a).is_ok());
     }
 
     /// hardware: none. The head's prefix file goes when the head's guard does.

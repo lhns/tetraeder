@@ -34,9 +34,12 @@ pub const REPLICA_SEGMENT: u32 = u32::MAX;
 
 /// How long a first call waits for a worker that `Assign` has not started yet.
 const FIRST_START_WAIT: Duration = Duration::from_secs(30);
-/// A probe connection of another node that sends nothing for this long is closed; probes send
-/// one frame after the other.
-const PROBE_IDLE: Duration = Duration::from_secs(30);
+/// A probe connection of another node that sends no byte for this long is closed. Probes send one
+/// frame after the other and a bulk frame (up to 64 MiB, `probe_peer`) on a slow link takes far
+/// longer than 30 s to arrive (rehearsal 2: 32 MiB took 15 s one way), which the old 30 s
+/// between whole frames cut; every byte read now restarts the clock, and 300 s covers a frame
+/// delivered whole after 64 MiB at 0.2 MiB/s.
+pub const PROBE_IDLE: Duration = Duration::from_secs(300);
 /// Frames waiting for a leader's connection, and how long a full queue is waited for before the
 /// leader counts as not reading (a frame being written can take as long as the link needs).
 const OUTBOX_FRAMES: usize = 16;
@@ -79,8 +82,24 @@ pub struct WorkerIo {
     pub kill: Arc<dyn Fn() + Send + Sync>,
 }
 
+/// A model a node holds, as `Launcher::check_model` reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelStat {
+    pub shards: u32,
+    pub bytes: u64,
+}
+
 pub trait Launcher: Send + Sync {
     fn launch(&self, a: &Assignment) -> io::Result<WorkerIo>;
+
+    /// Checks that this node holds model `sha256` whole. The default accepts any (launchers that
+    /// need no model file, the simulated ones of the tests).
+    fn check_model(&self, _sha256: &str) -> io::Result<ModelStat> {
+        Ok(ModelStat {
+            shards: 1,
+            bytes: 0,
+        })
+    }
 }
 
 /// Restart delays are `backoff_base` times 1, 2, 4, 4, ...; `max_restarts` within `window` are
@@ -200,6 +219,7 @@ struct Shared {
     conns: Mutex<HashMap<u64, Arc<dyn Fn() + Send + Sync>>>,
     workers: Mutex<HashMap<(u32, u32), Arc<Worker>>>,
     prefix: Mutex<Option<PrefixHandler>>,
+    probe_idle: Mutex<Duration>,
     threads: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -222,6 +242,7 @@ impl Daemon {
             conns: Mutex::new(HashMap::new()),
             workers: Mutex::new(HashMap::new()),
             prefix: Mutex::new(None),
+            probe_idle: Mutex::new(PROBE_IDLE),
             threads: Mutex::new(Vec::new()),
         });
         let s = Arc::clone(&shared);
@@ -250,6 +271,11 @@ impl Daemon {
     /// Serves `Prefix` connections from other nodes with `h`; without it they are refused.
     pub fn set_prefix_handler(&self, h: PrefixHandler) {
         *lock(&self.shared.prefix) = Some(h);
+    }
+
+    /// Sets how long another node's probe connection may stay silent (tests scale it down).
+    pub fn set_probe_idle(&self, d: Duration) {
+        *lock(&self.shared.probe_idle) = d;
     }
 
     pub fn is_draining(&self) -> bool {
@@ -327,7 +353,8 @@ fn handle_conn(s: &Arc<Shared>, conn: Conn) {
             // The head's session 0 waits for long calls (a link probe); another node's probe
             // sends frames back to back, so silence means it is gone.
             let privileged = head && session == 0;
-            serve_requests(s, conn, privileged, (!privileged).then_some(PROBE_IDLE));
+            let idle = *lock(&s.probe_idle);
+            serve_requests(s, conn, privileged, (!privileged).then_some(idle));
         }
         Purpose::Segment { replica, segment } if segment != REPLICA_SEGMENT => {
             relay_segment(s, conn, (replica, segment));
@@ -353,9 +380,27 @@ fn handle_conn(s: &Arc<Shared>, conn: Conn) {
     lock(&s.conns).remove(&id);
 }
 
-/// Answers requests until the connection ends. `idle_limit`: a connection that stays silent for
-/// that long is closed, so a head that is gone does not hold the purpose and a peer cannot keep
-/// a probe connection open for nothing.
+/// A reader that notes when bytes arrive, for the idle rule.
+struct Touch<R> {
+    inner: R,
+    last: Arc<AtomicU64>,
+    started: Instant,
+}
+
+impl<R: Read> Read for Touch<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            self.last
+                .store(self.started.elapsed().as_millis() as u64, Ordering::SeqCst);
+        }
+        Ok(n)
+    }
+}
+
+/// Answers requests until the connection ends. `idle_limit`: a connection that receives no byte
+/// for that long is closed, so a head that is gone does not hold the purpose and a peer cannot
+/// keep a probe connection open for nothing.
 fn serve_requests(s: &Arc<Shared>, mut conn: Conn, privileged: bool, idle_limit: Option<Duration>) {
     let last = Arc::new(AtomicU64::new(s.started.elapsed().as_millis() as u64));
     let done = Arc::new(AtomicBool::new(false));
@@ -381,8 +426,13 @@ fn serve_requests(s: &Arc<Shared>, mut conn: Conn, privileged: bool, idle_limit:
             }
         });
     }
+    let mut rx = Touch {
+        inner: std::mem::replace(&mut conn.rx, Box::new(io::empty())),
+        last: Arc::clone(&last),
+        started: s.started,
+    };
     loop {
-        let f = match proto::recv_request(&mut conn.rx, &conn.purpose) {
+        let f = match proto::recv_request(&mut rx, &conn.purpose) {
             Ok(Some(f)) => f,
             Ok(None) => break,
             Err(e) => {
@@ -440,6 +490,15 @@ fn answer(s: &Arc<Shared>, req: &NodeRequest, f: &Frame, privileged: bool) -> (N
                 .count() as u32,
             draining: s.draining.load(Ordering::SeqCst),
         }),
+        NodeRequest::CheckModel { model_sha256 } => {
+            match s.opts.launcher.check_model(model_sha256) {
+                Ok(m) => reply(NodeReply::Model {
+                    shards: m.shards,
+                    bytes: m.bytes,
+                }),
+                Err(e) => error(format!("model {model_sha256}: {e}")),
+            }
+        }
         NodeRequest::Profile => match (s.opts.profile)() {
             Ok(json) => (NodeReply::Profile, json.into_bytes()),
             Err(e) => error(format!("cannot profile: {e}")),

@@ -1153,7 +1153,12 @@ pub fn specs_from_plan(
         let (plan_toml, segments, predicted_s) = if assigns.len() == 1 {
             (assigns.remove(0).plan, Vec::new(), Vec::new())
         } else {
-            (String::new(), assigns, predicted)
+            // The leader's engine reads the knobs (prefill micro-batches, ubatch) from this.
+            (
+                plan.to_toml().map_err(|e| e.to_string())?,
+                assigns,
+                predicted,
+            )
         };
         out.push((
             u32::try_from(i).map_err(|e| e.to_string())?,

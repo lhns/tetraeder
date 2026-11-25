@@ -223,3 +223,127 @@ fn a_skipped_unpriced_placement_is_named_in_the_candidate_notes() {
         cands[0].notes
     );
 }
+
+// ---- 235B link feasibility (rehearsal 2, ADR 0091 answer 10) --------------------------------
+
+/// The five link probes of rehearsal 2 (`bench/results/phase6-rehearsal-2-20261125/link/`), frames
+/// 4 KiB to 4 MiB, in the order they were taken.
+const PROBES: [(&str, &str); 5] = [
+    (
+        "start",
+        include_str!("../fixtures/phase6-rehearsal/link-probes/probe-start.json"),
+    ),
+    (
+        "mid-1",
+        include_str!("../fixtures/phase6-rehearsal/link-probes/probe-mid-1.json"),
+    ),
+    (
+        "mid-2",
+        include_str!("../fixtures/phase6-rehearsal/link-probes/probe-mid-2.json"),
+    ),
+    (
+        "mid-3",
+        include_str!("../fixtures/phase6-rehearsal/link-probes/probe-mid-3.json"),
+    ),
+    (
+        "end",
+        include_str!("../fixtures/phase6-rehearsal/link-probes/probe-end.json"),
+    ),
+];
+
+/// The graph with a probe's network links and `a`/`b` copy curves in place of its own, nothing
+/// else changed (what `tetraeder cluster merge --swap-link` does).
+fn with_probe(hw: &HardwareGraph, probe: &str) -> HardwareGraph {
+    #[derive(serde::Deserialize)]
+    struct Probe {
+        links: Vec<tetraeder_profiler::Link>,
+        curves: Vec<tetraeder_profiler::CollectiveCurve>,
+    }
+    let p: Probe = serde_json::from_str(probe).unwrap();
+    let mut hw = hw.clone();
+    let on_probe = |c: &tetraeder_profiler::CollectiveCurve| {
+        c.ranks.len() == 2
+            && c.ranks
+                .iter()
+                .all(|r| r.starts_with("a/") || r.starts_with("b/"))
+    };
+    hw.collectives.retain(|c| !on_probe(c));
+    hw.collectives.extend(p.curves);
+    hw.links.retain(|l| l.kind != LinkKind::Network);
+    hw.links.extend(p.links);
+    hw.validate().unwrap();
+    hw
+}
+
+fn priced(hw: &HardwareGraph, plan: &Plan) -> (f64, f64) {
+    let w = tetraeder_planner::Workload {
+        prompt: 2048,
+        r#gen: 128,
+    };
+    let p = tetraeder_planner::cluster::predict_cluster_plan(hw, &fixtures::moe_235b(), plan, &w)
+        .unwrap();
+    (p.pp_tps, p.tg_tps)
+}
+
+// hardware: none
+#[test]
+fn the_235b_pick_priced_on_each_rehearsal_2_probe() {
+    let base = discovered(true);
+    let layout = fixtures::moe_235b();
+    // The pick is chosen on the graph with the start probe, as a session freezes it, and kept.
+    let start = with_probe(&base, PROBES[0].1);
+    let (cands, _) = enumerate_cluster(&start, &layout, &Hints::default(), Phase(6));
+    let pick = &cands[0];
+    let stages = &pick.plan.replicas[0].stages;
+    assert_eq!(stages.len(), 2);
+    // The probe's curve is the graph's after the swap, point for point.
+    let c = start.network_curve("a", "b").unwrap();
+    assert_eq!(c.points.len(), 6);
+    assert_eq!(c.points[0].0, 4096.0);
+
+    let mut rows = Vec::new();
+    for (name, probe) in PROBES {
+        let (pp, tg) = priced(&with_probe(&base, probe), &pick.plan);
+        rows.push((name, pp, tg));
+    }
+    let (pp0, tg0) = (rows[0].1, rows[0].2);
+    let mut max_pp = 0.0f64;
+    let mut max_tg = 0.0f64;
+    for (name, pp, tg) in &rows {
+        let (mp, mt) = ((pp / pp0 - 1.0).abs(), (tg / tg0 - 1.0).abs());
+        max_pp = max_pp.max(mp);
+        max_tg = max_tg.max(mt);
+        println!(
+            "link_feasibility probe={name} pp_tps={pp:.2} tg_tps={tg:.3} pp_move={mp:.4} tg_move={mt:.4}"
+        );
+    }
+    println!(
+        "link_feasibility pick={} leader={} stages={:?} max_pp_move={max_pp:.4} max_tg_move={max_tg:.4}",
+        pick.id,
+        stages[0].devices.first().cloned().unwrap_or_default(),
+        stages
+            .iter()
+            .map(|s| (s.layers, s.devices.clone()))
+            .collect::<Vec<_>>()
+    );
+    // The pick's leader is node `a`, the head of the rehearsal's cluster: a head-led plan.
+    assert!(
+        stages[0].devices[0].starts_with("a/"),
+        "{:?}",
+        stages[0].devices
+    );
+    // Priced on the start probe (pp rides on the curve extrapolated from 4 MiB to the 32 MiB
+    // hidden state of a micro-batch, tg on the small frames).
+    assert!(
+        (pp0 - 53.6).abs() < 0.5 && (tg0 - 3.96).abs() < 0.05,
+        "{pp0} {tg0}"
+    );
+    // The link rule (ADR 0091 answer 10) would pass: the frozen pick moves under 0.08 in both
+    // rates across the five probes, though the largest frames of the 30B split moved 3.5 times.
+    assert!(max_pp < 0.08 && max_tg < 0.08, "{max_pp} {max_tg}");
+    // The swap took: the five prices are not one price.
+    assert!(
+        rows.iter()
+            .any(|r| (r.1 / pp0 - 1.0).abs() > 1e-6 || (r.2 / tg0 - 1.0).abs() > 1e-6)
+    );
+}

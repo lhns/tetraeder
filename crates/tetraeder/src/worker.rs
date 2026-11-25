@@ -24,8 +24,9 @@ pub struct WorkerArgs {
     /// tests' `FakeKv` (`--ctx` rows, `--parallel` sequences) instead of a model.
     #[command(flatten)]
     pub serve: ServeArgs,
-    /// Test faults, `KIND:TOKEN` with KIND crash, hang, sticky, garbage or truncate: a `decode`
-    /// input of two or more tokens holding TOKEN triggers it.
+    /// Test faults, `KIND:TOKEN` with KIND crash, hang, sticky, garbage, truncate or slow: a
+    /// `decode` input of two or more tokens holding TOKEN triggers it. `slowsnap:MS` delays
+    /// every `seq_snapshot` by MS milliseconds.
     #[arg(long, hide = true, value_parser = parse_fault)]
     pub fake_fault: Vec<(Fault, i32)>,
     /// Vocabulary size of the fake backend.
