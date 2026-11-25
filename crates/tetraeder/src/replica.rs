@@ -271,7 +271,9 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     fn plan(micro: u32, ubatch: Option<u32>) -> tetraeder_plan::Plan {
-        let mut p = tetraeder_plan::Plan::from_toml("model = \"m\"\n[[replicas]]\n").unwrap();
+        let text = "model = \"m\"\n[[replicas]]\n[[replicas.stages]]\nlayers = [0, 4]\n\
+                    devices = [\"gpu0\"]\ntp = 1\nep = 1\n";
+        let mut p = tetraeder_plan::Plan::from_toml(text).unwrap();
         p.knobs.prefill_micro_batches = micro;
         p.knobs.ubatch = ubatch;
         p
