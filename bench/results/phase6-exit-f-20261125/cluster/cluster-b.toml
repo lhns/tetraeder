@@ -1,0 +1,14 @@
+cluster = "phase6-exit-f"
+head = "a"
+node_down_after_ms = 2000
+
+[[nodes]]
+id = "a"
+addr = "38.114.84.170:50506"
+anchor = "a.pem"
+
+[[nodes]]
+id = "b"
+addr = "127.0.0.1:7000"
+listen = "0.0.0.0:7000"
+anchor = "b.pem"

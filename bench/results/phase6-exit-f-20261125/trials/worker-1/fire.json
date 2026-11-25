@@ -1,0 +1,14 @@
+{
+  "source": "trigger",
+  "t_send": 1795633285.3433657,
+  "t_ack": 1795633285.4084892,
+  "t_fault": 1795633285.3759,
+  "uncertainty_s": 0.0326,
+  "live_b": 3,
+  "step_age_s": 0.003,
+  "t_b_fault": 1795633285.3799233,
+  "t_b_done": 1795633285.3876688,
+  "mode": "worker",
+  "label": "worker-t1-1795633182",
+  "waited_s": 0.119
+}

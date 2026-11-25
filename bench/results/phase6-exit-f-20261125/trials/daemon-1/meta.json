@@ -1,0 +1,27 @@
+{
+  "mode": "daemon",
+  "trial": 1,
+  "t_fault": 1795634411.7836,
+  "t_fault_source": "trigger send/ack midpoint, A's clock",
+  "fault": {
+    "source": "trigger",
+    "t_send": 1795634411.7509024,
+    "t_ack": 1795634411.8163044,
+    "t_fault": 1795634411.7836,
+    "uncertainty_s": 0.0327,
+    "live_b": 3,
+    "step_age_s": 0.009,
+    "t_b_fault": 1795634411.791682,
+    "t_b_done": 1795634411.798672,
+    "mode": "daemon",
+    "label": "daemon-t1-1795634314",
+    "waited_s": 0.115
+  },
+  "t_restore": 1795634451.793,
+  "t_fault_b_clock": 1795634411.791682,
+  "t_restore_source": "restore start daemon",
+  "load_label": "daemon-t1-1795634314",
+  "load_end": 1795634534.4561179,
+  "clock_b_minus_a_s": 0.0082,
+  "clock_uncertainty_s": 0.0247
+}
