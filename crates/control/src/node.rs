@@ -548,6 +548,16 @@ fn median(v: &mut [f64]) -> f64 {
     v.get(v.len() / 2).copied().unwrap_or(0.0)
 }
 
+/// One-way time of a probe frame: its round trip less half the empty round trip, which is half
+/// the empty round trip plus what the payload added. Medians of a few repeats on a busy machine
+/// can put a frame's round trip below the empty one's; a frame is not faster than an empty one,
+/// so the payload adds nothing then and the time stays at half the empty round trip. Without
+/// that floor a point of the curve came out as the clamp, 1 ns, and the fetch rule found a hop
+/// shorter than any recompute (cluster_integration, the prefix fetch, CI 2026-11-25).
+fn one_way_s(full: f64, empty: f64) -> f64 {
+    (full.max(empty) - empty / 2.0).max(1e-9)
+}
+
 fn probe_peer(
     s: &Arc<Shared>,
     peer: &NodeId,
@@ -585,8 +595,7 @@ fn probe_peer(
     for &b in sizes {
         let payload = vec![0u8; b as usize];
         let full = rtt(b, &payload)?;
-        // One way: the frame's time less half the empty round trip.
-        points.push((b as f64, (full - empty / 2.0).max(1e-9)));
+        points.push((b as f64, one_way_s(full, empty)));
     }
     (c.close)();
     Ok(NodeReply::Curve {
@@ -816,6 +825,15 @@ fn mark(w: &Arc<Worker>, attach: bool, session: u64, s: &Arc<Shared>) {
 mod tests {
     use super::*;
     use std::sync::Condvar;
+
+    /// hardware: none. A probe frame that came back faster than the empty one (a noisy median)
+    /// is half the empty round trip, not the 1 ns clamp.
+    #[test]
+    fn a_probe_frame_is_never_faster_than_half_the_empty_round_trip() {
+        assert_eq!(one_way_s(120e-6, 100e-6), 70e-6);
+        assert_eq!(one_way_s(80e-6, 100e-6), 50e-6);
+        assert_eq!(one_way_s(0.0, 0.0), 1e-9);
+    }
 
     /// A writer that blocks until opened: a leader that does not read.
     struct Gate(Arc<(Mutex<bool>, Condvar)>);

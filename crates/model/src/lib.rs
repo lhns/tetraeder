@@ -9,6 +9,7 @@ pub mod cpu_poll;
 pub mod experts;
 pub mod gguf;
 pub mod gguf_write;
+pub mod hidden_file;
 pub mod hparams;
 pub mod qwen3;
 pub mod qwen3moe;

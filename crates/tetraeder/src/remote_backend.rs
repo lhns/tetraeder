@@ -78,6 +78,8 @@ pub mod wire {
             seq: u32,
             n: usize,
         },
+        /// The worker's expert-cache counters (`BatchBackend::expert_stats_json`), in the reply.
+        Stats,
     }
 
     impl Request {
@@ -90,6 +92,7 @@ pub mod wire {
                 Self::Decode { .. } => "decode",
                 Self::SeqSnapshot { .. } => "seq_snapshot",
                 Self::SeqRestore { .. } => "seq_restore",
+                Self::Stats => "stats",
             }
         }
     }
@@ -162,6 +165,9 @@ pub mod wire {
         /// apart from the network (`tetraeder.segment.duration`).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub step_s: Option<f64>,
+        /// The answer to `Stats`: the backend's expert-cache counters, when it has any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub stats: Option<serde_json::Value>,
     }
 }
 
@@ -939,6 +945,10 @@ impl SegmentBackend for RemoteBackend {
 
     fn last_step_time(&self) -> Option<Duration> {
         self.last_step
+    }
+
+    fn expert_stats(&mut self) -> Option<serde_json::Value> {
+        self.call(&Request::Stats, &[]).ok()?.0.stats
     }
 
     fn can_overlap(&self) -> bool {

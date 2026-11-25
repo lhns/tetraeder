@@ -115,7 +115,11 @@ impl EngineControl for ClusterControl {
 
     fn resume(&mut self) {
         // A replica that did not come back must not stay draining: it is out of the router
-        // already (a leaving replica clears the flag), so nothing is left to do.
+        // already (a leaving replica clears the flag); a replacement that never joined stops
+        // holding requests back.
+        for &r in &self.changed {
+            self.engine.end_replace(r);
+        }
         self.changed.clear();
     }
 

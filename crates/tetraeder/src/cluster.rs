@@ -1,5 +1,6 @@
 //! `tetraeder cluster ...`: tooling for a multi-node cluster (ADR 0091).
 
+use crate::cluster_session::{JudgedArgs, MergeArgs, id_values, judged_round, merge};
 use crate::node::{ClusterArgs, parse_buffers};
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
@@ -26,6 +27,13 @@ pub enum ClusterCommand {
     Probe(ProbeArgs),
     /// Run the head's membership monitor and print every node transition (metrics included).
     Watch(WatchArgs),
+    /// Put fitted node graphs and a probe's link curves into a cluster graph (what a Case S
+    /// session adds to `cluster profile`, ADR 0091).
+    Merge(MergeArgs),
+    /// One judged Case S round across the nodes of a running cluster: the warm request(s), then
+    /// a timed pp and tg request that computes every prompt token, with each segment's counters
+    /// (ADR 0092). Run it with the head's key and certificate.
+    JudgedRound(JudgedArgs),
 }
 
 #[derive(Args)]
@@ -35,6 +43,10 @@ pub struct ProfileArgs {
     /// The output of `cluster probe`: adds its links and curves.
     #[arg(long)]
     pub probe: Option<PathBuf>,
+    /// A node's measured RAM budget in bytes, as `ID=BYTES`: the capacity of its CPU in the
+    /// graph (ADR 0092 section 4).
+    #[arg(long = "ram-budget", value_name = "ID=BYTES")]
+    pub ram_budget: Vec<String>,
     /// Output file (stdout when absent).
     #[arg(short, long)]
     pub out: Option<PathBuf>,
@@ -86,6 +98,8 @@ pub fn run(cmd: &ClusterCommand) -> Result<()> {
         ClusterCommand::Profile(a) => profile(a),
         ClusterCommand::Probe(a) => probe(a),
         ClusterCommand::Watch(a) => watch(a),
+        ClusterCommand::Merge(a) => merge(a),
+        ClusterCommand::JudgedRound(a) => judged_round(a),
     }
 }
 
@@ -114,7 +128,16 @@ fn profile(a: &ProfileArgs) -> Result<()> {
     if probe.is_none() {
         eprintln!("no probe given: the graph has no network links; run `cluster probe` first");
     }
-    write_out(a.out.as_ref(), &hw.to_json()?)
+    let text = if a.ram_budget.is_empty() {
+        hw.to_json()?
+    } else {
+        let mut v: serde_json::Value = serde_json::from_str(&hw.to_json()?)?;
+        tetraeder::hw_merge::set_ram_budgets(&mut v, &id_values(&a.ram_budget)?)
+            .map_err(anyhow::Error::msg)?;
+        tetraeder::hw_merge::check_reads(&v).map_err(anyhow::Error::msg)?;
+        serde_json::to_string_pretty(&v)?
+    };
+    write_out(a.out.as_ref(), &text)
 }
 
 fn probe(a: &ProbeArgs) -> Result<()> {

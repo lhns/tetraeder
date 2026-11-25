@@ -73,6 +73,36 @@ fn is_decode_step(inputs: &[SeqInput<'_>]) -> bool {
     matches!(inputs, [one] if one.tokens.len() == 1)
 }
 
+/// What one segment spent in the steps it took, as the leader saw them: `own` is the segment's
+/// own compute time (a remote worker reports it), `wall` the time from sending the step to its
+/// reply, so `wall - own` is the hop. In a pipelined prefill steps overlap and `wall` includes
+/// the time a step waited behind the one before it. Cumulative since the pipeline was built.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct SegmentTimes {
+    /// Steps of more than one token (prompt chunks).
+    pub prefill_steps: u64,
+    pub prefill_own_s: f64,
+    pub prefill_wall_s: f64,
+    /// Steps of one token.
+    pub decode_steps: u64,
+    pub decode_own_s: f64,
+    pub decode_wall_s: f64,
+}
+
+impl SegmentTimes {
+    /// What came in after `earlier`.
+    pub fn since(&self, earlier: &Self) -> Self {
+        Self {
+            prefill_steps: self.prefill_steps - earlier.prefill_steps,
+            prefill_own_s: self.prefill_own_s - earlier.prefill_own_s,
+            prefill_wall_s: self.prefill_wall_s - earlier.prefill_wall_s,
+            decode_steps: self.decode_steps - earlier.decode_steps,
+            decode_own_s: self.decode_own_s - earlier.decode_own_s,
+            decode_wall_s: self.decode_wall_s - earlier.decode_wall_s,
+        }
+    }
+}
+
 pub struct PipelineBackend {
     segs: Vec<Box<dyn SegmentBackend>>,
     infos: Vec<SegmentInfo>,
@@ -87,6 +117,7 @@ pub struct PipelineBackend {
     predicted: Vec<Option<f64>>,
     /// Micro-batches a prefill step is cut into (ADR 0077); 1 walks the segments in turn.
     micro: u32,
+    times: Vec<SegmentTimes>,
 }
 
 impl PipelineBackend {
@@ -134,6 +165,7 @@ impl PipelineBackend {
             metrics: None,
             predicted: vec![None; n],
             micro: 1,
+            times: vec![SegmentTimes::default(); n],
         })
     }
 
@@ -185,7 +217,34 @@ impl PipelineBackend {
         ))
     }
 
-    fn record_segment(&self, s: usize, wall: Duration) {
+    /// The time each segment spent in its steps (see [`SegmentTimes`]).
+    pub fn segment_times(&self) -> &[SegmentTimes] {
+        &self.times
+    }
+
+    /// The expert-cache counters of every segment, from its backend (a remote one asks its
+    /// worker); `None` for a segment without an expert cache.
+    pub fn segment_stats(&mut self) -> Vec<Option<serde_json::Value>> {
+        self.segs.iter_mut().map(|s| s.expert_stats()).collect()
+    }
+
+    fn note_step(&mut self, s: usize, wall: Duration, decode: bool) {
+        let own = self.segs[s].last_step_time().unwrap_or(wall);
+        let t = &mut self.times[s];
+        if decode {
+            t.decode_steps += 1;
+            t.decode_own_s += own.as_secs_f64();
+            t.decode_wall_s += wall.as_secs_f64();
+        } else {
+            t.prefill_steps += 1;
+            t.prefill_own_s += own.as_secs_f64();
+            t.prefill_wall_s += wall.as_secs_f64();
+        }
+    }
+
+    fn record_segment(&mut self, s: usize, wall: Duration) {
+        // Only a pipelined prefill comes here.
+        self.note_step(s, wall, false);
         if let Some(m) = &self.metrics {
             let own = self.segs[s].last_step_time().unwrap_or(wall);
             m.segment_step(s as u32, own.as_secs_f64());
@@ -526,6 +585,7 @@ impl BatchBackend for PipelineBackend {
                     buf.extend_from_slice(out.rows(k));
                 }
             }
+            self.note_step(i, wall, decode_step);
             if let Some(m) = &self.metrics {
                 let own = self.segs[i].last_step_time().unwrap_or(wall);
                 m.segment_step(i as u32, own.as_secs_f64());
@@ -643,6 +703,17 @@ pub fn replica_pipeline(
     }
     p.set_predicted(predicted_s);
     Ok(p)
+}
+
+/// The scheduler's step tokens for a replica that runs `plan`: its prefill micro-batches times
+/// its ubatch, so a step is the one the planner priced (ADR 0077, 0091). `None` when the plan
+/// names no ubatch, or `--step-tokens` is given (the operator's flag wins).
+pub fn plan_step_tokens(plan: &tetraeder_plan::Plan, explicit: Option<u32>) -> Option<usize> {
+    if explicit.is_some() {
+        return None;
+    }
+    let ubatch = plan.knobs.ubatch?;
+    Some(plan.knobs.prefill_micro_batches.max(1) as usize * ubatch.max(1) as usize)
 }
 
 /// The share of the layers of a segment plan (the TOML of `plan::segment_plan`) for a model of

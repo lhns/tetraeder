@@ -175,8 +175,8 @@ st_rounds() {
 
 st_linkend() {
   PROBE=end st_probe
-  python3 -I scripts/phase6_exit_s_merge.py "$out/link/hw.json" --swap-link "$out/link/probe-end.json" -o "$out/predictions/hw-end.json"
-  put a "$out/predictions/hw-end.json" hw-end.json
+  bx a 300 "$tet cluster merge $P/hw.json --swap-link $P/probe-end.json -o $P/hw-end.json" | tail -n 1
+  get a hw-end.json "$out/predictions/hw-end.json"
   price30 hw-end.json predict-cluster-end.json | tail -n 3
   get a predict-cluster-end.json "$out/predictions/predict-cluster-end.json"
   summ link "$out/link/probe-start.json" "$out/link/probe-end.json" || true

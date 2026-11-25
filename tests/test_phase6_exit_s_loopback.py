@@ -174,35 +174,16 @@ def test_case_s_a_wrong_prompt_runs_eight_rounds_and_gives_no_verdict(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="bash -n runs on Linux; the Windows runner has only the WSL stub")
-def test_case_s_scripts_parse_and_name_the_missing_judged_round_command():
+def test_case_s_scripts_parse_and_run_the_judged_round_and_the_merge_through_the_binary():
     for f in ("phase6_exit_s.sh", "phase6_exit_lib.sh", "sc_box.sh"):
         assert subprocess.run(["bash", "-n", str(SCRIPTS / f)]).returncode == 0
     body = (SCRIPTS / "phase6_exit_s.sh").read_text()
-    assert "no judged-round command exists" in body and "JUDGED_ROUND_CMD" in body
-    for name in ("sc_box.sh", "sc_gates.py", "fetch_exit_model.sh", "phase6_exit_s_summary.py", "phase6_exit_s_merge.py", "phase6_loopback.py",
+    # the judged round and the graph merge are `tetraeder` subcommands, checked in Rust (crates/tetraeder)
+    assert "cluster judged-round" in body and "cluster merge" in body and "--ram-budget" in body
+    assert "JUDGED_ROUND_CMD" not in body and "phase6_exit_s_merge" not in body and "--builder-disk" not in body
+    for name in ("sc_box.sh", "sc_gates.py", "fetch_exit_model.sh", "phase6_exit_s_summary.py", "phase6_loopback.py",
                  "phase6_box.sh"):
         assert name in body and (SCRIPTS / name).exists(), name
-
-
-def test_the_candidate_graph_gets_builder_disks_and_the_measured_ram_budget():
-    sys.path.insert(0, str(SCRIPTS))
-    import tomllib
-
-    import phase6_exit_s_merge as m
-
-    hw = json.loads((ROOT / "crates" / "planner" / "fixtures" / "phase6-rehearsal" / "hw.json").read_text())
-    prior = tomllib.loads((ROOT / "crates" / "planner" / "fixtures" / "rtx3090_prior.toml").read_text())
-    out, notes = m.prepare(hw, prior, {"a": 59_450_000_000, "b": 58_000_000_000})
-    ids = {d["id"] for d in out["devices"]}
-    assert {"a/nvme0", "b/nvme0"} <= ids and not any(i.startswith(("a/disk", "b/disk")) for i in ids)
-    assert not any(x["id"].startswith(("a/storage-disk", "b/storage-disk")) for x in out["links"])
-    link = next(x for x in out["links"] if x["id"] == "b/nvme-cpu0")
-    assert (link["a"], link["b"]) == ("b/nvme0", "b/cpu0")
-    cpu = {d["id"]: d["capacity_bytes"] for d in out["devices"] if d["kind"] == "cpu"}
-    assert cpu == {"a/cpu0": 59_450_000_000, "b/cpu0": 58_000_000_000} and notes == []
-    # a fitted nvme0 then lands on the builder disk, not on a discovered one
-    out, _ = m.merge(out, {"a": {"devices": [{"id": "nvme0", "kind": "disk", "queue_curve": [{"depth": 1, "bytes_per_s": 7.0}]}]}})
-    assert next(d for d in out["devices"] if d["id"] == "a/nvme0")["queue_curve"][0]["bytes_per_s"] == 7.0
 
 
 def test_the_pick_must_partition_the_layers_one_stage_per_node_leader_first(tmp_path):
@@ -220,26 +201,3 @@ def test_the_pick_must_partition_the_layers_one_stage_per_node_leader_first(tmp_
     assert s6.check_partition(plan(("a", 0, 47), ("b", 48, 94)), 94)  # a hole
     assert s6.check_partition(plan(("a", 0, 47), ("b", 47, 90)), 94)  # not the whole model
     assert s6.check_partition(plan(("a", 0, 94)), 94)  # one node
-
-
-def test_the_merge_overlays_the_fitted_node_graphs_and_keeps_the_rest():
-    sys.path.insert(0, str(SCRIPTS))
-    import phase6_exit_s_merge as m
-
-    hw = {"devices": [{"id": "a/gpu0", "kind": "gpu", "node": "a", "capacity_bytes": 25769803776, "bandwidth_bytes_per_s": {"value": 9e11}},
-                      {"id": "a/cpu0", "kind": "cpu", "node": "a", "capacity_bytes": 64_000_000_000, "threads": 16},
-                      {"id": "a/disk0", "kind": "disk", "node": "a", "capacity_bytes": 1}],
-          "links": [{"id": "a/pcie", "a": "a/gpu0", "b": "a/cpu0", "kind": "pcie", "alpha_s": {"value": 1}, "beta_bytes_per_s": {"value": 1}},
-                    {"id": "net", "a": "a/cpu0", "b": "b/cpu0", "kind": "network", "alpha_s": {"value": 0.03}}]}
-    fitted = {"a": {"devices": [{"id": "gpu0", "kind": "gpu", "capacity_bytes": 1, "bandwidth_bytes_per_s": {"value": 7e11}},
-                                {"id": "cpu0", "kind": "cpu", "capacity_bytes": 59_450_000_000, "threads": 12},
-                                {"id": "nvme0", "kind": "disk", "queue_curve": [{"depth": 1, "bytes_per_s": 1e9}]},
-                                {"id": "ghost0", "kind": "gpu"}],
-                    "links": [{"id": "p", "a": "gpu0", "b": "cpu0", "kind": "pcie", "alpha_s": {"value": 2e-5}, "beta_bytes_per_s": {"value": 2e10}}]}}
-    out, notes = m.merge(hw, fitted)
-    d = {x["id"]: x for x in out["devices"]}
-    assert d["a/gpu0"]["bandwidth_bytes_per_s"]["value"] == 7e11 and d["a/gpu0"]["capacity_bytes"] == 25769803776  # the discovered capacity stays
-    assert d["a/cpu0"]["capacity_bytes"] == 59_450_000_000 and d["a/cpu0"]["threads"] == 12  # the measured RAM budget lands on the CPU
-    assert d["a/disk0"]["queue_curve"][0]["depth"] == 1 and d["a/disk0"]["kind"] == "disk"
-    assert out["links"][0]["alpha_s"]["value"] == 2e-5 and out["links"][1]["alpha_s"]["value"] == 0.03
-    assert notes == ["a: no device for fitted ghost0"]
