@@ -211,6 +211,10 @@ pub fn write_relay_preface<W: io::Write>(w: &mut W, token: &str, peer: &NodeId) 
     w.write_all(format!("{token} {}\n", peer.0).as_bytes())
 }
 
+/// What the listener answers to a valid preface, so the daemon knows the listener it dialed is
+/// the replica's and not a stale file's port, now owned by another loopback service.
+pub const RELAY_ACK: &[u8] = b"tetraeder-prefix ok\n";
+
 /// Reads the first line of a relayed connection. `Some(peer)` when it carries `token`; `None`
 /// for a wrong token, a malformed or over-long line, or an end of input. It reads byte by byte
 /// so nothing after the line is consumed.
@@ -307,8 +311,8 @@ pub fn serve_prefix_io<R: io::Read, W: io::Write>(
 /// loopback port: the replica's cache lives in its child process, which the daemon reaches only
 /// through its stdio, so the child listens for this one purpose). The first line sent is the
 /// launch's `token` and the authenticated peer (`read_relay_preface`). Returns when either side
-/// ends; the connection is closed then. If the listener is not there, the connection is closed
-/// and the fetcher recomputes.
+/// ends; the connection is closed then. If the listener is not there or does not answer the
+/// preface with `RELAY_ACK`, the connection is closed and the fetcher recomputes.
 pub fn relay_prefix(conn: Conn, addr: std::net::SocketAddr, token: &str) {
     let Conn {
         mut rx,
@@ -332,6 +336,16 @@ pub fn relay_prefix(conn: Conn, addr: std::net::SocketAddr, token: &str) {
     };
     let mut to_replica = stream;
     if write_relay_preface(&mut to_replica, token, &peer).is_err() {
+        close();
+        return;
+    }
+    // Relay nothing until the listener has answered the preface as ours.
+    let mut ack = [0u8; RELAY_ACK.len()];
+    let _ = to_replica.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+    let acked = io::Read::read_exact(&mut from_replica, &mut ack).is_ok() && ack == RELAY_ACK;
+    let _ = to_replica.set_read_timeout(None);
+    if !acked {
+        tracing::warn!(%addr, "the prefix listener did not answer the handshake (a stale port file?); closed");
         close();
         return;
     }
@@ -435,6 +449,68 @@ mod tests {
             read_relay_preface(&mut vec![b'x'; 1000].as_slice(), &t),
             None
         );
+    }
+
+    /// A listener on loopback that reads the preface line and answers `reply`, then echoes.
+    fn listener(reply: &'static [u8]) -> std::net::SocketAddr {
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = l.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for mut s in l.incoming().flatten() {
+                let mut b = [0u8; 1];
+                while io::Read::read(&mut s, &mut b).is_ok_and(|n| n == 1) && b[0] != b'\n' {}
+                let _ = io::Write::write_all(&mut s, reply);
+                let mut c = s.try_clone().unwrap();
+                let _ = io::copy(&mut s, &mut c);
+            }
+        });
+        addr
+    }
+
+    struct Sink(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl io::Write for Sink {
+        fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn relay_to(addr: std::net::SocketAddr) -> (Vec<u8>, bool) {
+        let out = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let c = Arc::clone(&closed);
+        relay_prefix(
+            Conn {
+                peer: NodeId::new("b"),
+                purpose: tetraeder_transport::Purpose::Prefix,
+                rx: Box::new(&b"payload"[..]),
+                tx: Box::new(Sink(Arc::clone(&out))),
+                close: Arc::new(move || c.store(true, std::sync::atomic::Ordering::SeqCst)),
+            },
+            addr,
+            "tok",
+        );
+        let got = out.lock().unwrap().clone();
+        (got, closed.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    #[test]
+    fn a_listener_that_does_not_ack_the_preface_gets_no_relay() {
+        // A stale port file whose port another loopback service now holds.
+        let (got, closed) = relay_to(listener(b"HTTP/1.1 400 Bad Request\r\n\r\n"));
+        assert!(closed);
+        assert!(got.is_empty(), "nothing the other service said is relayed");
+    }
+
+    #[test]
+    fn a_listener_that_acks_the_preface_is_relayed_to() {
+        let (got, closed) = relay_to(listener(RELAY_ACK));
+        assert!(closed);
+        assert_eq!(got, b"payload");
     }
 
     struct One;

@@ -9,7 +9,7 @@
 //! this node's key; the head assigned the workers before it started the leader.
 
 use crate::node::ClusterArgs;
-use crate::serve::{ServeArgs, build_scheduler, scheduler_over};
+use crate::serve::{ServeArgs, build_scheduler, scheduler_over_step};
 use anyhow::Context;
 use clap::Args;
 use std::sync::Arc;
@@ -66,11 +66,40 @@ impl PrefixStore for SchedulerStore {
     }
 }
 
-/// Writes `content` to `file` atomically, so the daemon never reads half of it.
+/// The scheduler's step tokens for a replica that runs `plan`: its prefill micro-batches times
+/// its ubatch, so a step is the one the planner priced (ADR 0077, 0091). `None` when the plan
+/// names no ubatch, or `--step-tokens` is given (the operator's flag wins).
+pub(crate) fn plan_step_tokens(
+    plan: &tetraeder_plan::Plan,
+    explicit: Option<u32>,
+) -> Option<usize> {
+    if explicit.is_some() {
+        return None;
+    }
+    let ubatch = plan.knobs.ubatch?;
+    Some(plan.knobs.prefill_micro_batches.max(1) as usize * ubatch.max(1) as usize)
+}
+
+/// Writes `content` to `file` atomically, so the daemon never reads half of it. The file holds
+/// a token: it is created readable by its owner only (Unix).
 pub(crate) fn write_atomic(file: &std::path::Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
     let tmp = file.with_extension("tmp");
-    std::fs::write(&tmp, content)?;
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+    o.open(&tmp)?.write_all(content.as_bytes())?;
     std::fs::rename(&tmp, file)
+}
+
+/// Creates `dir` and its parents; the directories this creates are for their owner only (Unix).
+pub(crate) fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    let mut b = std::fs::DirBuilder::new();
+    b.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+    b.create(dir)
 }
 
 /// Serves the prefix cache to the daemon's relay on a loopback port, which it returns. A
@@ -99,6 +128,10 @@ pub(crate) fn serve_prefix_on_loopback(
                         tetraeder_transport::metrics::rejected("bad_relay");
                         return;
                     };
+                    if std::io::Write::write_all(&mut tx, tetraeder_control::kv::RELAY_ACK).is_err()
+                    {
+                        return;
+                    }
                     // A peer that opens a connection and goes quiet does not hold it.
                     let _ = rx.set_read_timeout(Some(PREFIX_IDLE));
                     serve_prefix_io(&mut rx, &mut tx, store.as_ref(), &grants, &peer);
@@ -168,19 +201,22 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
             .collect::<anyhow::Result<Vec<_>>>()?;
         let metrics = telemetry.metrics().clone();
         // The plan's prefill micro-batches (ADR 0077): the replica's plan file, when it reads.
-        let micro = std::env::var_os("TETRAEDER_REPLICA_PLAN")
-            .and_then(|f| {
-                let read = std::fs::read_to_string(&f).map_err(|e| e.to_string());
-                let plan = read
-                    .and_then(|t| tetraeder_plan::Plan::from_toml(&t).map_err(|e| e.to_string()));
-                plan.map_err(|e| {
-                    eprintln!("warning: prefill is not pipelined, the plan is unreadable: {e}")
-                })
-                .ok()
+        let plan = std::env::var_os("TETRAEDER_REPLICA_PLAN").and_then(|f| {
+            let read = std::fs::read_to_string(&f).map_err(|e| e.to_string());
+            let plan =
+                read.and_then(|t| tetraeder_plan::Plan::from_toml(&t).map_err(|e| e.to_string()));
+            plan.map_err(|e| {
+                eprintln!("warning: prefill is not pipelined, the plan is unreadable: {e}")
             })
-            .map_or(1, |p| p.knobs.prefill_micro_batches);
+            .ok()
+        });
+        let micro = plan.as_ref().map_or(1, |p| p.knobs.prefill_micro_batches);
+        // One scheduler step is what the planner priced: the micro-batches of one step.
+        let step = plan
+            .as_ref()
+            .and_then(|p| plan_step_tokens(p, a.serve.step_tokens));
         // The backend is built on the scheduler's thread: it is not `Send`.
-        let (s, p) = scheduler_over(&a.serve, &telemetry, move || {
+        let (s, p) = scheduler_over_step(&a.serve, &telemetry, step, move || {
             let mut backs: Vec<Box<dyn SegmentBackend>> = Vec::new();
             for (i, peer) in peers.into_iter().enumerate() {
                 let rc = RemoteConfig::node(Arc::clone(&t), peer, replica, i as u32);
@@ -230,4 +266,79 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
     server.serve(std::io::stdin().lock(), std::io::stdout());
     telemetry.shutdown();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    fn plan(micro: u32, ubatch: Option<u32>) -> tetraeder_plan::Plan {
+        let text = "model = \"m\"\n[[replicas]]\n[[replicas.stages]]\nlayers = [0, 4]\n\
+                    devices = [\"gpu0\"]\ntp = 1\nep = 1\n";
+        let mut p = tetraeder_plan::Plan::from_toml(text).unwrap();
+        p.knobs.prefill_micro_batches = micro;
+        p.knobs.ubatch = ubatch;
+        p
+    }
+
+    /// hardware: none. The Case S pick (4 micro-batches at ubatch 2048) steps 8192 tokens; the
+    /// exit's pp2048 at ubatch 512 and four micro-batches steps 2048, today's default.
+    #[test]
+    fn the_step_is_the_plans_micro_batches_times_its_ubatch() {
+        assert_eq!(
+            super::plan_step_tokens(&plan(4, Some(2048)), None),
+            Some(8192)
+        );
+        assert_eq!(
+            super::plan_step_tokens(&plan(4, Some(512)), None),
+            Some(2048)
+        );
+        assert_eq!(
+            super::plan_step_tokens(&plan(1, Some(512)), None),
+            Some(512)
+        );
+        assert_eq!(
+            super::plan_step_tokens(&plan(0, Some(512)), None),
+            Some(512)
+        );
+    }
+
+    /// hardware: none. A plan without a ubatch, or an explicit `--step-tokens`, leaves the step
+    /// to the flag and its default.
+    #[test]
+    fn the_flag_and_a_plan_without_ubatch_keep_the_default_step() {
+        assert_eq!(super::plan_step_tokens(&plan(4, None), None), None);
+        assert_eq!(
+            super::plan_step_tokens(&plan(4, Some(2048)), Some(1024)),
+            None
+        );
+    }
+
+    /// hardware: none. The port and token files are for their owner only; the directories this
+    /// creates are too.
+    #[cfg(unix)]
+    #[test]
+    fn the_prefix_files_and_their_directory_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("tetraeder-private-{}", std::process::id()));
+        let state = dir.join("state");
+        super::create_private_dir(&state).unwrap();
+        let file = state.join("prefix-head");
+        super::write_atomic(&file, "40123 abc").unwrap();
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&state), 0o700);
+        assert_eq!(mode(&file), 0o600);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "40123 abc");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// hardware: none. The content is replaced whole (a second write leaves no stale tail).
+    #[test]
+    fn write_atomic_replaces_the_file() {
+        let dir = std::env::temp_dir().join(format!("tetraeder-atomic-{}", std::process::id()));
+        super::create_private_dir(&dir).unwrap();
+        let file = dir.join("f");
+        super::write_atomic(&file, "a long first line").unwrap();
+        super::write_atomic(&file, "short").unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "short");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

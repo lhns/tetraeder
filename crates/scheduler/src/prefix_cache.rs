@@ -679,18 +679,25 @@ mod tests {
         c.abort_restore(r);
         gate.open();
         let t0 = std::time::Instant::now();
-        // The reader recycles the buffer before it replies; the entry is offered again only once
-        // the abort has been reaped, so wait for both.
+        // The reader gives the buffer back before it replies and the entry is offered again only
+        // once the abort has been reaped, so a found entry means the buffer was handed over.
         let found = loop {
             c.flush_disk();
-            if pool.stats().recycled > before
-                && let Some(found) = c.best(F, &seq(3, 0))
-            {
+            if let Some(found) = c.best(F, &seq(3, 0)) {
                 break found;
             }
             assert!(t0.elapsed().as_secs() < 30, "the abort was not reaped");
             std::thread::sleep(Duration::from_millis(2));
         };
+        // The pool keeps the buffer unless its preparer has all four spares filled (or is
+        // filling the last one) by then, which is a race with the writes above: then the buffer
+        // is freed and the spares are full. Either way the buffer did not stay in the cache.
+        let settled =
+            |s: tetraeder_model::snapshot_pool::PoolStats| s.recycled > before || s.ready == 4;
+        while !settled(pool.stats()) && t0.elapsed().as_secs() < 30 {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(settled(pool.stats()), "{:?}", pool.stats());
         assert_eq!(dir.files(), files, "the file was not consumed");
         // The entry can be restored later.
         let (i, n) = found;
