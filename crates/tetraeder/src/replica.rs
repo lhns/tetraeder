@@ -39,7 +39,7 @@ const PREFIX_PREFACE_WAIT: std::time::Duration = std::time::Duration::from_secs(
 const PREFIX_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The replica's prefix cache as the cluster sees it: the scheduler answers on its own thread.
-struct SchedulerStore(Arc<Scheduler>);
+pub(crate) struct SchedulerStore(pub(crate) Arc<Scheduler>);
 
 impl PrefixStore for SchedulerStore {
     fn kv_format(&self) -> String {
@@ -66,20 +66,23 @@ impl PrefixStore for SchedulerStore {
     }
 }
 
-/// Serves the prefix cache to the daemon's relay on a loopback port, written to `file`
-/// (atomically, so the daemon never reads half a number). A connection is served only when it
-/// opens with the launch's `token`; the line also names the peer whose grants apply.
-fn serve_prefix_on_loopback(
+/// Writes `content` to `file` atomically, so the daemon never reads half of it.
+pub(crate) fn write_atomic(file: &std::path::Path, content: &str) -> std::io::Result<()> {
+    let tmp = file.with_extension("tmp");
+    std::fs::write(&tmp, content)?;
+    std::fs::rename(&tmp, file)
+}
+
+/// Serves the prefix cache to the daemon's relay on a loopback port, which it returns. A
+/// connection is served only when it opens with the launch's `token`; the line also names the
+/// peer whose grants apply.
+pub(crate) fn serve_prefix_on_loopback(
     store: Arc<dyn PrefixStore>,
     grants: Arc<PrefixGrants>,
     token: String,
-    file: &std::path::Path,
-) -> std::io::Result<()> {
+) -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
-    let tmp = file.with_extension("tmp");
-    std::fs::write(&tmp, port.to_string())?;
-    std::fs::rename(&tmp, file)?;
     std::thread::Builder::new()
         .name("prefix-listen".into())
         .spawn(move || {
@@ -102,7 +105,7 @@ fn serve_prefix_on_loopback(
                 });
             }
         })?;
-    Ok(())
+    Ok(port)
 }
 
 #[derive(Args)]
@@ -203,13 +206,10 @@ pub fn run(a: &ReplicaArgs) -> anyhow::Result<()> {
             if let Some(file) = std::env::var_os(PREFIX_PORT_FILE_ENV) {
                 let token = std::env::var(PREFIX_TOKEN_ENV)
                     .context("TETRAEDER_PREFIX_TOKEN is not set (the daemon sets it)")?;
-                serve_prefix_on_loopback(
-                    Arc::clone(&store),
-                    Arc::clone(&grants),
-                    token,
-                    std::path::Path::new(&file),
-                )
-                .context("cannot serve prefixes")?;
+                let port = serve_prefix_on_loopback(Arc::clone(&store), Arc::clone(&grants), token)
+                    .context("cannot serve prefixes")?;
+                write_atomic(std::path::Path::new(&file), &port.to_string())
+                    .context("cannot write the prefix port")?;
             }
             let cfg = cfg.clone();
             let peers: PeerLookup = Arc::new(move |n: &NodeId| cfg.peer(n));

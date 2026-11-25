@@ -31,7 +31,7 @@
 //! ```
 
 use crate::node::ClusterArgs;
-use crate::serve::{SchedParts, ServeArgs, build_engine};
+use crate::serve::{SchedParts, ServeArgs, build_engine, build_scheduler};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -43,7 +43,9 @@ use tetraeder_control::head::{
     ClusterEngine, ClusterHead, FetchPolicy, KvInfo, ReplicaTarget, SegmentAssign, StartSpec,
     specs_from_plan,
 };
-use tetraeder_control::kv::{PrefixKey, fetch_beats_recompute};
+use tetraeder_control::kv::{
+    PrefixGrants, PrefixKey, PrefixStore, fetch_beats_recompute, new_token,
+};
 use tetraeder_control::membership::NodeState;
 use tetraeder_control::monitor::Monitor;
 use tetraeder_control::replica::FetchFrom;
@@ -440,6 +442,30 @@ fn front_engine(a: &ServeArgs, telemetry: &Arc<Telemetry>) -> Result<Arc<dyn Gat
     ))
 }
 
+/// Makes the head's own replica `r` a holder other replicas fetch prefixes from: the router
+/// learns its snapshot format and size (the fetch rule prices with them), fetches are announced to
+/// its grants, and a loopback listener serves `store` to this node's daemon, which finds it
+/// through `<node_state>/prefix-head` (`<port> <token>`) and relays the other nodes' `Prefix`
+/// connections to it.
+fn serve_local_prefixes(
+    engine: &ClusterEngine,
+    r: u32,
+    store: Arc<dyn PrefixStore>,
+    node_state: &Path,
+) -> Result<()> {
+    let grants = Arc::new(PrefixGrants::default());
+    engine.set_local_replica(r, Arc::clone(&store), Arc::clone(&grants));
+    let token = new_token();
+    let port = crate::replica::serve_prefix_on_loopback(store, grants, token.clone())
+        .context("cannot serve prefixes")?;
+    std::fs::create_dir_all(node_state)
+        .with_context(|| format!("cannot create {}", node_state.display()))?;
+    let file = crate::node::head_prefix_file(node_state);
+    crate::replica::write_atomic(&file, &format!("{port} {token}"))
+        .with_context(|| format!("cannot write {}", file.display()))?;
+    Ok(())
+}
+
 /// The cluster engine and the number of requests the gateway lets run at once (the sum of the
 /// replicas' caps, so requests wait at the router, not in the gateway).
 pub fn start(
@@ -474,8 +500,14 @@ pub fn start(
 
     // The replica the head leads itself runs in process; without one, the head only tokenizes.
     let local = resolved.iter().any(|r| r.leader == me);
-    let (front, front_cap): (Arc<dyn GatewayEngine>, usize) = if local {
+    let mut local_store: Option<Arc<dyn PrefixStore>> = None;
+    let (front, front_cap): (Arc<dyn GatewayEngine>, usize) = if local && a.fake {
         build_engine(a, telemetry)?
+    } else if local {
+        // The scheduler itself, not only its engine face: its cache is what other replicas fetch.
+        let (s, cap) = build_scheduler(a, telemetry)?;
+        local_store = Some(Arc::new(crate::replica::SchedulerStore(Arc::clone(&s))));
+        (s as Arc<dyn GatewayEngine>, cap)
     } else {
         (front_engine(a, telemetry)?, a.parallel as usize)
     };
@@ -525,7 +557,11 @@ pub fn start(
     let engine = Arc::new(ClusterEngine::new(front, targets, MIN_PREFIX, policy));
     for (i, r) in resolved.iter().enumerate() {
         if r.leader == me {
-            engine.set_up(u32::try_from(i)?, true);
+            let i = u32::try_from(i)?;
+            if let Some(store) = &local_store {
+                serve_local_prefixes(&engine, i, Arc::clone(store), &a.node_state)?;
+            }
+            engine.set_up(i, true);
         }
     }
     let head = ClusterHead::start(&engine, &monitor, &transport, remote_specs);

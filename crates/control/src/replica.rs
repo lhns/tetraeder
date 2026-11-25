@@ -497,6 +497,10 @@ impl Link {
         if let Some(p) = lock(&self.probe).take() {
             let _ = p.send(Err(why.to_owned()));
         }
+        // A `connect` still waiting for `Info` holds this link, so the sender only drops here:
+        // without it the wait never ends (an engine that loads longer than the hello wait hung
+        // the head's join loop for good).
+        lock(&self.info).take();
     }
 }
 

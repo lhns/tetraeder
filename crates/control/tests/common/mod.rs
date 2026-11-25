@@ -162,6 +162,9 @@ pub struct ReplicaLauncher {
     /// Prefix hooks of the replicas this launcher starts.
     #[allow(clippy::type_complexity)]
     pub kv: Mutex<Option<Arc<dyn Fn() -> tetraeder_control::replica::KvHooks + Send + Sync>>>,
+    /// How long a launched "process" takes to load its engine before it reads a frame: the pipes
+    /// are open at once, so what the daemon relays queues up, as with a real process.
+    pub load: Mutex<Duration>,
 }
 
 impl ReplicaLauncher {
@@ -175,6 +178,7 @@ impl ReplicaLauncher {
             launches: AtomicUsize::new(0),
             current: Mutex::new(None),
             kv: Mutex::new(None),
+            load: Mutex::new(Duration::ZERO),
         }
     }
 
@@ -193,7 +197,11 @@ impl Launcher for ReplicaLauncher {
         let ((in_tx, in_rx), (out_tx, out_rx)) = (pipe(&dead), pipe(&dead));
         let kv = self.kv.lock().unwrap().as_ref().map(|f| f());
         let server = tetraeder_control::replica::ReplicaServer::new((self.make)(), self.cap, kv);
-        std::thread::spawn(move || server.serve(in_rx, out_tx));
+        let load = *self.load.lock().unwrap();
+        std::thread::spawn(move || {
+            std::thread::sleep(load);
+            server.serve(in_rx, out_tx);
+        });
         let d = Arc::clone(&dead);
         Ok(WorkerIo {
             stdin: Box::new(in_tx),

@@ -251,15 +251,28 @@ fn choose(
             feasible.push(Placement::Cpu);
         }
     }
+    // A placement the graph cannot price (a discovered CPU has no compute spec, which every
+    // placement with experts outside VRAM needs) is left out; the others still compete. Only
+    // when none prices is that the reason.
     let mut best: Option<Choice> = None;
+    let mut unpriced: Option<String> = None;
     for p in feasible {
-        let request_s = time(p)?;
-        if best.is_none_or(|b| request_s < b.request_s) {
-            best = Some(Choice {
-                placement: p,
-                request_s,
-            });
+        match time(p) {
+            Ok(request_s) => {
+                if best.is_none_or(|b| request_s < b.request_s) {
+                    best = Some(Choice {
+                        placement: p,
+                        request_s,
+                    });
+                }
+            }
+            Err(e) => unpriced = Some(e),
         }
+    }
+    if best.is_none()
+        && let Some(e) = unpriced
+    {
+        return Err(format!("node {label}: no placement is priced: {e}"));
     }
     best.ok_or_else(|| {
         format!(
@@ -445,7 +458,11 @@ fn assemble(
 }
 
 /// Placement and run settings of one segment, read back from its single-node plan.
-fn read_stage(plan: &Plan) -> Result<Placement, String> {
+///
+/// A stage wholly on the GPU (no expert cache: the layers and every expert sit in VRAM, as a
+/// hand-written plan or a replica that fits one card has it) is the builder placement with every
+/// expert resident and none in RAM, or the dense placement with every layer on the GPU.
+fn read_stage(plan: &Plan, sub: &ModelLayout) -> Result<Placement, String> {
     let st = &plan.replicas[0].stages[0];
     let slots = |id: &str| {
         st.expert_cache
@@ -459,7 +476,14 @@ fn read_stage(plan: &Plan) -> Result<Placement, String> {
             ram_slots,
         }),
         (None, None) if !st.devices.iter().any(|d| d == GPU) => Ok(Placement::Cpu),
-        _ => Err("a segment is a builder placement or all on the CPU".to_string()),
+        (None, None) if sub.is_moe() => Ok(Placement::Builder {
+            vram_slots: sub.n_expert,
+            ram_slots: 0,
+        }),
+        (None, None) => Ok(Placement::Dense {
+            gpu_layers: sub.n_layer,
+        }),
+        _ => Err("a segment is a builder placement, all on the GPU or all on the CPU".to_string()),
     }
 }
 
@@ -539,7 +563,7 @@ pub fn cluster_features_routed(
             ));
         } else {
             let sp = segment_plan(plan, 0, s);
-            let placement = read_stage(&sp)?;
+            let placement = read_stage(&sp, &sub)?;
             let span = (s.layers.0, s.layers.1);
             let found = replays.iter().position(|r| r.span == s.layers);
             let mut tier = None;

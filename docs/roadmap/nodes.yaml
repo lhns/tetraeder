@@ -4329,78 +4329,86 @@ nodes:
   title: Head does not restart a replica after its node is restored
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - bench/results/phase6-rehearsal-20261125/README.md
-  verdict_quote: ''
-  headline: ''
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/control/tests/join_loop.rs
+  verdict_quote: 'rejoin case=cold load_s=6.5 rejoin_s=6.6 bound_s=16.5; rejoin case=kill_engine load_s=6.5 rejoin_s=7.1 bound_s=16.5; rejoin case=kill_daemon load_s=6.5 rejoin_s=7.2 bound_s=16.5 (CI run 45565416727)'
+  headline: 'a replica that loads slower than the hello wait joins again'
   depends_on:
   - bench-phase6-rehearsal
   replaced_by: []
   lane: cluster
   start: '2026-11-25'
-  end: ''
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: 'After B''s engine was killed, B''s daemon was killed and restarted, or the cluster was started cold, the head sometimes never started the replica on B again until the head itself was restarted (Case F modes 1 and 2 failed the 60 s rejoin rule; the very first start stalled for minutes).'
+  plain: 'The join call waited for the replica forever once the head had cut the connection while the engine was still loading (11 s on the 30B), so a restored node never rejoined and the cold start stalled; the link now ends the wait, each try is logged and counted, and the head rejoins an engine that takes 6.5 s to load within 7.2 s of the restore in both kill modes.'
 
 - id: cluster-prefix-fetch-not-triggered
   title: No prefix fetch between replicas on two GPU nodes
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - bench/results/phase6-rehearsal-20261125/README.md
-  verdict_quote: ''
-  headline: ''
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/control/tests/local_holder_fetch.rs
+  verdict_quote: 'local_holder_fetch fetched=1 served=1 puts=1 tokens_equal=true (CI run 45565416727)'
+  headline: 'the head replica now reports its KV size and serves its cache'
   depends_on:
   - bench-phase6-rehearsal
   replaced_by: []
   lane: cluster
   start: '2026-11-25'
-  end: ''
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: 'A request sent to the replica without a prefix recomputed it although the fetch was priced to win; the head''s own replica may lack the KV format and row size the fetch rule needs.'
+  plain: 'The head process never gave the router its own replica snapshot format and size, never set the grants for fetches from it, and nothing served its cache to other nodes; now it does all three and a remote replica fetches from the head replica with equal tokens; the head replica as the fetcher stays unreachable and a real-process run of the relay is open.'
 
 - id: cluster-plan-source-gpu-segments
   title: Planner proposes no plan for two real GPU boxes
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - bench/results/phase6-rehearsal-20261125/README.md
-  verdict_quote: ''
-  headline: ''
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/planner/tests/cluster_gpu_segments.rs
+  verdict_quote: 'gpu_segments hand_split pp_tps=2415.1 tg_tps=10.11; gpu_segments proposed=40 best_pp_tps=4144.7 best_tg_tps=11.37 (CI run 45565416727)'
+  headline: 'the planner prices an all-GPU segment and proposes splits for two GPU boxes'
   depends_on:
   - bench-phase6-rehearsal
   replaced_by: []
   lane: cluster
   start: '2026-11-25'
-  end: ''
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: 'The cost model refuses a segment that is all on the GPU, so a pipeline plan cannot be priced and the replan source made no proposal when a node left.'
+  plain: 'An all-GPU segment is read as every expert resident and a placement that the graph cannot price no longer aborts the whole search, so the rehearsal profile now gives the hand split a price and 40 candidates; tetraeder-plan candidates --cluster writes them, and a replan that changes a replica leader is still refused by the control.'
 
 - id: cluster-drain-without-plan
   title: Node drain does not move load without a cluster plan
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - bench/results/phase6-rehearsal-20261125/README.md
-  verdict_quote: ''
-  headline: ''
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/control/tests/join_loop.rs
+  verdict_quote: 'drain_without_plan drained_after_s=0.18 in_flight_ok=6 later_on_other=10 (CI run 45565416727)'
+  headline: 'a drained node takes no new request without a plan'
   depends_on:
   - bench-phase6-rehearsal
   replaced_by: []
   lane: cluster
   start: '2026-11-25'
-  end: ''
+  end: '2026-11-25'
   folded: []
   overview: false
-  plain: 'With a replicas file, draining a node marks it but the router keeps sending it requests; only a cluster plan with the replanner drains a replica.'
+  plain: 'With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.'

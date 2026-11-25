@@ -352,10 +352,6 @@ flowchart TB
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
-| Head does not restart a replica after its node is restored | ⚠ open | After B's engine was killed, B's daemon was killed and restarted, or the cluster was started cold, the head sometimes never started the replica on B again until the head itself was restarted (Case F modes 1 and 2 failed the 60 s rejoin rule; the very first start stalled for minutes). |
-| No prefix fetch between replicas on two GPU nodes | ⚠ open | A request sent to the replica without a prefix recomputed it although the fetch was priced to win; the head's own replica may lack the KV format and row size the fetch rule needs. |
-| Planner proposes no plan for two real GPU boxes | ⚠ open | The cost model refuses a segment that is all on the GPU, so a pipeline plan cannot be priced and the replan source made no proposal when a node left. |
-| Node drain does not move load without a cluster plan | ⚠ open | With a replicas file, draining a node marks it but the router keeps sending it requests; only a cluster plan with the replanner drains a replica. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -379,13 +375,6 @@ flowchart TB
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-magnitude-q36`: Magnitude against llama-server on Qwen3.6
-
-**cluster**
-
-- `cluster-rejoin-after-restore`: Head does not restart a replica after its node is restored
-- `cluster-prefix-fetch-not-triggered`: No prefix fetch between replicas on two GPU nodes
-- `cluster-plan-source-gpu-segments`: Planner proposes no plan for two real GPU boxes
-- `cluster-drain-without-plan`: Node drain does not move load without a cluster plan
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -425,7 +414,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 135 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 139 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -844,8 +833,12 @@ Generated on 2026-11-25.
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 - `bench-235b-segment-confirm-2`: Rerun the segment confirmation (✔ done · successful). Rerun of the one-segment confirmation on a one-NUMA-node host (EPYC 7542, RTX A6000 planned against 24 GiB) with real-hidden anchors and the gates as code. The prediction (pp 445.08, tg 17.426 tok/s, fit band 0.050) was frozen and pushed before the judged rounds; the median of the three clean rounds is pp 452.46 and tg 17.761, within 2%, the routing gate held and the A/A (early and last) are inside 0.08. Two of the first three rounds were unclean (co-tenant over the limit), so two more rounds were run on the same frozen prediction; the five-round median agrees (e_pp -0.013, e_tg +0.008).
 - `bench-phase6-rehearsal`: First two-box cluster session (✔ done · unrated). Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).
+- `cluster-drain-without-plan`: Node drain does not move load without a cluster plan (✔ fixed). With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.
 - `cluster-pipeline-prefill`: Prefill pipelined across stages (✔ done · unrated). A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes).
+- `cluster-plan-source-gpu-segments`: Planner proposes no plan for two real GPU boxes (✔ fixed). An all-GPU segment is read as every expert resident and a placement that the graph cannot price no longer aborts the whole search, so the rehearsal profile now gives the hand split a price and 40 candidates; tetraeder-plan candidates --cluster writes them, and a replan that changes a replica leader is still refused by the control.
 - `cluster-planner-hardening`: Harden the cluster planner inputs (✔ fixed). Review findings on step 2 - validate node names at load (no slash, not empty, no duplicates), cap enumerate_cluster's node-order search, flag empty stage devices when nodes are involved, enforce forbid node on KV and slot caches too, and turn slice panics on malformed layouts into errors.
+- `cluster-prefix-fetch-not-triggered`: No prefix fetch between replicas on two GPU nodes (✔ fixed). The head process never gave the router its own replica snapshot format and size, never set the grants for fetches from it, and nothing served its cache to other nodes; now it does all three and a remote replica fetches from the head replica with equal tokens; the head replica as the fetcher stays unreachable and a real-process run of the relay is open.
+- `cluster-rejoin-after-restore`: Head does not restart a replica after its node is restored (✔ fixed). The join call waited for the replica forever once the head had cut the connection while the engine was still loading (11 s on the 30B), so a restored node never rejoined and the cold start stalled; the link now ends the wait, each try is logged and counted, and the head rejoins an engine that takes 6.5 s to load within 7.2 s of the restore in both kill modes.
 - `ops-review-phase6-serving`: Review the cluster serving code (✔ done · unrated). A read-only review of Phase 6 steps 3 to 5 and cluster-integration found 9 issues; 7 are fixed (per-IP handshake cap and TLS deadline, leader-only segment use, single-use prefix grants, request frame caps, snapshot checks, tokened prefix relay, bounded outbox, key required for a public cluster head) and 2 partly (snapshots served whole, no per-peer rate limit beyond grants; probe frames stay at 64 MiB for the link probe).
 - `planner-costmodel-v6-rest`: Cost model 6 remaining parts (✔ done · unrated). The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test.
 
@@ -882,5 +875,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (37 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 23 nodes (16 done, 5 next, 1 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 23 nodes (20 done, 1 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

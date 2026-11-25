@@ -81,3 +81,20 @@ groups:
         annotations:
           summary: "A planned drain cut requests that were still running"
           description: "A replica was drained for a replan or a node drain and some of its requests did not finish within the drain timeout, so they were cut. Look at the replica's request lengths and at tetraeder_replan_total (trigger node_change)."
+
+      # Step 6 follow-up (join loop): the head keeps trying to start and connect a replica that is
+      # out of the router and every try fails (tetraeder_cluster_join_attempts_total, result
+      # failed; the head logs each try with its reason). A replica that loads slowly fails a few
+      # times and joins; failing for ten minutes while the plan has more replicas than are up
+      # means its engine does not start or does not answer.
+      - alert: TetraederReplicaJoinFailing
+        expr: |
+          sum by (replica) (increase(tetraeder_cluster_join_attempts_total{result="failed"}[10m])) > 20
+            and on () (max(tetraeder_router_replicas_up) < max(tetraeder_router_replicas_planned))
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replica {{ $labels.replica }} keeps failing to join"
+          description: "The head has tried to start and connect replica {{ $labels.replica }} more than 20 times in 10 minutes without success. Read the log lines with join attempt failed for the reason, then the node's daemon log and the replica child's stderr."
+

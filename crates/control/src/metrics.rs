@@ -4,7 +4,9 @@
 //! `fetched`, `recomputed`), `tetraeder.kv.prefix.served` (counter, `result`: `snapshot`, `gone`;
 //! prefixes this leader gave to another), `tetraeder.cluster.drain` (counter, `replica` and
 //! `result`: `drained`, `timed_out`; planned drains of a replica) and its duration
-//! `tetraeder.cluster.drain.duration`. Dashboard row "Router: requests per replica and result, replicas
+//! `tetraeder.cluster.drain.duration`, and `tetraeder.cluster.join.attempts` (counter, `replica` and
+//! `result`: `joined`, `failed`; every try of the head to start and connect a remote replica,
+//! alert `TetraederReplicaJoinFailing`). Dashboard row "Router: requests per replica and result, replicas
 //! up, prefix fetches" and alert `TetraederReplicaOut`.
 
 use opentelemetry::KeyValue;
@@ -19,6 +21,7 @@ struct M {
     served: Counter<u64>,
     drains: Counter<u64>,
     drain_s: Histogram<f64>,
+    joins: Counter<u64>,
 }
 
 fn m() -> &'static M {
@@ -54,6 +57,10 @@ fn m() -> &'static M {
                 .f64_histogram("tetraeder.cluster.drain.duration")
                 .with_unit("s")
                 .with_description("Time a planned drain waited for the replica's requests")
+                .build(),
+            joins: meter
+                .u64_counter("tetraeder.cluster.join.attempts")
+                .with_description("Tries of the head to start and connect a remote replica")
                 .build(),
         }
     })
@@ -99,4 +106,15 @@ pub fn drain(replica: u32, result: &'static str, took: std::time::Duration) {
         ],
     );
     m().drain_s.record(took.as_secs_f64(), &[]);
+}
+
+/// One try of the head's join loop for `replica` ended: `joined` or `failed`.
+pub fn join_attempt(replica: u32, result: &'static str) {
+    m().joins.add(
+        1,
+        &[
+            KeyValue::new("replica", i64::from(replica)),
+            KeyValue::new("result", result),
+        ],
+    );
 }

@@ -36,27 +36,27 @@ enum Command {
         #[arg(long)]
         layout: PathBuf,
         /// Free VRAM for the engine, bytes.
-        #[arg(long, required_unless_present = "multi")]
+        #[arg(long, required_unless_present_any = ["multi", "cluster"])]
         gpu_bytes: Option<u64>,
-        #[arg(long, required_unless_present = "multi")]
+        #[arg(long, required_unless_present_any = ["multi", "cluster"])]
         ram_bytes: Option<u64>,
         /// CPU thread quota.
-        #[arg(long, required_unless_present = "multi")]
+        #[arg(long, required_unless_present_any = ["multi", "cluster"])]
         threads: Option<u32>,
         #[arg(long, default_value_t = 2048)]
         prompt: u32,
         #[arg(long, default_value_t = 128)]
         r#gen: u32,
         /// Model key in the spec.
-        #[arg(long, required_unless_present = "multi")]
+        #[arg(long, required_unless_present_any = ["multi", "cluster"])]
         model_key: Option<String>,
         /// `org/name:file.gguf`.
-        #[arg(long, required_unless_present = "multi")]
+        #[arg(long, required_unless_present_any = ["multi", "cluster"])]
         hf: Option<String>,
         /// Engine the candidates are for.
         #[arg(long, value_enum, default_value_t = Engine::LlamaBench)]
         engine: Engine,
-        #[arg(long, required_unless_present = "multi")]
+        #[arg(long, required_unless_present_any = ["multi", "cluster"])]
         out_candidates: Option<PathBuf>,
         /// Bench spec; required for llama-bench, ignored for the builder.
         #[arg(long)]
@@ -78,6 +78,11 @@ enum Command {
         /// instead of the box's fixed set. Repeatable.
         #[arg(long, requires = "multi")]
         anchor: Vec<String>,
+        /// The plans across the nodes of `--hw` (the merged cluster graph, `cluster profile`),
+        /// best predicted first (ADR 0091): one `<model>-<id>.toml` per candidate in
+        /// `--plans-dir`, ready for `serve --cluster-plan`, and `--out` as a JSON summary.
+        #[arg(long, requires_all = ["hw", "plans_dir"], conflicts_with = "multi")]
+        cluster: bool,
     },
     /// Fit the cost model to the anchor runs of a Phase 5 session (ADR 0068): `c_range` and
     /// `c_step` included. Reads `anchors-<model>-r<k>.json` and `<model>.json` layouts.
@@ -1006,7 +1011,66 @@ fn main() -> Result<()> {
             out,
             plans_dir,
             anchor,
+            cluster,
         } => {
+            if cluster {
+                let (Some(hw), Some(dir)) = (hw, plans_dir) else {
+                    anyhow::bail!("--cluster needs --hw and --plans-dir");
+                };
+                let graph = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
+                let layout =
+                    multi_cli::parse_layout(&read(&layout)?).map_err(anyhow::Error::msg)?;
+                let hints = tetraeder_plan::Hints {
+                    workload: Some(tetraeder_plan::WorkloadHints {
+                        typical_prompt: Some(prompt),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                };
+                let (cands, pruned) = tetraeder_planner::enumerate_cluster(
+                    &graph,
+                    &layout,
+                    &hints,
+                    tetraeder_plan::Phase(6),
+                );
+                anyhow::ensure!(
+                    !cands.is_empty(),
+                    "no plan across the nodes of {}: {}",
+                    hw.display(),
+                    pruned
+                        .iter()
+                        .take(3)
+                        .map(|(w, why)| format!("{w}: {why}"))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                );
+                std::fs::create_dir_all(&dir)?;
+                let mut summary = Vec::new();
+                for c in &cands {
+                    let p = dir.join(format!("{}-{}.toml", layout.model, c.id));
+                    std::fs::write(&p, c.plan.to_toml()?)
+                        .with_context(|| format!("write {}", p.display()))?;
+                    println!("{}: {}", c.id, c.notes.join("; "));
+                    summary.push(serde_json::json!({
+                        "id": c.id,
+                        "plan": p.file_name().map(|f| f.to_string_lossy().into_owned()),
+                        "notes": c.notes,
+                        "prediction": c.prediction,
+                    }));
+                }
+                println!("{} candidates, {} pruned", cands.len(), pruned.len());
+                if let Some(out) = out {
+                    let doc = serde_json::json!({
+                        "kind": "candidates-cluster",
+                        "hw_sha256": multi_cli::sha256_hex(read(&hw)?.as_bytes()),
+                        "workload": {"prompt": prompt, "gen": 128},
+                        "candidates": summary,
+                    });
+                    std::fs::write(&out, serde_json::to_string_pretty(&doc)?)
+                        .with_context(|| format!("write {}", out.display()))?;
+                }
+                return Ok(());
+            }
             if multi {
                 let (Some(hw), Some(out)) = (hw, out) else {
                     anyhow::bail!("--multi needs --hw and --out");

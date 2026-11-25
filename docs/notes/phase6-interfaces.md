@@ -389,3 +389,5 @@ The differences from the sketches above are listed in the History of ADR 0091 (2
 ## As built in step 6 (`cluster-integration`)
 
 The differences are listed in the History of ADR 0091 (2026-11-24, step 6). In short: `serve --cluster [--replicas | --cluster-plan --cluster-hw --model-sha256]` with a tokenizer-only head (`FrontEngine`); `head::specs_from_plan`; `Scheduler::{prefix_get, prefix_put}` behind the replica child's loopback prefix listener and the daemon's `kv::relay_prefix`; `Trigger::NodeChange`, `cluster_replan::{ClusterControl, ReplanWatcher}`, `Router::set_draining`, `ClusterEngine::drain`, `ClusterHead::specs()`.
+
+Rehearsal fixes (History of ADR 0091, 2026-11-25): `ClusterEngine::set_local_replica`; `serve --node-state DIR` and the file `<DIR>/prefix-head` (`<port> <token>`) that the daemon relays `Prefix` connections to when no replica child has a listener; `tetraeder.cluster.join.attempts`; `tetraeder-plan candidates --cluster`.
