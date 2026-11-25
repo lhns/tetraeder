@@ -1,0 +1,586 @@
+#!/usr/bin/env python3
+"""Verdict of Case S, the Phase 6 model-larger-than-a-node exit test (ADR 0091 "Case S", answers 6 to 8, ADR 0092), every
+rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
+
+    phase6_exit_s_summary.py summary RESULTS_DIR      writes RESULTS_DIR/verdict-s.json, prints the tables
+    phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml     the analytic pick among the spanning plans
+    phase6_exit_s_summary.py span PLAN.toml           the plan computes on both nodes, one node per stage
+    phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
+    phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
+    phase6_exit_s_summary.py precheck RESULTS_DIR calib|freeze           the rules that must hold before calibration is trusted (calib) or
+                                                      before the first judged round (freeze); exit 1 and the reasons otherwise
+    phase6_exit_s_summary.py round ROUND_DIR [--frozen-sha S]            is the judged round clean (reasons, exit 1)
+    phase6_exit_s_summary.py next-round RESULTS_DIR   exit 0 while another judged round is due, 1 when done (3 clean or 8)
+
+Layout (scripts/phase6_exit_s.sh writes it): session.json, gates/<box>/, env/<box>/env.json, trace/{routing,hidden}.sha256,
+hidden/<box>.sha256, calib/<node>/{anchors/a{1,2}-r{1,2}.json, pred.json}, link/probe-{start,end}.json, plans/judged-plan.toml
+and candidates.json, predictions/{predict-cluster.json, SHA256SUMS, FROZEN.sha256, frozen.json}, judged/r<k>/ and
+judged/aa-last/ each with cluster.json (rates of the pipelined request), seg-<node>.json (+ .gpu.txt) and meta.json.
+
+Rules (every one a line of `rules` in verdict-s.json; all must hold or there is no verdict):
+  gates_<box>           one NUMA node, co-tenant reading of engine_sample.py under the limit, power and idle gates (before downloads)
+  ram_budget_<box>      the measured RAM budget under the balloon is in env.json and not above the emulated 64 GB
+  trace_hidden          the hidden rows of the trace run have the same sha256 on both boxes and in trace/hidden.sha256
+  anchors_<node>        anchors ran on real input: hidden rows of the dump for a span after layer 0, the frozen prompt hash for
+                        a span from layer 0 (which takes tokens); two rounds of both truncations
+  fit_band_<node>       each node's fit band within 0.10 (sc_gates.FIT_BAND_LIMIT)
+  prediction_judged     predict-cluster.json is routing `trace`, judged, priced from the sha256 of the trace on disk, for the
+                        frozen prompt and the judged plan
+  freeze                FROZEN.sha256 and every frozen file match; every judged round ran under that hash, started after t_frozen
+  span_both_nodes       the judged plan is the planner's analytic pick (fastest predicted) among plans that compute on both
+                        nodes, and no candidate that does not is considered
+  link_reprice          the link rule (advisor, delegated by the owner, 2026-11-25; docs/notes/phase6-rule-changes.md): the frozen judged plan
+                        is priced again with the end probe's link curves and nothing else changed (predictions/predict-cluster-end.json);
+                        predicted pp and tg each move by at most 0.08. Raw probe points (start, before each round, end) are reported, not gated
+  rounds_clean          three clean rounds within eight (every round reported, unclean ones rerun on the same prediction)
+  prompt_hash           every judged round ran the frozen prompt
+  routing_gate          per segment, medians of the clean rounds against the replay: vram share 0.02, full hit 0.02, RAM hit 0.005
+  aa_early              judged r1 against r2 within 0.08 on T
+  aa                    judged r1 against judged/aa-last the last run, within 0.08 on T
+A round is unclean when a segment's warm block says not covering, timed prefill read disk bytes, the balloon or co-tenant
+flag is false, the GPU throttled or ran below its default power limit, a rate is missing, or the prompt differs.
+Then, only when clean: e_pp = pp_pred / pp_meas - 1 and e_tg on the medians of the clean rounds, against the frozen prediction and
+against the end-priced one; pass only when both are within 0.15 against both, a miss when it is outside against both, else no verdict.
+Report only: the errors against a prediction priced from a second prompt's routing trace (predictions/predict-cluster-p2.json).
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import re
+import statistics
+import sys
+import tomllib
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sc_gates as sg  # noqa: E402
+import sc_summary as ss  # noqa: E402
+
+LINE = 0.15
+BAND = sg.AA_BAND  # 0.08, bench/spec/phase0.toml: no two-node noise class exists
+GATE_SHARE, GATE_RAM = ss.GATE_SHARE, ss.GATE_RAM
+CLEAN_NEEDED, MAX_ROUNDS = 3, 8
+EMULATED_RAM_B = 64_000_000_000
+PROBE_POINTS = (16 * 1024, 32 * 1024 * 1024)  # 32 MiB is no probe point (4 KiB x 4^k): interpolated as the cost model does
+
+
+def load(path: str):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def sha_file(path: str) -> str:
+    return sg.sha256_file(path)
+
+
+def med(xs):
+    xs = [x for x in xs if x is not None]
+    return statistics.median(xs) if xs else None
+
+
+# ---- the plan: both nodes -------------------------------------------------------------------------------------------------
+
+
+def plan_nodes(plan_toml: str) -> tuple[list[str], list[str]]:
+    """(nodes the stages compute on, problems): the node of a device id is the part before '/'. One node per stage."""
+    plan = tomllib.loads(open(plan_toml, encoding="utf-8").read())
+    nodes: list[str] = []
+    why: list[str] = []
+    stages = [s for r in plan.get("replicas", []) for s in r.get("stages", [])]
+    for i, st in enumerate(stages):
+        ns = sorted({d.split("/", 1)[0] for d in st.get("devices", []) if "/" in d})
+        if len(ns) != 1:
+            why.append(f"stage {i} names nodes {ns}")
+        nodes += ns
+    return sorted(set(nodes)), why + ([] if len(stages) >= 2 else [f"{len(stages)} stage(s): a spanning plan has one per node"])
+
+
+def plan_spans(plan_toml: str) -> list[tuple[str, int, int]]:
+    """(node, first layer, end layer) of every stage, in order."""
+    plan = tomllib.loads(open(plan_toml, encoding="utf-8").read())
+    out = []
+    for r in plan.get("replicas", []):
+        for st in r.get("stages", []):
+            nodes = sorted({d.split("/", 1)[0] for d in st.get("devices", []) if "/" in d})
+            lo, hi = st["layers"]
+            out.append((nodes[0] if nodes else "?", int(lo), int(hi)))
+    return out
+
+
+# what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
+PRE_CALIB = ("gates_", "ram_budget_", "trace_hidden", "anchors_", "fit_band_")
+PRE_FREEZE = PRE_CALIB + ("prediction_judged", "freeze", "span_both_nodes")
+
+
+def check_partition(plan_toml: str, n_layer: int, nodes: tuple[str, ...] = ("a", "b")) -> list[str]:
+    """The stages cut the layers 0..n_layer in order, one stage per node, the first node first (the leader holds the first layers)."""
+    sp = plan_spans(plan_toml)
+    why = []
+    if [n for n, _, _ in sp] != list(nodes):
+        why.append(f"the stages sit on {[n for n, _, _ in sp]}, not one per node in order {list(nodes)}")
+    pos = 0
+    for n, lo, hi in sp:
+        if lo != pos or hi <= lo:
+            why.append(f"stage on {n} covers {lo}..{hi} after layer {pos}")
+        pos = hi
+    if pos != n_layer:
+        why.append(f"the stages end at layer {pos}, the model has {n_layer}")
+    return why
+
+
+def check_span(plan_toml: str, nodes: tuple[str, ...] | None = None) -> list[str]:
+    try:
+        got, why = plan_nodes(plan_toml)
+    except (OSError, ValueError) as e:
+        return [f"cannot read the plan: {e}"]
+    want = sorted(nodes) if nodes else got
+    if len(got) < 2 or got != want:
+        why.append(f"the plan computes on {got}, a judged candidate must compute on every node {want or ['a', 'b']}")
+    return why
+
+
+def pick(candidates_json: str, plans_dir: str, nodes: tuple[str, ...] = ("a", "b")) -> tuple[dict, list[str]]:
+    """The analytic pick: lowest predicted request time among the candidates whose plan computes on both nodes. A plan on one
+    node is never considered (ADR 0091 Case S)."""
+    doc = load(candidates_json)
+    spanning, dropped = [], []
+    for c in doc.get("candidates", []):
+        plan = c.get("plan")
+        p = os.path.join(plans_dir, plan) if plan else ""
+        if plan and os.path.isfile(p) and not check_span(p, nodes):
+            spanning.append((c["prediction"]["request_s"], c["id"], plan))
+        else:
+            dropped.append(c.get("id"))
+    if not spanning:
+        return {"error": "no candidate computes on both nodes", "dropped": dropped}, ["no candidate computes on both nodes"]
+    t, cid, plan = min(spanning)
+    return {"id": cid, "plan": plan, "request_s": t, "spanning": len(spanning), "dropped_single_node": dropped}, []
+
+
+# ---- the link ----------------------------------------------------------------------------------------------------------------
+
+
+def curve_time(points: list, nbytes: float) -> float:
+    """profiler::curve_time: linear in bytes between points, flat below the first, extended with the last slope above."""
+    pts = sorted((float(a), float(b)) for a, b in points)
+    if nbytes <= pts[0][0]:
+        return pts[0][1]
+    if nbytes >= pts[-1][0]:
+        if len(pts) == 1:
+            return pts[-1][1] * nbytes / pts[-1][0]
+        (x0, y0), (x1, y1) = pts[-2], pts[-1]
+        return y1 + max((y1 - y0) / (x1 - x0), 0.0) * (nbytes - x1)
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if nbytes <= x1:
+            return y0 + (y1 - y0) * (nbytes - x0) / (x1 - x0)
+    raise AssertionError("unreachable")
+
+
+def link_readings(probe: dict) -> dict[str, float]:
+    out = {}
+    for c in probe.get("curves", []):
+        if c.get("op") == "copy" and len(c.get("ranks", [])) == 2:
+            d = "->".join(r.split("/", 1)[0] for r in c["ranks"])
+            for b in PROBE_POINTS:
+                out[f"{d} {b}"] = curve_time(c["points"], b)
+    return out
+
+
+def check_link(start: dict, end: dict, band: float = BAND) -> tuple[list[str], list[dict]]:
+    s, e = link_readings(start), link_readings(end)
+    rows, why = [], []
+    if len(s) < 2 * len(PROBE_POINTS) or set(s) != set(e):
+        return ["a probe lacks a direction or a size (both directions are needed at both ends)"], rows
+    for k in sorted(s):
+        diff = e[k] / s[k] - 1.0
+        rows.append({"point": k, "start_s": s[k], "end_s": e[k], "diff": diff, "ok": abs(diff) <= band})
+        if abs(diff) > band:
+            why.append(f"{k} B: {s[k] * 1e3:.2f} -> {e[k] * 1e3:.2f} ms ({diff:+.3f} against {band})")
+    return why, rows
+
+
+# ---- rounds ------------------------------------------------------------------------------------------------------------------
+
+
+def seg_files(rd: str) -> list[str]:
+    return sorted(f for f in glob.glob(os.path.join(rd, "seg-*.json")) if not f.endswith(".gpu.json"))
+
+
+def round_unclean(rd: str, prompt_hash: str | None, frozen_sha: str | None = None, t_frozen: float | None = None) -> list[str]:
+    """Why a judged round is not clean: the per-segment rules of sc_summary on each segment's JSON, plus the prompt and the freeze."""
+    why: list[str] = []
+    try:
+        cl = ss.run_of(load(os.path.join(rd, "cluster.json")))
+    except (OSError, ValueError):
+        return ["no cluster.json"]
+    if not cl.get("prefill_tok_s") or not cl.get("decode_tok_s"):
+        why.append("no rates")
+    segs = seg_files(rd)
+    if len(segs) < 2:
+        why.append(f"{len(segs)} segment file(s), one per node needed")
+    for f in segs:
+        why += [f"{os.path.basename(f)[4:-5]}: {w}" for w in ss.unclean(f)]
+    p = (cl.get("prompt") or {})
+    if prompt_hash and p.get("fnv1a64") != prompt_hash:
+        why.append(f"prompt hash {p.get('fnv1a64')} is not the frozen {prompt_hash}")
+    try:
+        meta = load(os.path.join(rd, "meta.json"))
+    except (OSError, ValueError):
+        meta = {}
+    if frozen_sha is not None and meta.get("frozen_sha256") != frozen_sha:
+        why.append(f"ran under {meta.get('frozen_sha256')}, not the frozen {frozen_sha}")
+    if t_frozen is not None and not (meta.get("t_start") or 0) > t_frozen:
+        why.append("started before the prediction was frozen")
+    return why
+
+
+def round_dirs(res: str) -> list[str]:
+    ds = [d for d in glob.glob(os.path.join(res, "judged", "r[0-9]*")) if os.path.isdir(d)]
+    return sorted(ds, key=lambda d: int(re.search(r"r(\d+)$", d).group(1)))
+
+
+def frozen_facts(res: str) -> tuple[str | None, float | None]:
+    try:
+        sha = open(os.path.join(res, "predictions", "FROZEN.sha256"), encoding="utf-8").read().split()[0]
+    except (OSError, IndexError):
+        sha = None
+    try:
+        t = load(os.path.join(res, "predictions", "frozen.json")).get("t_frozen")
+    except (OSError, ValueError):
+        t = None
+    return sha, t
+
+
+# ---- the session ------------------------------------------------------------------------------------------------------------
+
+
+def node_rules(res: str, sess: dict, rule) -> None:
+    ph = (sess.get("prompt") or {}).get("fnv1a64")
+    for seg in sess.get("segments", []):
+        n = seg["node"]
+        cd = os.path.join(res, "calib", n)
+        files = sorted(glob.glob(os.path.join(cd, "anchors", "a[12]-r[12].json")))
+        names = {os.path.basename(f) for f in files}
+        full = names == {"a1-r1.json", "a1-r2.json", "a2-r1.json", "a2-r2.json"}
+        if seg["span"][0] == 0:  # a span from layer 0 takes tokens: no hidden rows, so the prompt hash is the evidence
+            bad = []
+            for f in files:
+                got = (ss.run_of(load(f)).get("prompt") or {}).get("fnv1a64")
+                if not ph or got != ph:
+                    bad.append(f"{os.path.basename(f)} prompt {got}")
+            why = bad
+        else:
+            why = sg.check_anchors_real(files)
+        if not full:
+            why = why + [f"anchors {sorted(names)}: two truncations of two rounds each are needed"]
+        rule(f"anchors_{n}", not why, "; ".join(why) or "real input, two truncations, two rounds")
+        why = sg.check_fit_band(os.path.join(cd, "pred.json"), sg.FIT_BAND_LIMIT)
+        rule(f"fit_band_{n}", not why, "; ".join(why) or "within the limit")
+
+
+def summarize(res: str) -> dict:
+    sess = load(os.path.join(res, "session.json"))
+    segs = sess.get("segments", [])
+    nodes = tuple(sorted(s["node"] for s in segs))
+    out: dict = {"case": "S", "line": LINE, "band": BAND, "band_source": sess.get("band_source", "bench/spec/phase0.toml")}
+    rules: list[dict] = []
+
+    def rule(name: str, ok: bool, detail: str) -> None:
+        rules.append({"name": name, "ok": bool(ok), "detail": detail})
+
+    # gates and node budgets, before anything is judged
+    for n in nodes:
+        g = os.path.join(res, "gates", n)
+        why: list[str] = []
+        try:
+            why += sg.check_numa(open(os.path.join(g, "lscpu.txt"), encoding="utf-8").read())
+        except OSError:
+            why.append("no lscpu.txt")
+        why += sg.check_cotenant(os.path.join(g, "cotenant.json"))
+        try:
+            gj = load(os.path.join(g, "gates.json"))
+            why += [f"{k} is {gj.get(k)!r}" for k in ("power_ok", "idle_ok") if gj.get(k) is not True]
+        except (OSError, ValueError):
+            why.append("no gates.json")
+        rule(f"gates_{n}", not why, "; ".join(why) or "one NUMA node, co-tenant under the limit, power and idle gates passed")
+        try:
+            rb = load(os.path.join(res, "env", n, "env.json"))["ram_budget"]["ram_budget_bytes"]
+            rule(f"ram_budget_{n}", 0 < rb <= EMULATED_RAM_B, f"{rb} B against {EMULATED_RAM_B} emulated")
+        except (OSError, ValueError, KeyError, TypeError):
+            rule(f"ram_budget_{n}", False, "no measured RAM budget in env.json")
+    # the hidden rows of the trace run reached both boxes unchanged
+    try:
+        want = open(os.path.join(res, "trace", "hidden.sha256"), encoding="utf-8").read().split()[0]
+        got = {n: open(os.path.join(res, "hidden", f"{n}.sha256"), encoding="utf-8").read().split()[0] for n in nodes}
+        rule("trace_hidden", all(v == want for v in got.values()), f"trace {want[:12]}, boxes {({k: v[:12] for k, v in got.items()})}")
+    except (OSError, IndexError):
+        rule("trace_hidden", False, "missing hash of the hidden rows")
+    node_rules(res, sess, rule)
+
+    # the prediction: judged, from the trace, frozen before the first judged round
+    frozen_sha, t_frozen = frozen_facts(res)
+    pc_path = os.path.join(res, "predictions", "predict-cluster.json")
+    pc: dict = {}
+    try:
+        pc = load(pc_path)
+        tsha = open(os.path.join(res, "trace", "routing.sha256"), encoding="utf-8").read().split()[0]
+        why = []
+        if pc.get("routing") != "trace" or pc.get("judged") is not True:
+            why.append(f"routing {pc.get('routing')!r}, judged {pc.get('judged')!r}")
+        if (pc.get("routing_trace") or {}).get("sha256") != tsha:
+            why.append("priced from another trace than the one on disk")
+        if (pc.get("routing_trace") or {}).get("prompt_hash") != (sess.get("prompt") or {}).get("fnv1a64"):
+            why.append("priced for another prompt")
+        if (pc.get("workload") or {}) != {"prompt": sess["prompt"]["tokens"], "gen": sess["prompt"]["gen"]}:
+            why.append(f"workload {pc.get('workload')}")
+        rule("prediction_judged", not why, "; ".join(why) or "routing trace, judged, the exit prompt")
+    except (OSError, ValueError, KeyError, IndexError) as e:
+        rule("prediction_judged", False, f"no usable predict-cluster.json ({e})")
+    why = sg.check_freeze(res)
+    rds = round_dirs(res)
+    for rd in rds + [os.path.join(res, "judged", "aa-last")]:
+        try:
+            m = load(os.path.join(rd, "meta.json"))
+        except (OSError, ValueError):
+            continue  # a missing aa-last has its own rule
+        if m.get("frozen_sha256") != frozen_sha:
+            why.append(f"{os.path.relpath(rd, res)} ran under {m.get('frozen_sha256')}")
+        if t_frozen is None or not (m.get("t_start") or 0) > t_frozen:
+            why.append(f"{os.path.relpath(rd, res)} started before the freeze")
+    rule("freeze", not why, "; ".join(why) or f"{(frozen_sha or '')[:16]} frozen before every judged round")
+
+    # span and pick
+    try:
+        plan = os.path.join(res, "plans", "judged-plan.toml")
+        why = check_span(plan, nodes)
+        info, w2 = pick(os.path.join(res, "plans", "candidates.json"), os.path.join(res, "plans", "candidates"), nodes)
+        why += w2
+        if not w2:
+            if sha_file(plan) != sha_file(os.path.join(res, "plans", "candidates", info["plan"])):
+                why.append(f"the judged plan is not the pick {info['id']}")
+            if pc and (pc.get("plan_sha256") != sha_file(plan)):
+                why.append("predict-cluster.json priced another plan")
+        rule("span_both_nodes", not why, "; ".join(why) or f"pick {info.get('id')} of {info.get('spanning')} spanning plans")
+    except (OSError, ValueError, KeyError) as e:
+        rule("span_both_nodes", False, f"no plan or candidates ({e})")
+
+    # the link: raw probe points per probe are reported; the rule is how far the end probe moves the frozen plan's prediction
+    out["link"] = []
+    try:
+        start = load(os.path.join(res, "link", "probe-start.json"))
+        for f in sorted(glob.glob(os.path.join(res, "link", "probe-*.json"))):
+            if os.path.basename(f) != "probe-start.json":
+                _, rows = check_link(start, load(f), BAND)
+                out["link"].append({"probe": os.path.basename(f), "points": rows})
+    except (OSError, ValueError):
+        pass
+    pe: dict = {}
+    try:
+        pe = load(os.path.join(res, "predictions", "predict-cluster-end.json")).get("prediction") or {}
+        pf = (pc.get("prediction") or {}) if pc else {}
+        mv = {k: pe[k] / pf[k] - 1.0 for k in ("pp_tps", "tg_tps")}
+        out["link_reprice"] = {"pp_move": mv["pp_tps"], "tg_move": mv["tg_tps"], "band": BAND}
+        rule("link_reprice", all(abs(v) <= BAND + 1e-9 for v in mv.values()),
+             f"end-priced against frozen: pp {mv['pp_tps']:+.3f}, tg {mv['tg_tps']:+.3f} against {BAND}")
+    except (OSError, ValueError, KeyError, ZeroDivisionError) as e:
+        rule("link_reprice", False, f"no end-priced prediction ({e})")
+
+    # rounds
+    pr = (pc.get("prediction") or {}) if pc else {}
+    per, clean = [], []
+    ph = (sess.get("prompt") or {}).get("fnv1a64")
+    for rd in rds:
+        why = round_unclean(rd, ph, frozen_sha, t_frozen)
+        cl = ss.run_of(load(os.path.join(rd, "cluster.json"))) if os.path.exists(os.path.join(rd, "cluster.json")) else {}
+        row = {"round": os.path.relpath(rd, res).replace(os.sep, "/"), "pp": cl.get("prefill_tok_s"), "tg": cl.get("decode_tok_s"),
+               "e_pp": ss.e(pr.get("pp_tps", 0.0), cl.get("prefill_tok_s")) if pr else None,
+               "e_tg": ss.e(pr.get("tg_tps", 0.0), cl.get("decode_tok_s")) if pr else None,
+               "clean": not why, "unclean_reasons": why}
+        for f in seg_files(rd):
+            r = ss.run_of(load(f))
+            row[os.path.basename(f)[4:-5]] = ss.layer_stats(r)
+        per.append(row)
+        if not why:
+            clean.append(row)
+    out["rounds"] = per
+    rule("rounds_clean", len(clean) >= CLEAN_NEEDED and len(per) <= MAX_ROUNDS,
+         f"{len(clean)} clean of {len(per)} rounds (need {CLEAN_NEEDED} within {MAX_ROUNDS})")
+    rule("prompt_hash", bool(per) and all(not any("prompt hash" in w for w in r["unclean_reasons"]) for r in per),
+         "every round ran the frozen prompt" if per else "no rounds")
+    if clean and pr:
+        m = {"pp": med([c["pp"] for c in clean]), "tg": med([c["tg"] for c in clean])}
+        out["median"] = m
+        out["e_pp"], out["e_tg"] = ss.e(pr["pp_tps"], m["pp"]), ss.e(pr["tg_tps"], m["tg"])
+        gate, held = {}, True
+        for n in nodes:
+            try:
+                rp = load(os.path.join(res, "calib", n, "pred.json"))["prediction"]
+            except (OSError, ValueError, KeyError):
+                held = False
+                gate[n] = None
+                continue
+            ms = {k: med([c[n][k] for c in clean if n in c]) for k in ("vram_pair_share", "full_hit_rate_mean", "ram_hit_rate_mean")}
+            g = {"vram_share": (rp["replay_vram_share"], ms["vram_pair_share"], GATE_SHARE),
+                 "full_hit_share": (rp["replay_full_hit_share"], ms["full_hit_rate_mean"], GATE_SHARE),
+                 "ram_hit_rate": (rp["replay_ram_hit_rate"], ms["ram_hit_rate_mean"], GATE_RAM)}
+            gate[n] = {k: {"replay": a, "measured": b, "line": ln, "diff": None if b is None else b - a,
+                           "ok": b is not None and abs(b - a) <= ln} for k, (a, b, ln) in g.items()}
+            held = held and all(x["ok"] for x in gate[n].values())
+        out["gate"] = gate
+        rule("routing_gate", held, "; ".join(f"{n} {k} {x['diff']:+.4f} against {x['line']}" for n, g in gate.items() if g
+                                           for k, x in g.items() if x["diff"] is not None) or "no readings")
+    else:
+        rule("routing_gate", False, "no clean round or no prediction")
+    j = [os.path.join(rd, "cluster.json") for rd in rds]
+
+    def aa_rule(name: str, a: str | None, b: str | None) -> None:
+        if not a or not b or not os.path.exists(a) or not os.path.exists(b):
+            rule(name, False, "no such run")
+            return
+        r = sg.aa(load(a), load(b), BAND)
+        out[name] = r
+        rule(name, r["ok"], f"T {r['t_first']:.2f} -> {r['t_second']:.2f} s, {r['diff']:+.3f} against {BAND}")
+
+    aa_rule("aa_early", j[0] if j else None, j[1] if len(j) > 1 else None)
+    aa_rule("aa", j[0] if j else None, os.path.join(res, "judged", "aa-last", "cluster.json"))
+
+    out["rules"] = rules
+    out["prediction"] = {"pp_tps": pr.get("pp_tps"), "tg_tps": pr.get("tg_tps"), "frozen_sha256": frozen_sha}
+    bad = [r for r in rules if not r["ok"]]
+    out["clean"] = not bad
+    out["verdict"] = "no verdict"
+    if bad:
+        out["status"] = "no verdict: not clean (" + "; ".join(f"{r['name']}: {r['detail']}" for r in bad) + ")"
+        if out.get("median"):
+            out["status"] += f"; on the medians e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}, not a verdict"
+    else:
+        m = out["median"]
+        out["e_pp_end"], out["e_tg_end"] = ss.e(pe["pp_tps"], m["pp"]), ss.e(pe["tg_tps"], m["tg"])
+        ok_f = abs(out["e_pp"]) <= LINE and abs(out["e_tg"]) <= LINE
+        ok_e = abs(out["e_pp_end"]) <= LINE and abs(out["e_tg_end"]) <= LINE
+        detail = (f"frozen e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f}; end-priced e_pp {out['e_pp_end']:+.3f}, "
+                  f"e_tg {out['e_tg_end']:+.3f}; against {LINE}")
+        if ok_f and ok_e:
+            out["verdict"], out["status"] = "pass", f"pass: {detail}"
+        elif not ok_f and not ok_e:
+            out["verdict"], out["status"] = "miss", f"miss: {detail}"
+        else:
+            out["status"] = f"no verdict: holds against only one of the frozen and the end-priced prediction ({detail})"
+    # report only: errors against the prediction priced from a second prompt's routing trace
+    try:
+        p2 = load(os.path.join(res, "predictions", "predict-cluster-p2.json"))["prediction"]
+        if out.get("median"):
+            out["second_prompt_report"] = {"pp_tps": p2["pp_tps"], "tg_tps": p2["tg_tps"],
+                                           "e_pp": ss.e(p2["pp_tps"], out["median"]["pp"]), "e_tg": ss.e(p2["tg_tps"], out["median"]["tg"])}
+    except (OSError, ValueError, KeyError):
+        pass
+    # report only: the single-node reference of each round
+    out["reference"] = [{"file": os.path.relpath(f, res).replace(os.sep, "/"), "pp": ss.run_of(load(f)).get("prefill_tok_s"),
+                         "tg": ss.run_of(load(f)).get("decode_tok_s")} for f in sorted(glob.glob(os.path.join(res, "reference", "r[0-9]*.json")))]
+    if out.get("median"):
+        t_two = sg.PROMPT / out["median"]["pp"] + sg.GEN / out["median"]["tg"]
+        ref = [sg.t_of(ss.run_of(load(f))) for f in sorted(glob.glob(os.path.join(res, "reference", "r[0-9]*.json")))
+               if ss.run_of(load(f)).get("prefill_tok_s")]
+        out["paired_ratio_T_single_over_two"] = (med(ref) / t_two) if ref else None  # for docs/features.md, not gated
+    return out
+
+
+def print_tables(o: dict) -> None:
+    print("status:", o["status"])
+    if o.get("second_prompt_report"):
+        q = o["second_prompt_report"]
+        print(f"  report only, second prompt's routing: e_pp {q['e_pp']:+.3f}, e_tg {q['e_tg']:+.3f}")
+    for r in o["rounds"]:
+        print(f"  {r['round']:14} pp {r['pp'] or 0:8.2f} tg {r['tg'] or 0:7.3f} e_pp {r['e_pp'] or 0:+.3f} e_tg {r['e_tg'] or 0:+.3f} "
+              f"{'clean' if r['clean'] else 'UNCLEAN ' + '; '.join(r['unclean_reasons'])}")
+    for r in o["rules"]:
+        print(f"  rule {r['name']:20} {'ok  ' if r['ok'] else 'FAIL'} {r['detail']}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("summary").add_argument("res")
+    p = sub.add_parser("pick")
+    p.add_argument("candidates")
+    p.add_argument("plans_dir")
+    p.add_argument("out")
+    sub.add_parser("span").add_argument("plan")
+    lk = sub.add_parser("link")
+    lk.add_argument("start")
+    lk.add_argument("end")
+    lk.add_argument("--band", type=float, default=BAND)
+    r = sub.add_parser("round")
+    r.add_argument("dir")
+    r.add_argument("--prompt-hash")
+    r.add_argument("--frozen-sha")
+    sp_ = sub.add_parser("spans")
+    sp_.add_argument("plan")
+    sp_.add_argument("--n-layer", type=int, help="also check that the stages partition the layers, one per node in order")
+    pc = sub.add_parser("precheck")
+    pc.add_argument("res")
+    pc.add_argument("stage", choices=["calib", "freeze"])
+    nr = sub.add_parser("next-round")
+    nr.add_argument("res")
+    a = ap.parse_args()
+    if a.cmd == "summary":
+        o = summarize(a.res)
+        with open(os.path.join(a.res, "verdict-s.json"), "w", encoding="utf-8") as f:
+            json.dump(o, f, indent=2)
+        print_tables(o)
+        return 0
+    if a.cmd == "pick":
+        info, why = pick(a.candidates, a.plans_dir)
+        print(json.dumps(info))
+        if why:
+            return 1
+        with open(a.out, "wb") as f, open(os.path.join(a.plans_dir, info["plan"]), "rb") as src:
+            f.write(src.read())
+        return 0
+    if a.cmd == "span":
+        why = check_span(a.plan)
+        for w in why:
+            print(f"GATE FAILED span: {w}")
+        return 1 if why else 0
+    if a.cmd == "link":
+        why, rows = check_link(load(a.start), load(a.end), a.band)
+        for rw in rows:
+            print(f"  {rw['point']:24} {rw['start_s'] * 1e3:9.3f} -> {rw['end_s'] * 1e3:9.3f} ms {rw['diff']:+.3f} {'ok' if rw['ok'] else 'OUTSIDE THE BAND'}")
+        for w in why:
+            print(f"raw points outside {a.band} (reported, not gated; the rule is the end-priced prediction): {w}")
+        return 0
+    if a.cmd == "spans":
+        for n, lo, hi in plan_spans(a.plan):
+            print(f"{n} {lo}..{hi}")
+        why = check_partition(a.plan, a.n_layer) if a.n_layer else []
+        for w in why:
+            print(f"GATE FAILED spans: {w}", file=sys.stderr)
+        return 1 if why else 0
+    if a.cmd == "precheck":
+        want = PRE_CALIB if a.stage == "calib" else PRE_FREEZE
+        bad = [r for r in summarize(a.res)["rules"] if not r["ok"] and r["name"].startswith(want)]
+        for r in bad:
+            print(f"GATE FAILED {r['name']}: {r['detail']}")
+        if not bad:
+            print(f"precheck {a.stage} ok")
+        return 1 if bad else 0
+    if a.cmd == "round":
+        why = round_unclean(a.dir, a.prompt_hash, a.frozen_sha)
+        for w in why:
+            print(f"UNCLEAN {os.path.basename(a.dir)}: {w}")
+        return 1 if why else 0
+    # next-round: another round is due while fewer than three are clean and fewer than eight have run
+    sess = load(os.path.join(a.res, "session.json"))
+    ph = (sess.get("prompt") or {}).get("fnv1a64")
+    frozen_sha, t_frozen = frozen_facts(a.res)
+    rds = round_dirs(a.res)
+    clean = sum(not round_unclean(d, ph, frozen_sha, t_frozen) for d in rds)
+    print(f"{clean} clean of {len(rds)} rounds")
+    return 0 if clean < CLEAN_NEEDED and len(rds) < MAX_ROUNDS else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

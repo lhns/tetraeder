@@ -2750,6 +2750,24 @@ nodes:
   folded: []
   overview: false
   plain: A replan that moves a replica's leader node replaces the replica (drain the old one, start a new id on the new leader, no prefix carried), as ADR 0091 decides; ClusterControl::restart refuses such a plan today. Parked until after the exit, which needs no leader move.
+- id: cluster-judged-round-cmd
+  title: Judged round across two nodes
+  track: cluster
+  kind: tooling
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-pipeline-prefill
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI.
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster
@@ -2977,6 +2995,7 @@ nodes:
   - bench-235b-segment-confirm-2
   - planner-costmodel-v6-rest
   - cluster-pipeline-prefill
+  - cluster-judged-round-cmd
   replaced_by: []
   lane: cluster
   start: ''

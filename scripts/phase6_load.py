@@ -7,6 +7,10 @@ chunks received, finish reason, an error string (transport error, an error event
 [DONE]) and the chunks that arrived after an error event (must be 0). The API key comes from --key-file.
 
     python3 scripts/phase6_load.py http://127.0.0.1:8080 --key-file keys.txt --out load.jsonl
+    python3 scripts/phase6_load.py URL --key-file F --calibrate --prompt-tokens 512 --meta-out cal.json
+
+`--calibrate` sizes the prompt through the head's /tokenize (the rehearsal's 512-token prompt came out at 395) and writes
+{"chars_per_token", "prompt_tokens"}; the load then takes `--chars-per-token` from it.
 """
 
 import argparse
@@ -20,10 +24,36 @@ FILLER = "The quick brown fox jumps over the lazy dog while the engineers measur
 CHARS_PER_TOKEN = 4.0
 
 
-def prompt(tokens: int, nonce: str) -> str:
+def prompt(tokens: int, nonce: str, cpt: float = CHARS_PER_TOKEN) -> str:
     head = f"[{nonce}] "
-    n = max(int(tokens * CHARS_PER_TOKEN) - len(head), 0)
+    n = max(int(tokens * cpt) - len(head), 0)
     return head + (FILLER * (n // len(FILLER) + 1))[:n]
+
+
+def token_count(host, port, key, text, timeout=60):
+    """Tokens of `text` by the head's own tokenizer (POST /tokenize, llama.cpp's form)."""
+    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = "Bearer " + key
+    conn.request("POST", "/tokenize", json.dumps({"content": text}), headers)
+    r = conn.getresponse()
+    data = r.read()
+    conn.close()
+    if r.status != 200:
+        raise RuntimeError(f"/tokenize answered {r.status}: {data[:200]!r}")
+    return len(json.loads(data)["tokens"])
+
+
+def calibrate(host, port, key, target, cpt=CHARS_PER_TOKEN, tol=0.01, rounds=5):
+    """Characters per token at which a prompt of `target` tokens is within `tol`; returns (cpt, tokens)."""
+    n = 0
+    for _ in range(rounds):
+        n = token_count(host, port, key, prompt(target, "calibrate-0", cpt))
+        if abs(n / target - 1.0) <= tol:
+            break
+        cpt *= target / n
+    return cpt, n
 
 
 def one_request(host, port, key, model, text, max_tokens, timeout):
@@ -96,14 +126,27 @@ def main():
     ap.add_argument("--prompt-tokens", type=int, default=512)
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--timeout", type=float, default=120)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", help="one JSON line per request (required unless --calibrate)")
     ap.add_argument("--label", default="load")
+    ap.add_argument("--chars-per-token", type=float, default=CHARS_PER_TOKEN)
+    ap.add_argument("--calibrate", action="store_true", help="size the prompt through /tokenize, write --meta-out, send nothing")
+    ap.add_argument("--meta-out", help="with --calibrate: {chars_per_token, prompt_tokens}")
     a = ap.parse_args()
+    if not a.calibrate and not a.out:
+        ap.error("--out is required")
     u = urllib.parse.urlparse(a.url)
     key = ""
     if a.key_file:
         with open(a.key_file) as f:
             key = next((x.strip() for x in f if x.strip() and not x.startswith("#")), "")
+    if a.calibrate:
+        cpt, n = calibrate(u.hostname, u.port or 80, key, a.prompt_tokens)
+        text = json.dumps({"chars_per_token": cpt, "prompt_tokens": n, "target": a.prompt_tokens})
+        if a.meta_out:
+            with open(a.meta_out, "w") as f:
+                f.write(text + "\n")
+        print(text)
+        return
     start = time.time()
     lock = threading.Lock()
     counter = [0]
@@ -114,7 +157,7 @@ def main():
             with lock:
                 counter[0] += 1
                 n = counter[0]
-            rec = one_request(u.hostname, u.port or 80, key, a.model, prompt(a.prompt_tokens, f"{a.label}-{n}"),
+            rec = one_request(u.hostname, u.port or 80, key, a.model, prompt(a.prompt_tokens, f"{a.label}-{n}", a.chars_per_token),
                               a.max_tokens, a.timeout)
             rec.update({"n": n, "worker": w, "label": a.label})
             with lock:
