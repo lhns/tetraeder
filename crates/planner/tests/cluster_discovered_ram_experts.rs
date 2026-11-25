@@ -15,7 +15,9 @@
 use std::path::PathBuf;
 use tetraeder_plan::{Hints, Phase, Plan};
 use tetraeder_planner::layout::fixtures;
-use tetraeder_planner::{ClusterCandidate, Priors, enumerate_cluster, fill_from_priors};
+use tetraeder_planner::{
+    ClusterCandidate, Priors, enumerate_cluster, enumerate_cluster_covering, fill_from_priors,
+};
 use tetraeder_profiler::{DeviceKind, HardwareGraph, LinkKind, Volume, add_disks};
 
 const HW: &str = include_str!("../fixtures/phase6-rehearsal/hw.json");
@@ -58,12 +60,12 @@ fn recorded_volumes() -> Vec<Volume> {
 /// One node's graph as the daemon builds it for `NodeRequest::Profile`: the rehearsal node's CPU
 /// and GPUs (a recorded probe, with the 64 GB budget the box reports), its disks from the
 /// discovery code with the models dir, the priors filled, and the JSON round trip of the wire.
-fn node_graph(all: &HardwareGraph, node: &str, models: bool) -> HardwareGraph {
+fn node_graph(all: &HardwareGraph, node: &str, models: bool, ram: u64) -> HardwareGraph {
     let mut g = all.node_graph(Some(node));
     g.devices.retain(|d| d.kind != DeviceKind::Disk);
     g.links.retain(|l| l.kind != LinkKind::Storage);
     for d in g.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
-        d.capacity_bytes = RAM;
+        d.capacity_bytes = ram;
         // The fixture was written before discovery filled the CPU rate.
         d.compute = None;
     }
@@ -81,10 +83,15 @@ fn node_graph(all: &HardwareGraph, node: &str, models: bool) -> HardwareGraph {
 /// The graph `tetraeder cluster profile` writes for two nodes: each node's graph, merged as
 /// `client::profile_cluster` does, no edit after that.
 fn discovered(models: bool) -> HardwareGraph {
+    discovered_at(models, RAM)
+}
+
+/// [`discovered`] with `ram` bytes of RAM budget on each node.
+fn discovered_at(models: bool, ram: u64) -> HardwareGraph {
     let all = tetraeder_planner::multi_cli::parse_hw(HW).unwrap();
     let nodes: Vec<(String, HardwareGraph)> = ["a", "b"]
         .iter()
-        .map(|n| (n.to_string(), node_graph(&all, n, models)))
+        .map(|n| (n.to_string(), node_graph(&all, n, models, ram)))
         .collect();
     let links = all
         .links
@@ -345,5 +352,174 @@ fn the_235b_pick_priced_on_each_rehearsal_2_probe() {
     assert!(
         rows.iter()
             .any(|r| (r.1 / pp0 - 1.0).abs() > 1e-6 || (r.2 / tg0 - 1.0).abs() > 1e-6)
+    );
+}
+
+// ---- covering candidates under the measured budget (ADR 0091 History 2026-11-25) --------------
+
+/// The measured RAM budget of Case S boxes (59.4 to 59.9 GB under the 64 GB balloon).
+const MEASURED_RAM: u64 = 59_400_000_000;
+
+/// The committed 235B layout of the confirmed segment session (real tensor sizes).
+fn real_235b() -> tetraeder_planner::layout::ModelLayout {
+    tetraeder_planner::multi_cli::parse_layout(include_str!(
+        "../../../bench/results/segment-confirm-20261125b/layout.json"
+    ))
+    .unwrap()
+}
+
+/// What the planner and the budgets say of one stage: node, layers, VRAM and RAM slots, and the
+/// footprint estimate (VRAM, host) of its builder placement.
+struct Seg {
+    node: String,
+    layers: (u32, u32),
+    v: u32,
+    r: u32,
+    gpu: u64,
+    host: u64,
+}
+
+fn segs(plan: &Plan, layout: &tetraeder_planner::layout::ModelLayout) -> Vec<Seg> {
+    let n = plan.replicas[0].stages.len();
+    plan.replicas[0]
+        .stages
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let slots = |end: &str| {
+                s.expert_cache
+                    .iter()
+                    .find(|e| e.device.ends_with(end))
+                    .map_or(0, |e| e.slots)
+            };
+            let (v, r) = (slots("gpu0"), slots("cpu0"));
+            let sub = tetraeder_planner::segment_layout(layout, s.layers, i == 0, i + 1 == n);
+            let w = tetraeder_planner::Workload {
+                prompt: 2048,
+                r#gen: 128,
+            };
+            let f = tetraeder_planner::footprint(
+                &sub,
+                tetraeder_planner::Placement::Builder {
+                    vram_slots: v,
+                    ram_slots: r,
+                },
+                plan.knobs.ubatch.unwrap(),
+                &w,
+                tetraeder_plan::KvFormat::default(),
+            );
+            Seg {
+                node: s.devices[0].split('/').next().unwrap().to_string(),
+                layers: (s.layers.0, s.layers.1),
+                v,
+                r,
+                gpu: f.gpu,
+                host: f.host,
+            }
+        })
+        .collect()
+}
+
+fn show(c: &ClusterCandidate, layout: &tetraeder_planner::layout::ModelLayout) -> String {
+    let parts: Vec<String> = segs(&c.plan, layout)
+        .iter()
+        .map(|s| {
+            format!(
+                "{} {}..{} v{}+r{} gpu {:.2} GB host {:.2} GB covering {}",
+                s.node,
+                s.layers.0,
+                s.layers.1,
+                s.v,
+                s.r,
+                s.gpu as f64 / 1e9,
+                s.host as f64 / 1e9,
+                s.v + s.r >= layout.n_expert
+            )
+        })
+        .collect();
+    format!(
+        "{} ub {:?} pp {:.1} tg {:.2}: {}",
+        c.id,
+        c.plan.knobs.ubatch,
+        c.prediction.pp_tps,
+        c.prediction.tg_tps,
+        parts.join(" | ")
+    )
+}
+
+// hardware: none
+#[test]
+fn covering_candidates_of_two_3090_nodes_at_the_measured_budget() {
+    let hw = discovered_at(true, MEASURED_RAM);
+    let layout = real_235b();
+    let gpu = 24u64 << 30;
+    let (all, _) = enumerate_cluster(&hw, &layout, &Hints::default(), Phase(6));
+    println!("case_s_pick unrestricted {}", show(&all[0], &layout));
+    let (cands, pruned) = enumerate_cluster_covering(&hw, &layout, &Hints::default(), Phase(6));
+    println!(
+        "case_s_pick covering candidates={} pruned={}",
+        cands.len(),
+        pruned.len()
+    );
+    for c in cands.iter().take(5) {
+        println!("case_s_pick covering {}", show(c, &layout));
+    }
+    // The rehearsal's synthetic 235B layout (the earlier tests above) for the record.
+    let synth = fixtures::moe_235b();
+    let (c2, _) = enumerate_cluster_covering(&hw, &synth, &Hints::default(), Phase(6));
+    println!(
+        "case_s_pick synthetic layout covering candidates={} first={}",
+        c2.len(),
+        c2.first().map_or(String::new(), |c| show(c, &synth))
+    );
+    assert!(!cands.is_empty(), "no covering spanning candidate");
+    for c in &cands {
+        for s in segs(&c.plan, &layout) {
+            assert!(
+                s.v + s.r >= layout.n_expert,
+                "{} {} holds {}+{} of {} experts",
+                c.id,
+                s.node,
+                s.v,
+                s.r,
+                layout.n_expert
+            );
+            // The planner's margin of 1% on the RAM budget (the host estimate is exact).
+            assert!(s.host <= MEASURED_RAM / 100 * 99, "{}: {}", c.id, s.host);
+        }
+    }
+    // The pick's VRAM estimate (a head-last plan: the head is on the last stage, as `segs`
+    // assumes) fits the card.
+    for s in segs(&cands[0].plan, &layout) {
+        assert!(s.gpu <= gpu / 100 * 99, "{}: {}", s.node, s.gpu);
+    }
+    // The pick spans both nodes, led by the head `a`, on the confirmed ubatch.
+    let pick = &cands[0];
+    assert_eq!(pick.plan.replicas[0].stages.len(), 2);
+    assert!(pick.plan.replicas[0].stages[0].devices[0].starts_with("a/"));
+    assert_eq!(pick.plan.knobs.ubatch, Some(2048));
+}
+
+// hardware: none
+#[test]
+fn no_covering_candidate_when_the_budget_cannot_hold_the_experts_and_the_reason_says_why() {
+    // 40 GB per node cannot hold 94 layers of 128 experts between VRAM and RAM on two 24 GiB cards.
+    let hw = discovered_at(true, 40_000_000_000);
+    let layout = real_235b();
+    let (cands, pruned) = enumerate_cluster_covering(&hw, &layout, &Hints::default(), Phase(6));
+    assert!(cands.is_empty());
+    let why = pruned
+        .iter()
+        .find(|(_, w)| w.contains("no covering placement"))
+        .expect("a pruned reason names the covering need");
+    println!("case_s_pick no covering at 40 GB: {} {}", why.0, why.1);
+    assert!(why.1.contains("needs at least"), "{}", why.1);
+    // The unrestricted planner still finds plans there (non-covering ones, disk reads in prefill).
+    let (all, _) = enumerate_cluster(&hw, &layout, &Hints::default(), Phase(6));
+    assert!(!all.is_empty());
+    assert!(
+        segs(&all[0].plan, &layout)
+            .iter()
+            .any(|s| s.v + s.r < layout.n_expert)
     );
 }

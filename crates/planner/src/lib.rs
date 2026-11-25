@@ -58,9 +58,9 @@ pub use candidate::{
 };
 pub use cluster::{
     ClusterCandidate, NodeRun, RoutedPrediction, SegmentReplay, SegmentRouting, cluster_features,
-    cluster_features_routed, enumerate_cluster, predict_cluster_judged, predict_cluster_plan,
-    predict_cluster_routed, segment_layout, single_node_references, single_node_runs,
-    single_node_runs_replay, try_segment_layout,
+    cluster_features_routed, enumerate_cluster, enumerate_cluster_covering, predict_cluster_judged,
+    predict_cluster_plan, predict_cluster_routed, segment_layout, single_node_references,
+    single_node_runs, single_node_runs_replay, try_segment_layout,
 };
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};
