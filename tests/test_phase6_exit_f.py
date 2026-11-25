@@ -73,12 +73,14 @@ def gateway_entries(rows):
             for r in rows]
 
 
-def write_trial(res, mode, n, *, t0=5000.0, delay=1.8, rejoin=12.0, admits_before=True, restore_after=2.3, **kw):
+def write_trial(res, mode, n, *, t0=5000.0, delay=1.8, rejoin=12.0, admits_before=True, restore_after=2.3, meta_extra=None, **kw):
+    meta_extra = meta_extra or {}
     label = f"{mode}-t{n}"
     tf = t0 + 60.0
     tr = tf + restore_after
     rows = gen_rows(label, t0, tf, delay=delay, **{k: v for k, v in kw.items() if k in ("dur", "total", "msg", "extra_fail_after")})
-    meta = {"mode": mode, "trial": n, "t_fault": tf, "t_restore": tr, "load_label": label, "load_end": t0 + 190.0}
+    meta = {"mode": mode, "trial": n, "t_fault": tf, "t_restore": tr, "load_label": label, "load_end": t0 + 190.0,
+            "fault": {"source": "trigger", "live_b": 4, "uncertainty_s": 0.03}, **meta_extra}
     d = res / "trials" / f"{mode}-{n}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "meta.json").write_text(json.dumps(meta))
@@ -301,7 +303,8 @@ def rehearsal_session(tmp_path):
         tr = r.get("t_restore") or tf + 2.3
         end = max(json.loads(x)["t_end"] for x in rows.splitlines())
         (d / "meta.json").write_text(json.dumps({"mode": mode, "trial": 1, "t_fault": tf, "t_restore": tr,
-                                                 "load_label": mode, "load_end": end}))
+                                                 "load_label": mode, "load_end": end,
+                                                 "fault": {"source": "rehearsal", "live_b": 4, "uncertainty_s": 0.0}}))
         (d / "b-admits.txt").write_text("".join(f"{a:.6f}\n" for a in adm))
     return res
 
@@ -351,3 +354,106 @@ def test_the_clock_offset_between_the_boxes_keeps_the_best_sample():
     r = fs.clock_offset([noisy, good])
     assert abs(r["b_minus_a_s"] - 10.0) < 1e-6 and abs(r["uncertainty_s"] - 0.3) < 1e-6 and r["samples"] == 2
     assert fs.clock_offset([]) == {}
+
+
+# ---- the trigger's evidence: attempts, repeats and the clock ----------------------------------------------------------------
+
+
+def shift_attempts(res, mode, by):
+    """Renumbers the attempts of a mode up by `by` and writes `by` new first attempts whose fault found nothing in flight on B."""
+    for n in (3, 2, 1):
+        (res / "trials" / f"{mode}-{n}").rename(res / "trials" / f"{mode}-{n + by}")
+    for k in range(1, by + 1):
+        write_trial(res, mode, 90 + k, t0=900000.0 + 1000 * k, meta_extra={"fault": {"source": "trigger", "live_b": 0, "uncertainty_s": 0.02}})
+        (res / "trials" / f"{mode}-{90 + k}").rename(res / "trials" / f"{mode}-{k}")
+
+
+def test_an_attempt_whose_fault_found_nothing_on_b_is_repeated_and_reported(tmp_path):
+    res = build(tmp_path)
+    shift_attempts(res, "daemon", 1)
+    o = summary(res)
+    assert failing(o) == [] and o["verdict"] == "pass" and len(o["trials"]) == 9
+    skipped = [a for a in o["attempts"] if not a["judged"]]
+    assert [(a["mode"], a["attempt"]) for a in skipped] == [("daemon", 1)] and skipped[0]["live_b"] == 0
+    assert [t["attempt"] for t in o["trials"] if t["mode"] == "daemon"] == [2, 3, 4]
+    assert len(o["attempts"]) == 10
+    # trial 1 is the first valid attempt: the manual-action rule reads it, not the repeated one
+    tf = 5000.0 + 1000 * (3 * 1 + 1) + 60.0
+    write(res / "manual.jsonl", json.dumps({"t": tf + 50, "what": "head restarted by hand"}) + "\n")
+    assert failing(summary(res)) == ["daemon-1.trial1_no_manual"]
+
+
+def test_two_repeats_in_a_mode_are_allowed_and_three_are_not_a_pass(tmp_path):
+    res = build(tmp_path)
+    shift_attempts(res, "stop", 2)
+    o = summary(res)
+    assert failing(o) == [] and o["verdict"] == "pass" and len(o["attempts"]) == 11
+    res = build(tmp_path / "three")
+    shift_attempts(res, "stop", 3)
+    o = summary(res)
+    assert o["verdict"] == "fail" and "repeats_within_limit" in failing(o)
+    assert "3 invalid attempts against 2" in next(r["detail"] for r in o["session_rules"] if r["name"] == "repeats_within_limit")
+
+
+def test_a_mode_without_three_valid_attempts_is_incomplete(tmp_path):
+    res = build(tmp_path)
+    shift_attempts(res, "worker", 2)
+    for n in (4, 5):  # only one valid attempt is left
+        for f in (res / "trials" / f"worker-{n}").iterdir():
+            f.unlink()
+        (res / "trials" / f"worker-{n}").rmdir()
+    o = summary(res)
+    assert o["verdict"] == "incomplete" and o["pass"] is False and o["missing_trials"] == ["worker-2", "worker-3"]
+
+
+def test_missing_fault_evidence_fails_and_is_not_relabelled_invalid(tmp_path):
+    res = build(tmp_path)
+    d = res / "trials" / "worker-1"
+    meta = json.loads((d / "meta.json").read_text())
+    del meta["fault"]
+    (d / "meta.json").write_text(json.dumps(meta))
+    o = summary(res)
+    assert failing(o) == ["worker-1.fault_evidence"] and o["verdict"] == "fail" and len(o["trials"]) == 9
+    meta["fault"] = {"live_b": 4, "uncertainty_s": 0.8}  # the time is known only within 0.8 s
+    (d / "meta.json").write_text(json.dumps(meta))
+    assert failing(summary(res)) == ["worker-1.fault_evidence"]
+
+
+def test_a_failure_with_requests_in_flight_on_b_is_judged_not_repeated(tmp_path):
+    # B's own reading says 4 in flight, yet no request failed: the clean-error rule fails, the attempt is not called invalid
+    res = build(tmp_path)
+    d = res / "trials" / "daemon-2"
+    rows = [json.loads(x) for x in (d / "load.jsonl").read_text().splitlines()]
+    for r in rows:
+        if r["error"]:
+            r.update(error=None, finish="length", done=True, chunks=255)
+    (d / "load.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    o = summary(res)
+    assert "daemon-2.clean_error_in_bound" in failing(o) and all(a["judged"] for a in o["attempts"])
+
+
+def test_the_clock_rule_reads_the_worst_measurement_of_the_attempts(tmp_path):
+    res = build(tmp_path, session=good_session(clock={"b_minus_a_s": 0.2, "uncertainty_s": 3.0}))
+    for d in (res / "trials").iterdir():
+        m = json.loads((d / "meta.json").read_text())
+        m.update(clock_b_minus_a_s=0.2, clock_uncertainty_s=0.06)
+        (d / "meta.json").write_text(json.dumps(m))
+    assert failing(summary(res)) == []  # the direct exchanges (60 ms) replace the session's old ssh reading
+    m = json.loads((res / "trials" / "stop-2" / "meta.json").read_text())
+    m["clock_uncertainty_s"] = 2.5
+    (res / "trials" / "stop-2" / "meta.json").write_text(json.dumps(m))
+    assert failing(summary(res)) == ["clock_offset"]
+
+
+def test_valid_subcommand_reads_b_s_own_evidence(tmp_path):
+    import subprocess
+
+    def run(name, meta):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "meta.json").write_text(json.dumps(meta))
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_f_summary.py"), "valid", str(d)], capture_output=True, text=True)
+
+    assert run("a", {"fault": {"live_b": 3}}).returncode == 0
+    assert run("b", {"fault": {"live_b": 0}}).returncode == 1
+    assert run("c", {}).stdout.strip() == "missing"

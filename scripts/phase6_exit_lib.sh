@@ -10,8 +10,10 @@ bx() { # bx BOX TIMEOUT CMD...: CMD runs in the box's repo with its P6 work dir
   shift 2
   if [ "$LOOPBACK" = 1 ]; then
     mkdir -p "$lb/$box"
-    (cd "$repo" && P6="$lb/$box" P6_LOOPBACK=1 P6_LB_PORT="$([ "$box" = a ] && echo "$port_a" || echo "$port_b")" HEAD_HOST=127.0.0.1 HEAD_PORT="$head_port" \
-      TETRAEDER_BIN="$lb/tetraeder" POLL_S="$poll_s" bash -c "$*")
+    # LB_BIN: the real binary (Case F); LB_BOX_ENV: more KEY=VALUE words for the box side (THREADS, CTX, TRIGGER_PORT, ...)
+    # shellcheck disable=SC2086
+    (cd "$repo" && env P6="$lb/$box" P6_LOOPBACK=1 P6_LB_PORT="$([ "$box" = a ] && echo "$port_a" || echo "$port_b")" HEAD_HOST=127.0.0.1 HEAD_PORT="$head_port" \
+      TETRAEDER_BIN="${LB_BIN:-$lb/tetraeder}" POLL_S="$poll_s" ${LB_BOX_ENV:-} bash -c "$*")
   else
     # taxameter prints its own "box running ..." status line (CRLF) on stdout before the command's output: drop it, keep the exit status
     local rc
