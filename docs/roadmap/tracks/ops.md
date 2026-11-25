@@ -18,6 +18,7 @@ flowchart TB
     ops_telemetry["✔ Box and host metrics"]
     ops_review_parity_batch["✔ Review the parity<br/>batch"]
     ops_review_group_d["✔ Review group D and<br/>the fixes"]
+    ops_review_phase6_serving["○ Review the cluster<br/>serving code"]
     ops_packages["⏸ Windows and Linux<br/>packages, container"]
     ops_profiling_mode["⏸ Profiling mode with<br/>CUPTI"]
     ops_foundations ~~~ ops_box_driver
@@ -27,8 +28,11 @@ flowchart TB
     ops_external_reads ~~~ ops_review_parity_batch
     ops_docs ~~~ ops_review_parity_batch
     ops_telemetry ~~~ ops_review_group_d
+    ops_review_parity_batch ~~~ ops_review_phase6_serving
     ops_review_parity_batch ~~~ ops_packages
-    ops_review_parity_batch ~~~ ops_profiling_mode
+    ops_review_group_d ~~~ ops_profiling_mode
+    ops_review_phase6_serving ~~~ ops_profiling_mode
+    ops_packages ~~~ ops_profiling_mode
     ops_review_parity_batch --> ops_review_group_d
     ops_ci --> ops_packages
     ops_telemetry --> ops_profiling_mode
@@ -47,6 +51,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_foundations,ops_ci,ops_taxameter,ops_box_driver,ops_external_reads,ops_docs,ops_telemetry,ops_review_parity_batch,ops_review_group_d unrated
+    class ops_review_phase6_serving next
     class ops_packages,ops_profiling_mode parked
 ```
 <!-- END GENERATED: track-ops -->
@@ -68,6 +73,7 @@ flowchart TB
 | `ops-owner-v4a-cap` | One dearer box for verdict | owner-decision | owner | done | n/a | 2026-11-20 | 2026-11-20 |  |  |  |  | AGENTS.md; docs/notes/phase5-rule-changes.md |
 | `ops-owner-accepts-adrs` | Owner accepts nine design records | owner-decision | owner | done | n/a | 2026-11-19 | 2026-11-19 |  |  |  |  | docs/adr/0052-runtime-cpu-isa-dispatch.md; docs/adr/0075-executor-ranges-are-graph-views.md |
 | `ops-review-parity-batch` | Review the parity batch | refactor | local | done | unrated | 2026-11-23 | 2026-11-23 | serving-parity-endpoints, memory-prefix-disk-async, memory-kv-auto, serving-recurrent-reuse |  |  | 13 of 14 findings fixed | docs/adr/0087-prefix-cache-disk-tier.md; docs/notes/llamacpp-parity.md; crates/scheduler/tests/no_suffix_cut.rs; crates/gateway/tests/fields.rs |
+| `ops-review-phase6-serving` | Review the cluster serving code | refactor | ci | next | unrated |  |  | cluster-integration |  |  |  |  |
 | `ops-packages` | Windows and Linux packages, container | tooling | none | parked | unrated |  |  | ops-ci |  |  |  |  |
 | `ops-profiling-mode` | Profiling mode with CUPTI | feature | box-later | parked | unrated |  |  | ops-telemetry |  |  |  |  |
 | `ops-review-group-d` | Review group D and the fixes | refactor | local | done | unrated | 2026-11-23 | 2026-11-23 | serving-parity-libllama, ops-review-parity-batch |  |  |  | docs/notes/llamacpp-parity.md; tests/conformance/parity/test_parity_lib.py |
@@ -88,6 +94,7 @@ flowchart TB
 | `ops-owner-v4a-cap` | One dearer box for verdict | One-off exception (user, 2026-11-20): one 4-GPU box for the D4 verdict session (V4a) on a host other than 20210 may cost up to 1.70 USD/h all-in |  | The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone. Never used; 20210 was re-admitted on 2026-11-21 and ran V4a at the standard cap. |  |  |  |  |  |
 | `ops-owner-accepts-adrs` | Owner accepts nine design records | ADRs 0052, 0053, 0056, 0066, 0067, 0070, 0071, 0073, 0075 accepted (owner) |  | The owner moved nine Proposed ADRs (CPU dispatch, AVX-512 kernels, disk cost term, dense builder, KV layout, parallel shapes, GPU tolerance, engine pin, executor graph views) to Accepted. |  |  |  |  |  |
 | `ops-review-parity-batch` | Review the parity batch | CI run 45138471418 green on all jobs (test ubuntu-24.04 and test windows-latest passed); the new test of finding 2 failed before its fix | 13 of 14 findings fixed | A fresh reviewer read the code seven workers merged on 2026-11-23 and found 14 bugs; 13 are fixed (unbounded n, recurrent prefix entries destroyed, disk tier files deleted by a replan, aborted reads, disk budget, cut streams, completions default, top_k, penalty windows, empty key file, seeds, native logprob trim), one already matched llama-server, and five duplicated helpers were merged. |  |  |  |  |  |
+| `ops-review-phase6-serving` | Review the cluster serving code |  |  | A read-only security and correctness review of Phase 6 steps 3 to 5 and cluster-integration (Replica and Prefix purposes, the loopback prefix port, requests and grammars deserialized from peers, the head's HTTP exposure), with its fixes, before any box opens a TLS port. |  |  |  |  |  |
 | `ops-packages` | Windows and Linux packages, container |  |  | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when (plan.md, Phase 9 exit test): packages install cleanly on both systems. |  |  |  |  |
 | `ops-profiling-mode` | Profiling mode with CUPTI |  |  | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). | Parked: no exit test needs it; Phase 5 diagnoses used sync traces and graphs-off runs. Checked 2026-11-21: no CUPTI or rocprof code in crates/. Done when: a profiling run writes per-kernel times for one step without changing production timing. |  |  |  |  |
 | `ops-review-group-d` | Review group D and the fixes | 795 passed, 2 skipped, 6 xfailed in 97.55s (0:01:37) |  | The second review of group D found 11 findings, 10 fixed and 1 dropped with evidence (the pin does not truncate over-long prompts under context shift), and the audit of ADR 0083 decision 6 covers all 165 appendix rows, 75 with a case, 74 scoped out and 16 covered by unit tests, with 6 strict gap cases under serving-parity-remaining; CI run 45256815014 ran the parity suite at 795 passed, 2 skipped and 6 xfailed. | The first review found 13 real bugs. |  |  |  |  |

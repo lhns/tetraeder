@@ -2589,6 +2589,7 @@ nodes:
   - bench-235b-stream-predict
   - bench-235b-segment-confirm-2
   - cluster-integration
+  - ops-review-phase6-serving
   replaced_by: []
   lane: cluster
   start: ''
@@ -2645,6 +2646,24 @@ nodes:
   overview: false
   plain: The step 5 gaps - serve --cluster and its head run in a test, a head without a replica of its own, replicas.toml derived from the cluster plan, a pipeline replica across nodes run through the daemons end to end, the real scheduler prefix store served and installed over the transport, NodeChange replanning and a planned drain of a segmented replica.
   notes: 'cluster-remote-kv and cluster-join-leave were marked done on CI-scoped terms (fake prefix stores; a whole-replica restart instead of a planned drain); this node carries what the rehearsal needs.'
+- id: ops-review-phase6-serving
+  title: Review the cluster serving code
+  track: ops
+  kind: refactor
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-integration
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A read-only security and correctness review of Phase 6 steps 3 to 5 and cluster-integration (Replica and Prefix purposes, the loopback prefix port, requests and grammars deserialized from peers, the head's HTTP exposure), with its fixes, before any box opens a TLS port.
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster
@@ -2863,6 +2882,9 @@ nodes:
   depends_on:
   - bench-phase6-rehearsal
   - cluster-remote-kv
+  - bench-235b-segment-confirm-2
+  - planner-costmodel-v6-rest
+  - cluster-pipeline-prefill
   replaced_by: []
   lane: cluster
   start: ''

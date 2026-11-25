@@ -346,6 +346,7 @@ flowchart TB
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
+| Review the cluster serving code | ○ next | A read-only security and correctness review of Phase 6 steps 3 to 5 and cluster-integration (Replica and Prefix purposes, the loopback prefix port, requests and grammars deserialized from peers, the head's HTTP exposure), with its fixes, before any box opens a TLS port. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
@@ -369,6 +370,7 @@ flowchart TB
 
 **ci**
 
+- `ops-review-phase6-serving`: Review the cluster serving code
 - `cluster-planner-hardening`: Harden the cluster planner inputs
 - `cluster-pipeline-prefill`: Prefill pipelined across stages
 - `planner-costmodel-v6-rest`: Cost model 6 remaining parts
@@ -869,6 +871,6 @@ Each track has its own page with its tree, node table and per-node details.
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (35 done, 3 next, 5 blocked, 6 parked, 1 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
+- [ops - operations](roadmap/tracks/ops.md): 16 nodes (13 done, 1 next, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 18 nodes (14 done, 2 next, 1 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
