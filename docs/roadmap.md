@@ -415,7 +415,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 141 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 143 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -834,7 +834,9 @@ Generated on 2026-11-25.
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 - `bench-235b-segment-confirm-2`: Rerun the segment confirmation (✔ done · successful). Rerun of the one-segment confirmation on a one-NUMA-node host (EPYC 7542, RTX A6000 planned against 24 GiB) with real-hidden anchors and the gates as code. The prediction (pp 445.08, tg 17.426 tok/s, fit band 0.050) was frozen and pushed before the judged rounds; the median of the three clean rounds is pp 452.46 and tg 17.761, within 2%, the routing gate held and the A/A (early and last) are inside 0.08. Two of the first three rounds were unclean (co-tenant over the limit), so two more rounds were run on the same frozen prediction; the five-round median agrees (e_pp -0.013, e_tg +0.008).
 - `bench-phase6-rehearsal`: First two-box cluster session (✔ done · unrated). Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).
+- `cluster-discovery-disk-names`: Discovery names the builder disk (✔ fixed). Discovery named every disk disk0 and gave the device no read rate, so the planner homed every 235B expert in RAM and the validator rejected all candidates; the volume that holds the node's models dir is now nvme0 with its link prior as the rate, and the test builds the graph from recorded volumes with no edit. The RAM budget of a judged session is still a graph edit unless the box's RAM is the budget.
 - `cluster-drain-without-plan`: Node drain does not move load without a cluster plan (✔ fixed). With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.
+- `cluster-failover-bound`: Failover bound per Case F mode (✔ done · unrated). The worst time from a node fault to the in-flight error on the head, from the code, a killed engine or daemon closes the connection with no timer, a partition costs node_down_after plus the tick plus one pause step, 2.13 s at 2 s, plus one one-way delay on a real link. Simulated nodes confirm each mode within its bound. Findings, an engine that hangs with its daemon alive has no timer, and a receiver that does not drain delays the errors by up to 60 s each.
 - `cluster-mode1-detection`: Head learns of a killed replica engine at once (✔ fixed). The daemon waited for the killed engine to be reaped before it dropped the head's connection, and a process with a CUDA context takes seconds to leave (rehearsal mode 1 took 2.79 s against 1 ms simulated); it now drops the connection first. The cause on the real box is inferred from the code and the logs, not measured.
 - `cluster-pipeline-prefill`: Prefill pipelined across stages (✔ done · unrated). A long prompt is cut into chunks that run on different machines at the same time, so the stages are not idle while one chunk crosses the network (ADR 0077 across nodes).
 - `cluster-plan-source-gpu-segments`: Planner proposes no plan for two real GPU boxes (✔ fixed). An all-GPU segment is read as every expert resident and a placement that the graph cannot price no longer aborts the whole search, so the rehearsal profile now gives the hand split a price and 40 candidates; tetraeder-plan candidates --cluster writes them, and a replan that changes a replica leader is still refused by the control.
@@ -878,5 +880,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (37 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 26 nodes (22 done, 1 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 28 nodes (24 done, 1 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

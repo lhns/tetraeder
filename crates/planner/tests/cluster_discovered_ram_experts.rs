@@ -2,9 +2,13 @@
 //! spec, and the rehearsal fix made `choose` skip every placement the graph cannot price, so a
 //! graph as `tetraeder cluster profile` produces it (two 3090 nodes, the CPU rate missing) had
 //! no spanning candidate with RAM experts for the 235B. Discovery now fills a per-core CPU prior
-//! (`fill_from_priors`). This test runs the planner on the rehearsal's discovered graph with
-//! 64 GB RAM budgets per node and the 235B layout, and checks the pick against the confirmed
-//! shape of ADR 0092 (ubatch 2048, experts in VRAM and RAM on both nodes).
+//! (`fill_from_priors`), and names the disk that holds the models dir `nvme0` (`add_disks`), which
+//! the planner reads the builder's experts from. This test builds each node's graph from the
+//! discovery code (recorded volumes, no edit after the merge), runs the planner on it with 64 GB
+//! RAM budgets per node and the 235B layout, and checks the pick against the confirmed shape of
+//! ADR 0092 (ubatch 2048, experts in VRAM and RAM on both nodes, and on each node's `nvme0`).
+//! The test merges the node graphs itself and skips the wire's `check_profile`; the volumes and
+//! the node's CPU and GPUs are the rehearsal's recorded `a/hw.json`.
 //!
 //! Hardware label: none (the graph is a copy of the rehearsal's `a/hw.json`).
 
@@ -30,7 +34,8 @@ fn root() -> PathBuf {
 }
 
 /// The volumes the rehearsal's nodes listed (container overlay, two bind mounts), as recorded in
-/// `hw.json`; the models live on the third.
+/// `hw.json` (the mount points are stand-ins that are absolute on both platforms); the models
+/// live on the 80 GiB overlay, as on the rehearsal's boxes.
 fn recorded_volumes() -> Vec<Volume> {
     let v = |name: &str, mount: PathBuf, gib: u64, media: &str| Volume {
         name: name.into(),
@@ -43,7 +48,7 @@ fn recorded_volumes() -> Vec<Volume> {
         v("/dev/loop8", root().join("mnt").join("loop8"), 773, "ssd"),
         v(
             "/dev/mapper/ubuntu--vg-ubuntu--lv",
-            root().join("mnt").join("models"),
+            root().join("mnt").join("lv"),
             914,
             "unknown",
         ),
@@ -53,7 +58,7 @@ fn recorded_volumes() -> Vec<Volume> {
 /// One node's graph as the daemon builds it for `NodeRequest::Profile`: the rehearsal node's CPU
 /// and GPUs (a recorded probe, with the 64 GB budget the box reports), its disks from the
 /// discovery code with the models dir, the priors filled, and the JSON round trip of the wire.
-fn node_graph(all: &HardwareGraph, node: &str, fill: bool, models: bool) -> HardwareGraph {
+fn node_graph(all: &HardwareGraph, node: &str, models: bool) -> HardwareGraph {
     let mut g = all.node_graph(Some(node));
     g.devices.retain(|d| d.kind != DeviceKind::Disk);
     g.links.retain(|l| l.kind != LinkKind::Storage);
@@ -65,25 +70,21 @@ fn node_graph(all: &HardwareGraph, node: &str, fill: bool, models: bool) -> Hard
     add_disks(
         &mut g,
         &recorded_volumes(),
-        models
-            .then(|| root().join("mnt").join("models").join("hf"))
-            .as_deref(),
+        models.then(|| root().join("hf")).as_deref(),
         &root().join("tmp"),
         None,
     );
-    if fill {
-        fill_from_priors(&mut g, &Priors::builtin());
-    }
+    fill_from_priors(&mut g, &Priors::builtin());
     HardwareGraph::from_json(&g.to_json().unwrap()).unwrap()
 }
 
 /// The graph `tetraeder cluster profile` writes for two nodes: each node's graph, merged as
 /// `client::profile_cluster` does, no edit after that.
-fn discovered(fill: bool, models: bool) -> HardwareGraph {
+fn discovered(models: bool) -> HardwareGraph {
     let all = tetraeder_planner::multi_cli::parse_hw(HW).unwrap();
     let nodes: Vec<(String, HardwareGraph)> = ["a", "b"]
         .iter()
-        .map(|n| (n.to_string(), node_graph(&all, n, fill, models)))
+        .map(|n| (n.to_string(), node_graph(&all, n, models)))
         .collect();
     let links = all
         .links
@@ -119,11 +120,20 @@ fn spanning_with_ram_experts(cands: &[ClusterCandidate]) -> Vec<&ClusterCandidat
         .collect()
 }
 
+/// The discovered graph with the CPU rate cleared: a node whose CPU rate is unknown.
+fn without_cpu_rate() -> HardwareGraph {
+    let mut hw = discovered(true);
+    for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
+        d.compute = None;
+    }
+    hw
+}
+
 // hardware: none
 #[test]
 fn a_graph_without_a_cpu_rate_has_no_ram_expert_candidate() {
     // What the rehearsal fix left: the placements with RAM experts are skipped as unpriced.
-    let hw = discovered(false, true);
+    let hw = without_cpu_rate();
     let (cands, _) = enumerate_cluster(&hw, &fixtures::moe_235b(), &Hints::default(), Phase(6));
     assert!(spanning_with_ram_experts(&cands).is_empty());
 }
@@ -133,7 +143,7 @@ fn a_graph_without_a_cpu_rate_has_no_ram_expert_candidate() {
 fn without_a_models_dir_no_node_has_a_builder_disk_and_the_235b_has_no_candidate() {
     // What the pre-exit check found: discovery named the disks `disk0..`, the planner homed
     // every expert in RAM and the validator rejected the 235B with MemoryExceeded.
-    let hw = discovered(true, false);
+    let hw = discovered(false);
     assert!(hw.device("a/nvme0").is_none() && hw.device("a/disk0").is_some());
     let (cands, _) = enumerate_cluster(&hw, &fixtures::moe_235b(), &Hints::default(), Phase(6));
     assert!(spanning_with_ram_experts(&cands).is_empty());
@@ -142,7 +152,7 @@ fn without_a_models_dir_no_node_has_a_builder_disk_and_the_235b_has_no_candidate
 // hardware: none
 #[test]
 fn discovery_gives_the_235b_a_spanning_candidate_with_ram_experts() {
-    let hw = discovered(true, true);
+    let hw = discovered(true);
     // No edit after the merge: the builder disk is the discovery's `nvme0`, with a rate.
     for n in ["a", "b"] {
         let d = hw.device(&format!("{n}/nvme0")).unwrap();
@@ -198,11 +208,7 @@ fn discovery_gives_the_235b_a_spanning_candidate_with_ram_experts() {
 fn a_skipped_unpriced_placement_is_named_in_the_candidate_notes() {
     // The 30B on the same graph: placements with RAM experts are feasible but unpriced, the
     // others compete, and the candidate says what was left out and why.
-    let mut hw = discovered(true, true);
-    // A node whose CPU rate is unknown.
-    for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
-        d.compute = None;
-    }
+    let hw = without_cpu_rate();
     let layout = tetraeder_planner::multi_cli::parse_layout(include_str!(
         "../fixtures/phase6-rehearsal/layout.json"
     ))

@@ -155,6 +155,8 @@ gantt
     Cluster serving end to end :cluster_integration, 2026-11-24, 2026-11-24
     Replica step size from the plan :cluster_step_tokens_from_plan, 2026-11-25, 2026-11-25
     Head learns of a killed replica engine… :cluster_mode1_detection, 2026-11-25, 2026-11-25
+    Discovery names the builder disk :cluster_discovery_disk_names, 2026-11-25, 2026-11-25
+    Failover bound per Case F mode :cluster_failover_bound, 2026-11-25, 2026-11-25
     Harden the cluster planner inputs :cluster_planner_hardening, 2026-11-25, 2026-11-25
     Node list, health and probes :cluster_discovery, 2026-11-24, 2026-11-24
     Nodes join and leave live :cluster_join_leave, 2026-11-24, 2026-11-24
