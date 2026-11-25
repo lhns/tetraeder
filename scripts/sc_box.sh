@@ -33,6 +33,12 @@
 # MODEL (the first shard), PROMPT_FILE (default bench/prompts/exit_prompt.txt; empty = pseudo-random ids), SPLIT, END, A1_END,
 # A2_END, V, R, DUMP_V, DUMP_R, UBATCH, PREFILL, DECODE. Defaults are the 235B segment; the rehearsal on the synthetic model
 # overrides them (docs in bench/results/<name>/README.md). Never overwrite this file while it runs.
+# SC_CPU=1 (the Case S real loopback in CI, scripts/phase6_exit_s.sh): no GPU, no CUDA build, no nvidia-smi; the engine runs on the CPU
+# (`TETRAEDER_EXIT_GPU` unset), `cargo test` in the profile SC_PROFILE (debug, or release), the binaries from SC_BIN_DIR (target/debug), and the
+# throttle record `<run>.gpu.txt` is the made-up line "before: 0x0, 100 W, 350 W, 350 W" (a CPU run has no GPU to read). Timing numbers of such a run
+# prove the wiring, not the model.
+# SC_RUN_TAG (set by scripts/phase6_exit_s.sh) ends the DONE lines of the log (`tag=...`), so a driver waits for its own run and not for the
+# finished stage of an earlier one; SC_RUN_DIR (default runs/sc) holds the hidden rows, the trace and the samplers' files.
 # The session ends with `$out/DONE` (also on an abort): taxameter's fetch and destroy need it. Tests (tests/test_sc_box.py) set
 # SC_LOCK, RESULTS_ROOT, SC_LOG and SC_BOX_OVERRIDES (a file sourced before main, to replace run_one and the gates).
 if [ -n "${PIN_CPUS:-}" ] && [ -z "${SC_PINNED:-}" ]; then SC_PINNED=1 exec taskset -c "$PIN_CPUS" bash "$0" "$@"; fi
@@ -42,14 +48,16 @@ cd "$(dirname "$0")/.." || exit 1
 root=$PWD
 name="${RESULTS_NAME:?set RESULTS_NAME}"
 out="${RESULTS_ROOT:-$root/bench/results}/$name"
-mkdir -p "$out"/{env,disk,trace,anchors,predictions,judged,report,build} runs/sc
+rundir="${SC_RUN_DIR:-$root/runs/sc}"
+mkdir -p "$out"/{env,disk,trace,anchors,predictions,judged,report,build} "$rundir" runs/sc
 log="${SC_LOG:-runs/sc/sc_box.log}"
+tag_s="${SC_RUN_TAG:+ tag=$SC_RUN_TAG}"
 stages="${STAGES:-gates env build disk balloon trace anchors predict}"
 say() { echo "[$(date +%T)] $*"; }
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:/root/.local/bin:$PATH"
 # shellcheck disable=SC1091
-. "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
+[ "${SC_CPU:-0}" = 1 ] || . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
 # shellcheck source=scripts/box_libs.sh
 . scripts/box_libs.sh # native ggml as in the build stage: another setting rebuilds ggml
 archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
@@ -66,20 +74,34 @@ rounds="${ROUNDS:-3}" arounds="${ANCHOR_ROUNDS:-2}"
 prompt_src="${PROMPT_FILE-$root/bench/prompts/exit_prompt.txt}"
 prompt=""
 if [ -n "$prompt_src" ]; then prompt=/root/exit_prompt.txt; cp "$prompt_src" "$prompt"; fi
-tet="$root/target/release/tetraeder"
-plan="$root/target/release/tetraeder-plan"
-bench="$root/target/release/tetraeder-bench"
+bin_dir="${SC_BIN_DIR:-$root/target/release}"
+tet="$bin_dir/tetraeder"
+plan="$bin_dir/tetraeder-plan"
+bench="$bin_dir/tetraeder-bench"
+# the engine runs (exit_regime): CUDA in release on a box, CPU in the CI loopback (SC_CPU=1)
+if [ "${SC_CPU:-0}" = 1 ]; then
+  gpu_env=()
+  cargo_exit=(cargo test ${SC_PROFILE:+--profile "$SC_PROFILE"} -p tetraeder-model)
+else
+  gpu_env=(TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_OP_OFFLOAD=1)
+  cargo_exit=(cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda)
+fi
 prior="$root/crates/planner/fixtures/rtx3090_prior.toml"
-hidden="$root/runs/sc/hidden.bin"
-trace="$root/runs/sc/routing.trace"
+hidden="$rundir/hidden.bin"
+trace="$rundir/routing.trace"
 p="$out/predictions"
 export EMULATE_RAM_GB="${EMULATE_RAM_GB:-64}"
 die() {
   say "FATAL: $*"
-  echo "SC_BOX_DONE rc=1"
+  echo "SC_BOX_DONE rc=1$tag_s"
   echo "SC_BOX_DONE rc=1 stages='$stages' $(date -Is)" > "$out/DONE" # fetch and destroy need it, also after an abort
   touch "$out/gpu-sampler.stop"
   exit 1
+}
+
+gpu_record() { # gpu_record before|after: the throttle line of this moment (SC_CPU: a made-up one, there is no GPU to read)
+  if [ "${SC_CPU:-0}" = 1 ]; then echo "$1: 0x0000000000000000, 100 W, 350 W, 350 W"; return 0; fi
+  nvidia-smi --query-gpu=clocks_event_reasons.active,power.draw,power.limit,power.default_limit --format=csv,noheader 2>&1 | sed "s/^/$1: /"
 }
 
 # ---- one engine run: the exit_regime test with the sampler, balloon check and host blocks (as scripts/sp_arms.sh) ----------
@@ -87,15 +109,15 @@ run_one() { # run_one TAG JSON [ENV=VALUE...]
   local tag=$1 json=$2
   shift 2
   [ -s "$json" ] && { say "$tag exists, skipped"; return 0; }
-  local samples="$root/runs/sc/samples-$tag.jsonl" t0=$SECONDS bpre=ok
+  local samples="$rundir/samples-$tag.jsonl" t0=$SECONDS bpre=ok
   [ -n "${HOST_DISK_DEV:-}" ] || HOST_DISK_DEV=$(python3 scripts/engine_sample.py probe-disk "$model")
   bash scripts/sc_balloon.sh check > "$out/report/balloon-pre-$tag.txt" 2>&1 || bpre="dead before the run"
   say "$tag start: $* threads $threads"
-  nvidia-smi --query-gpu=clocks_event_reasons.active,power.draw,power.limit,power.default_limit --format=csv,noheader 2>&1 | sed 's/^/before: /' > "${json%.json}.gpu.txt"
-  env "$@" TETRAEDER_EXIT_GGUF="$model" ${prompt:+TETRAEDER_EXIT_PROMPT_FILE="$prompt"} TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_OP_OFFLOAD=1 \
+  gpu_record before > "${json%.json}.gpu.txt"
+  env "$@" TETRAEDER_EXIT_GGUF="$model" ${prompt:+TETRAEDER_EXIT_PROMPT_FILE="$prompt"} "${gpu_env[@]}" \
     TETRAEDER_EXIT_UBATCH="$ub" TETRAEDER_EXIT_PREFILL="$pre" TETRAEDER_EXIT_DECODE="$dec" TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_OUT="$json" TETRAEDER_EXIT_MACHINE="vast $(hostname) segment-confirm $tag" \
-    bash scripts/oom_engine.sh timeout -k 30 60m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
+    bash scripts/oom_engine.sh timeout -k 30 60m "${cargo_exit[@]}" \
     --test exit_regime -- --ignored --nocapture > "${json%.json}.log" 2>&1 8>&- &
   local pid=$!
   TETRAEDER_STAGE="sc-$tag" python3 scripts/engine_sample.py sample --pid "$pid" --disk "$HOST_DISK_DEV" --out "$samples" 8>&- &
@@ -103,7 +125,7 @@ run_one() { # run_one TAG JSON [ENV=VALUE...]
   wait "$pid"
   local rc=$?
   wait "$spid"
-  nvidia-smi --query-gpu=clocks_event_reasons.active,power.draw,power.limit,power.default_limit --format=csv,noheader 2>&1 | sed 's/^/after: /' >> "${json%.json}.gpu.txt"
+  gpu_record after >> "${json%.json}.gpu.txt"
   if [ -s "$json" ]; then
     python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --builder-json "$json" \
       --out "$samples.summary" --merge-into "$json" > /dev/null || say "host summary failed for $tag"
@@ -172,8 +194,13 @@ st_build() {
 
 st_disk() {
   for f in "$model" "$tet" "$plan" "$bench"; do [ -e "$f" ] || die "missing $f"; done
-  local ramb=$((EMULATE_RAM_GB * 1000000000)) # the balloon stage replaces it with the measured budget; 64 GB without a balloon
+  local ramb=$((EMULATE_RAM_GB * 1000000000)) # 64 GB without a balloon; the measured budget when the balloon stage has run before
   [ "$ramb" -gt 0 ] || ramb=64000000000
+  if [ -s "$out/env.json" ]; then
+    ramb=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env.json" 2> /dev/null) \
+      || ramb=$((EMULATE_RAM_GB * 1000000000))
+    [ "$ramb" -gt 0 ] || ramb=64000000000
+  fi
   "$tet" plan layout "$model" --out "$out/layout.json" || die "layout"
   # the box's NVMe queue curve and one reader thread's copy rate, beside nothing else (ADR 0092 section 2)
   "$bench" disk-curve --file "$shard" --depths 1,2,4,8,16,32 --seconds 4 --out "$out/disk/disk-curve.json" || die "disk-curve"
@@ -184,13 +211,15 @@ st_disk() {
 }
 
 st_balloon() {
-  RESULTS="$out" HW="$p/hw.toml" bash scripts/sc_balloon.sh start 8>&- || die "balloon"
+  # before the model is there (Case S budget stage) no graph exists yet: the disk stage seeds its cpu0 from env.json
+  RESULTS="$out" HW="$([ -s "$p/hw.toml" ] && echo "$p/hw.toml")" bash scripts/sc_balloon.sh start 8>&- || die "balloon"
   grep -A8 ram_budget "$out/env.json" 2> /dev/null | head -n 12
-  grep -A2 'id = "cpu0"' "$p/hw.toml" | head -n 3
+  grep -A2 'id = "cpu0"' "$p/hw.toml" 2> /dev/null | head -n 3
   say "balloon done"
 }
 
 gpu_sampler_start() {
+  [ "${SC_CPU:-0}" = 1 ] && return 0 # no GPU to sample
   rm -f "$out/gpu-sampler.stop"
   OUT="$out/gpu" SAMPLER_PARENT=$$ setsid nohup bash scripts/gpu_sampler.sh 8>&- > /dev/null 2>&1 &
 }
@@ -387,7 +416,7 @@ main() {
     "st_$s"
   done
   touch "$out/gpu-sampler.stop"
-  say "SC_BOX_DONE rc=0 stages='$stages'"
+  say "SC_BOX_DONE rc=0 stages='$stages'$tag_s"
   echo "SC_BOX_DONE rc=0 stages='$stages' $(date -Is)" > "$out/DONE"
 }
 # shellcheck disable=SC1090

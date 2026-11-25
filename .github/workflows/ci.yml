@@ -153,6 +153,54 @@ jobs:
           name: p6-loopback
           path: ${{ runner.temp }}/p6-loopback.tgz
           retention-days: 3
+      # ADR 0091 Case S on loopback with the real binaries: the dry run of the exit session on the tiny sharded MoE (8 layers, cut 4 and 4),
+      # through the same driver, phase6_box.sh and sc_box.sh commands a box uses: `cluster model-split` and `cluster model-id --install` on two
+      # nodes, a pinned head-led plan, the per-node calibration (real exit_regime runs on the CPU, the fit), `cluster merge`, and one real
+      # `cluster judged-round` that the summary's round check accepts. The stand-ins are the RAM budget (a made-up cgroup) and the GPU throttle line.
+      - name: phase 6 Case S loopback (real binaries)
+        if: runner.os == 'Linux'
+        timeout-minutes: 40
+        env:
+          LOOPBACK: "1"
+          TETRAEDER_BIN: ${{ github.workspace }}/target/debug/tetraeder
+          RESULTS_NAME: loopback-s-real
+          RESULTS_ROOT: ${{ runner.temp }}/p6s-results
+          LB_DIR: ${{ runner.temp }}/p6s-lb
+          THREADS: "2"
+          STAGES: "gates setup budget plan fetch calib merge judged"
+        run: |
+          cargo build -p tetraeder-planner --bin tetraeder-plan -p tetraeder-bench
+          bash scripts/phase6_exit_s.sh
+          python3 -I scripts/phase6_loopback_check_s.py "$RESULTS_ROOT/$RESULTS_NAME" "$LB_DIR"
+      - name: phase 6 Case S loopback cleanup
+        if: always() && runner.os == 'Linux'
+        run: |
+          # the detached daemons would hold the ports of the pytest loopback runs that follow
+          for f in "$RUNNER_TEMP"/p6s-lb/*/pids/*; do
+            [ -f "$f" ] && p=$(head -c 20 "$f" | tr -dc 0-9) && [ -n "$p" ] && { pkill -9 -P "$p" || true; kill -9 "$p" || true; }
+          done
+          true
+      - name: phase 6 Case S loopback logs
+        if: failure() && runner.os == 'Linux'
+        run: |
+          for f in "$RUNNER_TEMP"/p6s-lb/*/logs/*.log "$RUNNER_TEMP"/p6s-lb/*/judged/*/*.json; do
+            [ -f "$f" ] && { echo "=== $f"; grep -av 'tetraeder::step' "$f" | tail -n 120; }
+          done
+          for f in "$RUNNER_TEMP"/p6s-lb/*/results/*/*/*.log; do
+            [ -f "$f" ] && { echo "=== $f"; tail -n 40 "$f"; }
+          done
+          true
+      - name: phase 6 Case S loopback artifact
+        if: failure() && runner.os == 'Linux'
+        run: |
+          tar czf "$RUNNER_TEMP/p6s-loopback.tgz" --exclude='keys' --exclude='models' --exclude='tiny' --exclude='*.bin' --exclude='*.trace' -C "$RUNNER_TEMP" p6s-lb p6s-results
+          ls -l "$RUNNER_TEMP/p6s-loopback.tgz"
+      - uses: actions/upload-artifact@v4
+        if: failure() && runner.os == 'Linux'
+        with:
+          name: p6s-loopback
+          path: ${{ runner.temp }}/p6s-loopback.tgz
+          retention-days: 3
       # Which CPU variant each runner loads (ADR 0052): tier, ISA, missing, extra, registry names.
       - name: CPU backend
         shell: bash

@@ -1,0 +1,87 @@
+model = "tiny-qwen3moe"
+
+[knobs]
+prefill_micro_batches = 2
+ubatch = 16
+op_offload = true
+
+[[replicas]]
+
+[[replicas.stages]]
+layers = [0, 4]
+devices = ["a/gpu0", "a/cpu0"]
+tp = 1
+ep = 1
+
+[[replicas.stages.assign]]
+home = ["a/cpu0"]
+format = "F16"
+
+[replicas.stages.assign.units]
+kinds = ["embed"]
+
+[[replicas.stages.assign]]
+home = ["a/gpu0"]
+format = "F16"
+
+[replicas.stages.assign.units]
+kinds = ["attn", "mlp"]
+
+[[replicas.stages.assign]]
+home = ["a/cpu0"]
+format = "F16"
+
+[replicas.stages.assign.units]
+kinds = ["expert"]
+
+[[replicas.stages.kv]]
+device = "a/gpu0"
+bytes = 262144
+
+[[replicas.stages.workspace]]
+device = "a/gpu0"
+bytes = 4194304
+
+[[replicas.stages.expert_cache]]
+device = "a/gpu0"
+slots = 4
+
+[[replicas.stages.expert_cache]]
+device = "a/cpu0"
+slots = 4
+
+[[replicas.stages]]
+layers = [4, 8]
+devices = ["b/gpu0", "b/cpu0"]
+tp = 1
+ep = 1
+
+[[replicas.stages.assign]]
+home = ["b/gpu0"]
+format = "F16"
+
+[replicas.stages.assign.units]
+kinds = ["attn", "mlp", "head"]
+
+[[replicas.stages.assign]]
+home = ["b/cpu0"]
+format = "F16"
+
+[replicas.stages.assign.units]
+kinds = ["expert"]
+
+[[replicas.stages.kv]]
+device = "b/gpu0"
+bytes = 262144
+
+[[replicas.stages.workspace]]
+device = "b/gpu0"
+bytes = 4194304
+
+[[replicas.stages.expert_cache]]
+device = "b/gpu0"
+slots = 4
+
+[[replicas.stages.expert_cache]]
+device = "b/cpu0"
+slots = 4

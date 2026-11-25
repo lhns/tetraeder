@@ -38,6 +38,62 @@ pub enum ClusterCommand {
     /// GGUF (give the `-00001-of-0000N` file) the sha256 of the manifest of all shards. With
     /// `--install DIR` link the model into the node's models folder under that id.
     ModelId(ModelIdArgs),
+    /// Cut a single-file GGUF into shards `<prefix>-0000k-of-0000N.gguf`, as llama.cpp's
+    /// `gguf-split` does, cutting before the second expert tensor of a layer so that a layer
+    /// spans two shards. For the Case S dry run (a tiny sharded MoE on a runner or a box that has
+    /// no llama.cpp tools) and for tests.
+    ModelSplit(ModelSplitArgs),
+}
+
+#[derive(Args)]
+pub struct ModelSplitArgs {
+    /// The single-file GGUF.
+    pub src: PathBuf,
+    /// Output path prefix; the shards are `<prefix>-00001-of-0000N.gguf` and so on.
+    pub prefix: PathBuf,
+    /// Number of shards (at least 1; at most the model's layers).
+    #[arg(long, default_value_t = 3)]
+    pub shards: usize,
+}
+
+fn model_split(a: &ModelSplitArgs) -> Result<()> {
+    use tetraeder_model::Gguf;
+    use tetraeder_model::gguf_write::write_split;
+    let g = Gguf::open(&a.src).with_context(|| format!("cannot open {}", a.src.display()))?;
+    anyhow::ensure!(g.n_shards() == 1, "{} is already split", a.src.display());
+    let exps: Vec<usize> = g
+        .tensors
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.name.contains("_exps."))
+        .map(|(i, _)| i)
+        .collect();
+    // Three expert tensors per layer: a cut lies before the second one of a layer.
+    let layers = exps.len() / 3;
+    anyhow::ensure!(
+        layers > 0 && (1..=layers).contains(&a.shards),
+        "{} shards of a model with {layers} expert layers",
+        a.shards
+    );
+    let mut bounds = vec![0];
+    bounds.extend((1..a.shards).map(|k| exps[3 * (k * layers / a.shards) + 1]));
+    bounds.push(g.tensors.len());
+    // Shard 1 takes every tensor that is in no group, so the groups start at the first cut.
+    let groups: Vec<Vec<String>> = bounds[1..]
+        .windows(2)
+        .map(|w| {
+            g.tensors[w[0]..w[1]]
+                .iter()
+                .map(|t| t.name.clone())
+                .collect()
+        })
+        .collect();
+    let paths = write_split(&g, &a.prefix, &groups)
+        .map_err(|e| anyhow::anyhow!("cannot write shards: {e}"))?;
+    for p in &paths {
+        println!("{}", p.display());
+    }
+    Ok(())
 }
 
 #[derive(Args)]
@@ -132,6 +188,7 @@ pub fn run(cmd: &ClusterCommand) -> Result<()> {
         ClusterCommand::Merge(a) => merge(a),
         ClusterCommand::JudgedRound(a) => judged_round(a),
         ClusterCommand::ModelId(a) => model_id(a),
+        ClusterCommand::ModelSplit(a) => model_split(a),
     }
 }
 
