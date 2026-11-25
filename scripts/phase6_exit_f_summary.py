@@ -3,6 +3,8 @@
 
     phase6_exit_f_summary.py RESULTS_DIR                  writes RESULTS_DIR/verdict-f.json, prints the tables
     phase6_exit_f_summary.py admits NODE_LOG [--out F]    epochs of the `admit` lines of a node log (plain text)
+    phase6_exit_f_summary.py clock < samples              offset of box B's clock to box A's, from `t0 a t1 t2 b t3` lines
+    phase6_exit_f_summary.py clock < samples              offset of box B's clock to box A's, from `t0 a t1 t2 b t3` lines
 
 Layout of RESULTS_DIR (written by scripts/phase6_exit_f.sh; the tests build it from the rehearsal data and from
 synthetic trials):
@@ -370,12 +372,31 @@ def admit_epochs(text: str) -> list[float]:
     return out
 
 
+def clock_offset(samples: list[list[float]]) -> dict:
+    """Clock of box B minus clock of box A from samples `t0 a t1 t2 b t3`: the driver's clock before and after reading A (a), and
+    before and after reading B (b). Each box's offset to the driver is its reading minus the midpoint of the two driver times,
+    wrong by at most half the round trip; the sample with the smallest total error is kept."""
+    best = None
+    for t0, a, t1, t2, b, t3 in samples:
+        off = (b - (t2 + t3) / 2) - (a - (t0 + t1) / 2)
+        err = (t1 - t0) / 2 + (t3 - t2) / 2
+        if best is None or err < best[1]:
+            best = (off, err)
+    if best is None:
+        return {}
+    return {"b_minus_a_s": round(best[0], 4), "uncertainty_s": round(best[1], 4), "samples": len(samples)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("target")
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--out")
     a = ap.parse_args()
+    if a.target == "clock":  # stdin: one sample per line, six numbers
+        rows = [[float(x) for x in ln.split()] for ln in sys.stdin if ln.strip()]
+        print(json.dumps(clock_offset(rows)))
+        return 0
     if a.target == "admits":
         text = open(a.arg, encoding="utf-8", errors="replace").read()
         eps = admit_epochs(text)

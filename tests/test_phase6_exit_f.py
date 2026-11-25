@@ -342,3 +342,12 @@ def test_admit_epochs_of_a_node_log():
             "2026-11-25T04:03:38.901221Z DEBUG tetraeder::step: admit seq=1 prompt=393\n")
     e = fs.admit_epochs(text)
     assert len(e) == 2 and abs(e[0] - 1795579382.751715) < 1e-6 and abs(e[1] - e[0] - 36.149506) < 1e-6
+
+
+def test_the_clock_offset_between_the_boxes_keeps_the_best_sample():
+    # driver clock 100.0..100.4 around A's reading 90.2 (A is 10.0 s behind) and 100.5..100.7 around B's 100.6 (B is 0.0 s off)
+    good = [100.0, 90.2, 100.4, 100.5, 100.6, 100.7]
+    noisy = [200.0, 190.2, 201.0, 201.5, 201.6, 203.5]
+    r = fs.clock_offset([noisy, good])
+    assert abs(r["b_minus_a_s"] - 10.0) < 1e-6 and abs(r["uncertainty_s"] - 0.3) < 1e-6 and r["samples"] == 2
+    assert fs.clock_offset([]) == {}
