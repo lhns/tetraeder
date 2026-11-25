@@ -31,7 +31,7 @@
 # head and two real `tetraeder node` daemons (TETRAEDER_BIN, default target/debug/tetraeder; certificates from `tetraeder cluster cert`,
 # cluster.toml from the writer) on the tiny MoE fixture, started by the same phase6_box.sh commands a box uses. Work dirs
 # runs/phase6-loopback/{a,b}, no taxameter, no GPU, short times (TRIAL_S 20, FAULT_AT 6, STOP_FOR 6, RESTORE_AFTER 4, REJOIN_S 30,
-# NODE_DOWN_MS 2000, 96-token prompt, 40 output tokens). The loop and the verdict are the real ones; the verdict fails only the load-shape
+# NODE_DOWN_MS 2000, 96-token prompt, 120 output tokens). The loop and the verdict are the real ones; the verdict fails only the load-shape
 # rule there, because 20 s is not 180 s.
 # LOOPBACK=fake: the same with scripts/phase6_loopback.py in place of tetraeder (shorter times; LB_* variables break one rule on purpose),
 # for the summary-rule fixtures. Both need a POSIX userland with pgrep, setsid and flock.
@@ -72,12 +72,12 @@ if [ "$LOOPBACK" = 1 ]; then
   else
     # the tiny MoE fixture: 256 training positions, byte-level vocabulary (one character is one token), as in cluster_integration.rs
     trial_s="${TRIAL_S:-20}" fault_at="${FAULT_AT:-6}" stop_for="${STOP_FOR:-6}" restore_after="${RESTORE_AFTER:-4}"
-    rejoin_s="${REJOIN_S:-30}" down_ms="${NODE_DOWN_MS:-2000}" prompt_tokens="${PROMPT_TOKENS:-96}" max_tokens="${MAX_TOKENS:-40}"
+    rejoin_s="${REJOIN_S:-30}" down_ms="${NODE_DOWN_MS:-2000}" prompt_tokens="${PROMPT_TOKENS:-96}" max_tokens="${MAX_TOKENS:-120}"
     b_up_wait="${B_UP_WAIT_S:-90}"
     LB_BIN="${TETRAEDER_BIN:-$repo/target/debug/tetraeder}"
     case "$LB_BIN" in /* | ?:*) ;; *) LB_BIN="$repo/$LB_BIN" ;; esac
     export LB_BIN
-    LB_BOX_ENV="$LB_BOX_ENV THREADS=${THREADS:-2} PAR=4 CTX=1024"
+    LB_BOX_ENV="$LB_BOX_ENV THREADS=${THREADS:-2} PAR=4 CTX=2048"
     serve_extra="--chat-template-file $repo/tests/fixtures/chatml.jinja"
   fi
   export LB_BOX_ENV
@@ -247,7 +247,7 @@ run_attempt() { # run_attempt MODE ATTEMPT: one attempt into $out/trials/MODE-AT
   off=$(python3 -I -c 'import json, sys; print(json.loads(sys.argv[1])["b_minus_a_s"])' "$clk")
   echo "clock b minus a: $clk"
   # the load on a fires the fault on b over the direct connection, once requests are in flight on b
-  t0a=$(bx a 60 "bash scripts/phase6_box.sh launch load-$label $(load_cmd "$label" "$trial_s" "$A/trials-$label.jsonl" "$mode")" | head -n 1)
+  t0a=$(bx a 60 "bash scripts/phase6_box.sh launch load-$label $(load_cmd "$label" "$trial_s" "$A/trials-$label.jsonl" "$mode")" | sed -n 1p)
   case "$t0a" in '' | *[!0-9.]*) die "the load of $label was not started by this call ('$t0a'): a launch of the same tag already ran. Remove $A/pids/launch-load-$label.done on the box or rerun with a new RESULTS_NAME" ;; esac
   say "load started on a; it fires the $mode fault $fault_at s in, once b has requests in flight"
   wait_line a "logs/launch-load-$label.log" '^phase6_load ' $((trial_s + 120)) > /dev/null || die "the load of $label did not finish"

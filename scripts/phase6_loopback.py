@@ -16,7 +16,7 @@ the daemon and its children, SIGSTOP and SIGCONT), the load, the epochs, the tri
 behaviour that Case F judges is modelled after the real head: a node is down after `node_down_after_ms` without an answer, its
 in-flight requests end with one error naming the replica, a request waits for a free replica, and a restored node rejoins on its own.
 Env: LB_LOAD_S (engine load time, 0.5), LB_TOKEN_S (seconds per token, 0.02), LB_MAX_TOKENS (tokens per answer, 40).
-Case S scenarios (LB_SCENARIO, comma list): fit_band_miss (node b's fit band 0.12), link_drift (the end probe 12% slower), single_node
+Case S scenarios (LB_SCENARIO, comma list): gate_drift (the second link-gate probe 50% slower on bulk), fit_band_miss (node b's fit band 0.12), link_drift (the end probe 12% slower), single_node
 (no candidate computes on both nodes), aa_early_miss (judged round 2 at half the rate), aa_last_miss, unclean_rounds (rounds 1 and 3
 report a busy co-tenant), seed_anchors (node b's anchors on fixed-seed input), wrong_prompt (round prompt hash differs).
 """
@@ -385,15 +385,18 @@ def sha_bytes(b: bytes) -> str:
 
 
 def fake_probe(out: str) -> None:
-    n = os.path.join(os.path.dirname(os.path.abspath(out)), ".probe-count")
+    gate = "gate" in os.path.basename(out)  # the link gate's two probes before the download count apart from the session's
+    n = os.path.join(os.path.dirname(os.path.abspath(out)), ".probe-count-gate" if gate else ".probe-count")
     calls = int(open(n).read()) if os.path.exists(n) else 0
     open(n, "w").write(str(calls + 1))
-    small = 1.15 if (calls >= 1 and scenario("small_drift")) else 1.0  # raw small-message latency 15% up, bulk unchanged
+    small = 1.15 if (calls >= 1 and scenario("small_drift") and not gate) else 1.0  # raw small-message latency 15% up, bulk unchanged
     big = 1.0
-    if calls >= 1 and scenario("link_move"):
+    if calls >= 1 and scenario("link_move") and not gate:
         big = 1.5  # the bulk rate falls: the frozen plan's prediction moves
-    if calls >= 1 and scenario("end_fails"):
+    if calls >= 1 and scenario("end_fails") and not gate:
         big = 0.65  # the link gets faster: the end-priced prediction rises
+    if calls >= 1 and scenario("gate_drift") and gate:
+        big = 1.5  # the second gate probe finds the link slower: the gate aborts the pair
     pts = [[x, y * (big if x >= 16 * 1024 * 1024 else (small if x < 1024 * 1024 else 1.0))] for x, y in POINTS]
     wjson(out, {"buffers": "auto", "links": [], "empty_rtt_s": [["a", "b", 0.06], ["b", "a", 0.058]],
                 "curves": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "comm": "tls", "points": pts},

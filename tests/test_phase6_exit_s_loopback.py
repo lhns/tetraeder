@@ -48,7 +48,7 @@ def text(r):
 def session_s(tmp_path, scenario="", second_scenario=None):
     """The two invocations of the driver; returns (first result, second result or None, results dir)."""
     try:
-        r1, out = run_s(tmp_path, "gates setup budget plan calib predict", scenario)
+        r1, out = run_s(tmp_path, "gates setup linkgate fetch budget plan calib predict", scenario)
         if r1.returncode != 0 or not (out / "predictions" / "FROZEN.sha256").exists():
             return r1, None, out
         r2, out = run_s(tmp_path, "judged aalast linkend summary", second_scenario if second_scenario is not None else scenario,
@@ -102,7 +102,7 @@ def test_case_s_no_plan_on_both_nodes_stops_at_the_pick(tmp_path):
 @needs_posix
 def test_case_s_refuses_to_judge_on_a_frozen_hash_that_does_not_match_or_a_changed_file(tmp_path):
     try:
-        r1, out = run_s(tmp_path, "gates setup budget plan calib predict")
+        r1, out = run_s(tmp_path, "gates setup linkgate fetch budget plan calib predict")
         assert r1.returncode == 0, text(r1)[-2500:]
         r2, _ = run_s(tmp_path, "judged", FROZEN_SHA="0" * 64)
         assert r2.returncode != 0 and "is not the frozen hash" in text(r2)
@@ -243,3 +243,26 @@ def test_the_merge_overlays_the_fitted_node_graphs_and_keeps_the_rest():
     assert d["a/disk0"]["queue_curve"][0]["depth"] == 1 and d["a/disk0"]["kind"] == "disk"
     assert out["links"][0]["alpha_s"]["value"] == 2e-5 and out["links"][1]["alpha_s"]["value"] == 0.03
     assert notes == ["a: no device for fitted ghost0"]
+
+
+@needs_posix
+def test_case_s_the_link_gate_passes_before_the_download_and_leaves_its_evidence(tmp_path):
+    r1, r2, out = session_s(tmp_path)
+    g = json.loads((out / "link" / "gate.json").read_text())
+    assert g["pass"] is True and abs(g["pp_move"]) <= 0.08 and abs(g["tg_move"]) <= 0.08
+    times = json.loads((out / "link" / "gate-times.json").read_text())
+    assert times["gate1"] < times["gate2"]
+    for f in ("probe-gate1.json", "probe-gate2.json", "gate/predict-gate1.json", "gate/predict-gate2.json", "gate/gate-plan.toml"):
+        assert (out / "link" / f).exists(), f
+    assert "gate" not in (out / "predictions" / "SHA256SUMS").read_text()  # the gate is not frozen
+    assert "link_gate" not in failed_rules(verdict_s(out))
+
+
+@needs_posix
+def test_case_s_a_link_that_moves_between_the_gate_probes_aborts_the_pair_before_anything_else(tmp_path):
+    r1, r2, out = session_s(tmp_path, "gate_drift")
+    assert r2 is None and r1.returncode != 0
+    assert "the link gate failed" in text(r1) and "nothing was downloaded" in text(r1)
+    assert json.loads((out / "link" / "gate.json").read_text())["pass"] is False
+    assert not (out / "env" / "a" / "env.json").exists() and not (out / "plans" / "candidates.json").exists()  # no budget, no plan after it
+

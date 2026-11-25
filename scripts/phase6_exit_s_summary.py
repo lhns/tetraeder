@@ -6,6 +6,7 @@ rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
     phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml     the analytic pick among the spanning plans
     phase6_exit_s_summary.py span PLAN.toml           the plan computes on both nodes, one node per stage
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
+    phase6_exit_s_summary.py gate RESULTS_DIR         the link gate before the download: writes link/gate.json, exit 1 when it fails
     phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
     phase6_exit_s_summary.py precheck RESULTS_DIR calib|freeze           the rules that must hold before calibration is trusted (calib) or
                                                       before the first judged round (freeze); exit 1 and the reasons otherwise
@@ -29,6 +30,11 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
   freeze                FROZEN.sha256 and every frozen file match; every judged round ran under that hash, started after t_frozen
   span_both_nodes       the judged plan is the planner's analytic pick (fastest predicted) among plans that compute on both
                         nodes, and no candidate that does not is considered
+  link_gate             the link gate before the 142 GB download (advisor, delegated by the owner, 2026-11-25): two full probes (frames to
+                        64 MiB) at least 10 minutes apart (link/probe-gate{1,2}.json, times in link/gate-times.json), the frozen-candidate
+                        prediction priced with each (link/gate/predict-gate{1,2}.json: the pick on the first probe's graph and the committed
+                        235B layout, then the same graph with the second probe's link curves); predicted pp and tg each move by at most 0.08,
+                        else the pair is aborted before the download. Recomputed from the files here; missing evidence fails
   link_reprice          the link rule (advisor, delegated by the owner, 2026-11-25; docs/notes/phase6-rule-changes.md): the frozen judged plan
                         is priced again with the end probe's link curves and nothing else changed (predictions/predict-cluster-end.json);
                         predicted pp and tg each move by at most 0.08. Raw probe points (start, before each round, end) are reported, not gated
@@ -64,6 +70,8 @@ BAND = sg.AA_BAND  # 0.08, bench/spec/phase0.toml: no two-node noise class exist
 GATE_SHARE, GATE_RAM = ss.GATE_SHARE, ss.GATE_RAM
 CLEAN_NEEDED, MAX_ROUNDS = 3, 8
 EMULATED_RAM_B = 64_000_000_000
+MIN_GATE_GAP_S = 600.0  # the two gate probes are at least 10 minutes apart; only the loopback dry run shortens it (P6_MIN_GAP_S)
+FULL_PROBE_BYTES = 64 * 1024 * 1024  # a full probe reaches 64 MiB frames: no --max-bytes
 PROBE_POINTS = (16 * 1024, 32 * 1024 * 1024)  # 32 MiB is no probe point (4 KiB x 4^k): interpolated as the cost model does
 
 
@@ -110,8 +118,42 @@ def plan_spans(plan_toml: str) -> list[tuple[str, int, int]]:
     return out
 
 
+def gate_check(res: str) -> tuple[dict, list[str]]:
+    """The link gate from its files: both probes full, their times, and the two prices of the frozen candidate. Returns (facts, reasons)."""
+    why: list[str] = []
+    info: dict = {"band": BAND}
+    min_gap = float(os.environ.get("P6_MIN_GAP_S", MIN_GATE_GAP_S))
+    info["min_gap_s"] = min_gap
+    try:
+        t = load(os.path.join(res, "link", "gate-times.json"))
+        info["gap_s"] = t["gate2"] - t["gate1"]
+        if info["gap_s"] < min_gap:
+            why.append(f"the probes are {info['gap_s']:.0f} s apart, at least {min_gap:.0f} s are needed")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        why.append(f"no probe times ({e})")
+    for k in ("gate1", "gate2"):
+        try:
+            pr = load(os.path.join(res, "link", f"probe-{k}.json"))
+            top = max((x for c in pr.get("curves", []) if c.get("op") == "copy" for x, _ in c["points"]), default=0)
+            if top < FULL_PROBE_BYTES:
+                why.append(f"probe-{k}.json stops at {top} B frames, a full probe reaches {FULL_PROBE_BYTES}")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            why.append(f"no probe-{k}.json ({e})")
+    try:
+        p1 = load(os.path.join(res, "link", "gate", "predict-gate1.json"))["prediction"]
+        p2 = load(os.path.join(res, "link", "gate", "predict-gate2.json"))["prediction"]
+        info["pp_move"], info["tg_move"] = (p2[k] / p1[k] - 1.0 for k in ("pp_tps", "tg_tps"))
+        info["pp_tps"], info["tg_tps"] = (p1["pp_tps"], p2["pp_tps"]), (p1["tg_tps"], p2["tg_tps"])
+        for k in ("pp_move", "tg_move"):
+            if abs(info[k]) > BAND + 1e-9:
+                why.append(f"{k[:2]} moves {info[k]:+.3f} between the probes against {BAND}")
+    except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as e:
+        why.append(f"no re-priced predictions ({e})")
+    return info, why
+
+
 # what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
-PRE_CALIB = ("gates_", "ram_budget_", "trace_hidden", "anchors_", "fit_band_")
+PRE_CALIB = ("gates_", "ram_budget_", "link_gate", "trace_hidden", "anchors_", "fit_band_")
 PRE_FREEZE = PRE_CALIB + ("prediction_judged", "freeze", "span_both_nodes")
 
 
@@ -367,6 +409,12 @@ def summarize(res: str) -> dict:
     except (OSError, ValueError, KeyError) as e:
         rule("span_both_nodes", False, f"no plan or candidates ({e})")
 
+    gate, why = gate_check(res)
+    out["link_gate"] = gate
+    rule("link_gate", not why, "; ".join(why) or (
+        f"probes {gate['gap_s']:.0f} s apart (at least {gate['min_gap_s']:.0f}), the frozen candidate re-priced: pp {gate['pp_move']:+.3f}, "
+        f"tg {gate['tg_move']:+.3f} against {BAND}"))
+
     # the link: raw probe points per probe are reported; the rule is how far the end probe moves the frozen plan's prediction
     out["link"] = []
     try:
@@ -513,6 +561,7 @@ def main() -> int:
     lk.add_argument("start")
     lk.add_argument("end")
     lk.add_argument("--band", type=float, default=BAND)
+    sub.add_parser("gate").add_argument("res")
     r = sub.add_parser("round")
     r.add_argument("dir")
     r.add_argument("--prompt-hash")
@@ -552,6 +601,17 @@ def main() -> int:
         for w in why:
             print(f"raw points outside {a.band} (reported, not gated; the rule is the end-priced prediction): {w}")
         return 0
+    if a.cmd == "gate":
+        info, why = gate_check(a.res)
+        info["pass"] = not why
+        info["reasons"] = why
+        os.makedirs(os.path.join(a.res, "link"), exist_ok=True)
+        with open(os.path.join(a.res, "link", "gate.json"), "w", encoding="utf-8") as f:
+            json.dump(info, f, indent=2)
+        print("link gate " + ("passes" if not why else "FAILS") + f" (gap {info.get('gap_s')} s, pp move {info.get('pp_move')}, tg move {info.get('tg_move')})")
+        for w in why:
+            print(f"GATE FAILED link_gate: {w}")
+        return 1 if why else 0
     if a.cmd == "spans":
         for n, lo, hi in plan_spans(a.plan):
             print(f"{n} {lo}..{hi}")

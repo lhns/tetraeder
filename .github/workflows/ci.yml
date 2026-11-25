@@ -130,10 +130,21 @@ jobs:
       - name: phase 6 loopback logs
         if: failure() && runner.os == 'Linux'
         run: |
-          for f in "$RUNNER_TEMP"/p6-lb/*/logs/*.log "$RUNNER_TEMP"/p6-results/loopback-real/trials/*/fault.log; do
-            [ -f "$f" ] && { echo "=== $f"; tail -n 60 "$f"; }
+          for f in "$RUNNER_TEMP"/p6-lb/*/logs/{serve,node,trigger}.log "$RUNNER_TEMP"/p6-results/loopback-real/trials/*/fault.log; do
+            [ -f "$f" ] && { echo "=== $f"; grep -av 'tetraeder::step' "$f" | tail -n 150; }
           done
           true
+      - name: phase 6 loopback artifact
+        if: failure() && runner.os == 'Linux'
+        run: |
+          tar czf "$RUNNER_TEMP/p6-loopback.tgz" --exclude='keys' -C "$RUNNER_TEMP" p6-lb p6-results
+          ls -l "$RUNNER_TEMP/p6-loopback.tgz"
+      - uses: actions/upload-artifact@v4
+        if: failure() && runner.os == 'Linux'
+        with:
+          name: p6-loopback
+          path: ${{ runner.temp }}/p6-loopback.tgz
+          retention-days: 3
       # Which CPU variant each runner loads (ADR 0052): tier, ISA, missing, extra, registry names.
       - name: CPU backend
         shell: bash
