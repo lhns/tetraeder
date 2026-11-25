@@ -536,3 +536,128 @@ fn a_decode_records_the_segment_metrics_when_built_for_a_replica() {
         "a prediction per segment: {predicted:?}"
     );
 }
+
+/// The rows of one decode of `tokens` on sequence 0 of a fresh three-segment pipeline cut into
+/// `micro` micro-batches.
+fn prefill_rows(micro: u32, tokens: &[i32], all: bool) -> (Vec<f32>, usize) {
+    let (p, _) = three(CAP);
+    let mut p = p.with_prefill_micro_batches(micro);
+    let out = p.decode(&[input(0, tokens, all)]).unwrap();
+    let rows = out.rows(0).to_vec();
+    (rows, p.seq_len(0))
+}
+
+// hardware: none
+#[test]
+fn a_pipelined_prefill_returns_the_rows_of_the_walk() {
+    let tokens: Vec<i32> = (1..=11).collect();
+    for all in [false, true] {
+        let (walk, n) = prefill_rows(1, &tokens, all);
+        assert_eq!(n, tokens.len());
+        for micro in [2, 3, 4, 20] {
+            let (piped, n) = prefill_rows(micro, &tokens, all);
+            assert_eq!(piped, walk, "micro {micro} all_logits {all}");
+            assert_eq!(n, tokens.len(), "micro {micro}: KV rows of every segment");
+        }
+    }
+}
+
+fn steps_of(s: &Arc<Mutex<State>>) -> usize {
+    let st = s.lock().unwrap();
+    st.log.iter().filter(|l| l.starts_with("step")).count()
+}
+
+// hardware: none
+#[test]
+fn a_pipelined_prefill_steps_every_segment_once_per_micro_batch() {
+    let (p, states) = three(CAP);
+    let mut p = p.with_prefill_micro_batches(3);
+    let tokens: Vec<i32> = (1..=7).collect();
+    p.decode(&[input(0, &tokens, false)]).unwrap();
+    // `plan::micro_batch_sizes(7, 3)` is 3, 2, 2: three steps on every segment.
+    for s in &states {
+        assert_eq!(steps_of(s), 3);
+        assert_eq!(s.lock().unwrap().lens[0], 7);
+    }
+    // A decode step and a step of several inputs walk the segments once.
+    p.decode(&[input(0, &[8], false)]).unwrap();
+    p.decode(&[input(0, &[9, 10], false), input(1, &[1, 2, 3], false)])
+        .unwrap();
+    for s in &states {
+        assert_eq!(steps_of(s), 5);
+    }
+}
+
+// hardware: none
+#[test]
+fn a_failure_in_a_micro_batch_of_a_pipelined_prefill_cuts_every_segment_back() {
+    let (p, states) = three(CAP);
+    let mut p = p.with_prefill_micro_batches(4);
+    p.decode(&[input(0, &[1, 2, 3], false)]).unwrap();
+    // The middle segment fails its first micro-batch; the first segment holds more by then.
+    states[1].lock().unwrap().fail_step = Some(BackendError::Failed("boom".into()));
+    let tokens: Vec<i32> = (1..=12).collect();
+    let e = p.decode(&[input(0, &tokens, false)]).err().unwrap();
+    assert_eq!(e.to_string(), "boom");
+    for (i, s) in states.iter().enumerate() {
+        assert_eq!(s.lock().unwrap().lens[0], 3, "segment {i} is where it was");
+    }
+    assert!(!p.seq_lost(0));
+    // The sequence still works, pipelined.
+    p.decode(&[input(0, &tokens, false)]).unwrap();
+    assert_eq!(p.seq_len(0), 15);
+}
+
+// hardware: none
+#[test]
+fn a_pipelined_prefill_that_outgrows_a_segment_fails_with_kv_full_and_cuts_back() {
+    let (p, states) = three(10);
+    let mut p = p.with_prefill_micro_batches(3);
+    let tokens: Vec<i32> = (1..=12).collect();
+    let e = p.decode(&[input(0, &tokens, false)]).err().unwrap();
+    assert!(matches!(e, BackendError::KvFull { .. }), "{e}");
+    for s in &states {
+        assert_eq!(s.lock().unwrap().lens[0], 0);
+    }
+}
+
+// hardware: none
+#[test]
+fn a_pipelined_prefill_records_the_segment_duration_of_every_micro_batch() {
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
+    use tetraeder::pipeline::replica_pipeline;
+
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let metrics = tetraeder_telemetry::Metrics::new(&mp.meter("test"));
+    let segs: Vec<Box<dyn SegmentBackend>> = vec![
+        fake(true, false, (0, 2), CAP).0,
+        fake(false, false, (2, 5), CAP).0,
+        fake(false, true, (5, 8), CAP).0,
+    ];
+    let mut p = replica_pipeline(segs, Some(metrics), &[])
+        .unwrap()
+        .with_prefill_micro_batches(4);
+    let tokens: Vec<i32> = (1..=10).collect();
+    p.decode(&[input(0, &tokens, false)]).unwrap();
+    mp.force_flush().unwrap();
+    let mut counts = Vec::new();
+    for rm in exp.get_finished_metrics().unwrap().iter().rev().take(1) {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let (
+                    "tetraeder.segment.duration",
+                    AggregatedMetrics::F64(MetricData::Histogram(h)),
+                ) = (m.name(), m.data())
+                {
+                    counts = h.data_points().map(|dp| dp.count()).collect();
+                }
+            }
+        }
+    }
+    assert_eq!(counts, vec![4, 4, 4], "a sample per micro-batch and segment");
+}

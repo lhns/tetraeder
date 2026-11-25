@@ -356,17 +356,25 @@ fn open(cfg: &RemoteConfig) -> Result<Child, String> {
     }
 }
 
+fn send_request(child: &Child, req: &Request, payload: &[u8]) -> Result<(), String> {
+    let bytes = encode(req, payload)?;
+    child
+        .tx
+        .send(bytes)
+        .map_err(|_| "broken pipe to the worker".to_owned())
+}
+
 fn exchange(
     child: &Child,
     req: &Request,
     payload: &[u8],
     deadline: Duration,
 ) -> Result<(Reply, Vec<u8>), String> {
-    let bytes = encode(req, payload)?;
-    child
-        .tx
-        .send(bytes)
-        .map_err(|_| "broken pipe to the worker".to_owned())?;
+    send_request(child, req, payload)?;
+    receive_reply(child, deadline)
+}
+
+fn receive_reply(child: &Child, deadline: Duration) -> Result<(Reply, Vec<u8>), String> {
     match child.rx.recv_timeout(deadline) {
         Ok(Ok(frame)) => Ok((parse_header(&frame)?, frame.payload)),
         Ok(Err(e)) => Err(e),
@@ -417,6 +425,8 @@ pub struct RemoteBackend {
     link: Option<LinkLatency>,
     /// The worker's own time for the last `decode` (`Reply::step_s`).
     last_step: Option<Duration>,
+    /// Steps sent by `start_step` and not yet finished, oldest first: (sent at, inputs).
+    pending: VecDeque<(Instant, usize)>,
 }
 
 /// `tetraeder.link.latency` of one link, by what the call carries.
@@ -508,6 +518,7 @@ impl RemoteBackend {
             spans: Vec::new(),
             link,
             last_step: None,
+            pending: VecDeque::new(),
         })
     }
 
@@ -518,6 +529,7 @@ impl RemoteBackend {
 
     /// Kills the worker; its sequences are gone.
     fn kill(&mut self) {
+        self.pending.clear();
         if let Some(c) = self.child.take() {
             c.kill();
         }
@@ -589,21 +601,53 @@ impl RemoteBackend {
 
     /// One call. `Ok` only for a reply without an error; a sticky error kills the worker.
     fn call(&mut self, req: &Request, payload: &[u8]) -> Result<(Reply, Vec<u8>), BackendError> {
+        let t0 = self.send_call(req, payload)?;
+        self.recv_call(req.name(), t0)
+    }
+
+    /// Sends one request without waiting; `recv_call` takes its reply. Replies come in the order
+    /// of the requests, the worker serves one at a time.
+    fn send_call(&mut self, req: &Request, payload: &[u8]) -> Result<Instant, BackendError> {
         self.ensure_running().map_err(BackendError::Failed)?;
         let child = self.child.as_ref().expect("running");
         let t0 = Instant::now();
-        let res = exchange(child, req, payload, self.cfg.deadline());
+        match send_request(child, req, payload) {
+            Ok(()) => Ok(t0),
+            Err(e) => {
+                self.record_call(req.name(), t0);
+                self.kill();
+                Err(BackendError::Failed(format!("worker {}: {e}", req.name())))
+            }
+        }
+    }
+
+    /// The call as `tetraeder.ipc` and, for a worker on a node, `tetraeder.link.latency`: one
+    /// sample per call, so one per micro-batch of a pipelined prefill.
+    fn record_call(&self, name: &'static str, t0: Instant) {
         let took = t0.elapsed().as_secs_f64();
-        self.ipc
-            .record(took, &[KeyValue::new("tetraeder.call", req.name())]);
+        self.ipc.record(took, &[KeyValue::new("tetraeder.call", name)]);
         if let Some(l) = &self.link {
             let logits = self.info.segment.is_none_or(|s| s.head);
-            l.record(req.name(), took, logits);
+            l.record(name, took, logits);
         }
+    }
+
+    /// The reply to the oldest request that `send_call` made at `t0`. `Ok` only for a reply
+    /// without an error; a sticky error kills the worker.
+    fn recv_call(
+        &mut self,
+        name: &'static str,
+        t0: Instant,
+    ) -> Result<(Reply, Vec<u8>), BackendError> {
+        let Some(child) = self.child.as_ref() else {
+            return Err(BackendError::Failed(format!("worker {name}: worker exited")));
+        };
+        let res = receive_reply(child, self.cfg.deadline());
+        self.record_call(name, t0);
         match res {
             Err(e) => {
                 self.kill();
-                Err(BackendError::Failed(format!("worker {}: {e}", req.name())))
+                Err(BackendError::Failed(format!("worker {name}: {e}")))
             }
             Ok((reply, payload)) => {
                 self.state = reply.state.clone();
@@ -758,6 +802,16 @@ impl RemoteBackend {
         inputs: &[SeqInput<'_>],
         hidden: Option<&[f32]>,
     ) -> Result<Outputs<'_>, BackendError> {
+        self.start_feed(inputs, hidden)?;
+        self.finish_feed()
+    }
+
+    /// Sends a `decode` and returns; `finish_feed` takes the reply.
+    fn start_feed(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        hidden: Option<&[f32]>,
+    ) -> Result<(), BackendError> {
         for i in inputs {
             self.check_lost(i.seq)?;
         }
@@ -791,10 +845,20 @@ impl RemoteBackend {
                 .collect(),
             trace: current_traceparent(),
         };
-        let (reply, payload) = self.call(&req, &payload)?;
+        let t0 = self.send_call(&req, &payload)?;
+        self.pending.push_back((t0, inputs.len()));
+        Ok(())
+    }
+
+    /// The reply to the oldest `start_feed`.
+    fn finish_feed(&mut self) -> Result<Outputs<'_>, BackendError> {
+        let Some((t0, n_inputs)) = self.pending.pop_front() else {
+            return Err(BackendError::Failed("no step was started".into()));
+        };
+        let (reply, payload) = self.recv_call("decode", t0)?;
         self.last_step = reply.step_s.map(Duration::from_secs_f64);
         let nv = self.out_width();
-        if reply.spans.len() != inputs.len() || nv == 0 {
+        if reply.spans.len() != n_inputs || nv == 0 {
             return Err(self.protocol_error("span count"));
         }
         let rows = payload.len() / 4 / nv;
@@ -858,6 +922,32 @@ impl SegmentBackend for RemoteBackend {
 
     fn last_step_time(&self) -> Option<Duration> {
         self.last_step
+    }
+
+    fn can_overlap(&self) -> bool {
+        true
+    }
+
+    fn start_step(
+        &mut self,
+        inputs: &[SeqInput<'_>],
+        feed: Feed<'_>,
+    ) -> Result<(), BackendError> {
+        let hidden = match feed {
+            Feed::Tokens => None,
+            Feed::Hidden(h) => Some(h),
+        };
+        self.start_feed(inputs, hidden)
+    }
+
+    fn finish_step(&mut self) -> Result<StepOut<'_>, BackendError> {
+        let head = self.info.segment.is_none_or(|s| s.head);
+        let out = self.finish_feed()?;
+        Ok(if head {
+            StepOut::Logits(out)
+        } else {
+            StepOut::Hidden(out)
+        })
     }
 }
 

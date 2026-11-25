@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::http::Request;
 use http_body_util::BodyExt;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tetraeder_engine::{ContextConfig, Engine as LlamaEngine, GenerateRequest as LlamaRequest};
 use tetraeder_engine::{Placement, Prompt};
@@ -17,7 +17,8 @@ use tetraeder_gateway::engine::{
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
 use tetraeder_model::{BackendChoice, LoadOptions};
 use tetraeder_scheduler::{
-    BatchBackend, Scheduler, SchedulerConfig, SeqInput, load_llama, load_moe,
+    BackendError, BatchBackend, Outputs, Scheduler, SchedulerConfig, SeqId, SeqInput, load_llama,
+    load_moe,
 };
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
@@ -949,8 +950,100 @@ fn moe_backend_reuses_its_logits_buffer() {
 
 // ---- continuous batching (ADR 0065) ----
 
+/// A backend that holds its first `decode` until the test opens the gate, so every request is
+/// queued before the first step and a later step must hold more than one sequence, whatever
+/// the machine's timing.
+struct Gated {
+    inner: Box<dyn BatchBackend>,
+    gate: Arc<(Mutex<bool>, Condvar)>,
+    waited: bool,
+}
+
+impl BatchBackend for Gated {
+    fn n_vocab(&self) -> usize {
+        self.inner.n_vocab()
+    }
+    fn n_seq_max(&self) -> usize {
+        self.inner.n_seq_max()
+    }
+    fn n_ctx_seq(&self) -> usize {
+        self.inner.n_ctx_seq()
+    }
+    fn kv_capacity(&self) -> usize {
+        self.inner.kv_capacity()
+    }
+    fn kv_free(&self) -> usize {
+        self.inner.kv_free()
+    }
+    fn seq_len(&self, seq: SeqId) -> usize {
+        self.inner.seq_len(seq)
+    }
+    fn seq_reserved(&self, seq: SeqId) -> usize {
+        self.inner.seq_reserved(seq)
+    }
+    fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
+        self.inner.seq_reserve(seq, n)
+    }
+    fn seq_rm(&mut self, seq: SeqId, keep: usize) -> Result<(), BackendError> {
+        self.inner.seq_rm(seq, keep)
+    }
+    fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<(), BackendError> {
+        self.inner.seq_cp(src, dst, n)
+    }
+    fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
+        if !self.waited {
+            self.waited = true;
+            let (open, cv) = &*self.gate;
+            let mut open = open.lock().unwrap();
+            let t = std::time::Instant::now();
+            while !*open && t.elapsed() < Duration::from_secs(30) {
+                open = cv.wait_timeout(open, Duration::from_millis(50)).unwrap().0;
+            }
+        }
+        self.inner.decode(inputs)
+    }
+    fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
+        self.inner.seq_snapshot(seq)
+    }
+    fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
+        self.inner.seq_restore(seq, bytes, n)
+    }
+    fn seq_lost(&self, seq: SeqId) -> bool {
+        self.inner.seq_lost(seq)
+    }
+    fn can_cut_suffix(&self) -> bool {
+        self.inner.can_cut_suffix()
+    }
+    fn kv_format(&self) -> String {
+        self.inner.kv_format()
+    }
+    fn can_shift(&self) -> bool {
+        self.inner.can_shift()
+    }
+    fn seq_shift(&mut self, seq: SeqId, keep: usize, discard: usize) -> Result<(), BackendError> {
+        self.inner.seq_shift(seq, keep, discard)
+    }
+    fn on_gpu(&self) -> bool {
+        self.inner.on_gpu()
+    }
+    fn bytes_streamed_total(&self) -> Option<u64> {
+        self.inner.bytes_streamed_total()
+    }
+    fn counters(&self) -> Vec<(&'static str, f64)> {
+        self.inner.counters()
+    }
+    fn kv_row_bytes(&self) -> usize {
+        self.inner.kv_row_bytes()
+    }
+    fn max_step_tokens(&self) -> usize {
+        self.inner.max_step_tokens()
+    }
+}
+
 /// Four requests at once on a libllama context with four sequences: all finish with the tokens
-/// of a solo run, and `tetraeder.scheduler.batch.size` records a step with more than one.
+/// of a solo run, and `tetraeder.scheduler.batch.size` records a step with more than one. The
+/// backend holds its first step until all four are queued (it used to depend on the scheduler
+/// thread being slower than the test thread).
 #[test]
 fn four_concurrent_requests_finish_and_share_steps() {
     use opentelemetry::metrics::MeterProvider as _;
@@ -967,12 +1060,20 @@ fn four_concurrent_requests_finish_and_share_steps() {
     let mut cfg = SchedulerConfig::new(p);
     cfg.metrics = Some(metrics);
     cfg.parallel = 4;
+    let gate: Arc<(Mutex<bool>, Condvar)> = Arc::default();
+    let held = Arc::clone(&gate);
     let s = Scheduler::start(cfg, move || {
         let cc = ContextConfig {
             n_seq_max: 4,
             ..ctx_cfg()
         };
-        load_llama(&path, &Placement::cpu(), &cc, None)
+        let mut loaded = load_llama(&path, &Placement::cpu(), &cc, None)?;
+        loaded.backend = Box::new(Gated {
+            inner: loaded.backend,
+            gate: held,
+            waited: false,
+        });
+        Ok(loaded)
     })
     .expect("llama scheduler with four sequences");
     let texts = [
@@ -986,6 +1087,9 @@ fn four_concurrent_requests_finish_and_share_steps() {
         .iter()
         .map(|p| start(&s, p, greedy(24), None, CancellationToken::new()))
         .collect();
+    // All four are queued: the first step may run, and the next ones hold the others.
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
     let got: Vec<Out> = rxs.into_iter().map(drain).collect();
     let solo = llama_sched();
     for (p, g) in prompts.iter().zip(&got) {
