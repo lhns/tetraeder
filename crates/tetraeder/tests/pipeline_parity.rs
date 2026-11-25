@@ -805,7 +805,7 @@ fn cpu_a_pipelined_prefill_overlaps_the_segments_on_a_slow_link() {
     let n = 64;
     let toks = prompt(n);
     let hidden_bytes = (n * pipe.segments()[0].n_embd * 4) as f64;
-    let link_s = 0.3;
+    let link_s = 0.6;
     let slow = LinkFault::Slow {
         alpha: Duration::ZERO,
         bytes_per_s: hidden_bytes / link_s,

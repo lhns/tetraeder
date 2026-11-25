@@ -287,24 +287,20 @@ impl PipelineBackend {
             }
             // Take the reply of a started step that has come in, the segment furthest along
             // first; never block on one segment while another one's reply may be waiting.
-            let mut ready = (0..n_seg)
+            let ready = (0..n_seg)
                 .rev()
                 .find(|&s| !flight[s].is_empty() && self.segs[s].reply_ready(Duration::ZERO));
-            if ready.is_none() {
-                // Nothing has come in: wait a moment on the segment of the oldest micro-batch.
-                let Some(s) = (0..n_seg)
-                    .filter(|&s| !flight[s].is_empty())
-                    .min_by_key(|&s| (flight[s][0].0, std::cmp::Reverse(s)))
-                else {
+            let Some(s) = ready else {
+                if flight.iter().all(VecDeque::is_empty) {
                     return Err(BackendError::Failed(
                         "the pipelined prefill stalled with nothing in flight".into(),
                     ));
-                };
-                if self.segs[s].reply_ready(Duration::from_millis(1)) {
-                    ready = Some(s);
                 }
-            }
-            let Some(s) = ready else { continue };
+                // Nothing has come in: look again shortly. A timed wait on a channel rounds up
+                // to the timer tick on Windows (15 ms), a sleep does not.
+                std::thread::sleep(Duration::from_micros(100));
+                continue;
+            };
             let Some((k, t)) = flight[s].pop_front() else {
                 continue;
             };
