@@ -3943,20 +3943,24 @@ nodes:
   title: Rerun the segment confirmation
   track: bench
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/segment-confirm-20261125b/README.md
+  - bench/results/segment-confirm-20261125b/verdict.json
+  - bench/results/segment-confirm-20261125b/predictions/FROZEN.sha256
+  verdict_quote: 'pass: e_pp -0.016, e_tg -0.019 against 0.15'
+  headline: 'pass, e_pp -0.016, e_tg -0.019 on three clean rounds; gate held, A/A +0.007 and -0.002, fit band 0.050'
   depends_on:
   - bench-235b-segment-confirm
   replaced_by: []
-  lane: box-later
-  start: ''
-  end: ''
+  lane: box
+  start: 2026-11-25
+  end: 2026-11-25
   folded: []
   overview: false
-  plain: Rerun of the one-segment confirmation on a one-NUMA-node 3090 host with real-hidden anchors, gates as code and an early A/A abort
+  plain: 'Rerun of the one-segment confirmation on a one-NUMA-node host (EPYC 7542, RTX A6000 planned against 24 GiB) with real-hidden anchors and the gates as code. The prediction (pp 445.08, tg 17.426 tok/s, fit band 0.050) was frozen and pushed before the judged rounds; the median of the three clean rounds is pp 452.46 and tg 17.761, within 2%, the routing gate held and the A/A (early and last) are inside 0.08. Two of the first three rounds were unclean (co-tenant over the limit), so two more rounds were run on the same frozen prediction; the five-round median agrees (e_pp -0.013, e_tg +0.008).'
+  notes: 'Branch bench-235b-segment-confirm-2, box 62436569 (host 79766), 49 min, 0.94 USD of credit for both boxes (first box destroyed after 11 min: 80 GB default disk). Round 4 alone is +0.178 on pp (clean). The exit still waits for the review node and cost model 6 rest. Open for the rehearsal - taxameter fetch skips toml and sha256 files, destroy needs a DONE file in the results dir, sc_offers.sh does not set the 230 GB disk (.vast/config.json), the traffic part of the 0.90 USD/h cap is priced over 3 h (real all-in over this 0.83 h box was 1.1 USD/h).'
 - id: bench-magnitude-q36
   title: Magnitude against llama-server on Qwen3.6
   track: bench
