@@ -14,7 +14,16 @@ use tetraeder_planner::{
 use tetraeder_profiler::HardwareGraph;
 use v6_common::{layout_of, session};
 
-const LAN: &str = include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_lan.toml");
+/// The committed cluster fixtures (AGENTS rule 4): healthy and faulty.
+const FIXTURES: [&str; 7] = [
+    include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_lan.toml"),
+    include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_wan.toml"),
+    include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_samehost.toml"),
+    include_str!("../../costmodel/fixtures/cluster/cluster_three_mixed.toml"),
+    include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_lan_slowlink.toml"),
+    include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_wan_slowlink.toml"),
+    include_str!("../../costmodel/fixtures/cluster/cluster_two_3090_lan_degraded.toml"),
+];
 const W: Workload = Workload {
     prompt: 2048,
     r#gen: 128,
@@ -25,8 +34,13 @@ fn budget(capacity: u64) -> u64 {
     capacity / 100 * 99
 }
 
+/// The RAM and VRAM of one node of `g` (`None`: the devices of every node).
 fn with_capacity(g: &mut HardwareGraph, node: Option<&str>, gpu: u64, ram: u64) {
-    for d in g.devices.iter_mut().filter(|d| d.node.as_deref() == node) {
+    for d in g
+        .devices
+        .iter_mut()
+        .filter(|d| node.is_none() || d.node.as_deref() == node)
+    {
         if d.id.ends_with("gpu0") {
             d.capacity_bytes = gpu;
         } else if d.id.ends_with("cpu0") {
@@ -43,15 +57,20 @@ proptest! {
     /// graph's budget, pinned or not.
     #[test]
     fn a_single_node_pick_never_exceeds_the_measured_budget(
+        fixture in 0..FIXTURES.len(),
         ram_gb in 24u64..=96,
         gpu_gb in 12u64..=48,
         pin in prop::option::of((0u32..=32, 0u32..=128)),
     ) {
         let layout = fixtures::moe_235b();
-        let mut g = HardwareGraph::from_toml(LAN).unwrap().node_graph(Some("a"));
+        let hw = HardwareGraph::from_toml(FIXTURES[fixture]).unwrap();
+        let mut g = hw.node_graph(hw.nodes()[0]);
         let (gpu, ram) = (gpu_gb * 1_000_000_000, ram_gb * 1_000_000_000);
         with_capacity(&mut g, None, gpu, ram);
-        let (runs, _) = single_node_runs(&g, &layout, &W, pin, None).unwrap();
+        // a node without a GPU or the builder disk has no builder placement to check
+        let Ok((runs, _)) = single_node_runs(&g, &layout, &W, pin, None) else {
+            return Ok(());
+        };
         for r in &runs {
             let f = footprint(
                 &layout,
@@ -73,15 +92,23 @@ proptest! {
     /// of its own node.
     #[test]
     fn a_cluster_plan_never_exceeds_the_budget_of_a_node(
+        fixture in 0..FIXTURES.len(),
         ram_a in 40u64..=96,
         ram_b in 40u64..=96,
         gpu_gb in 20u64..=48,
     ) {
         let layout = fixtures::moe_235b();
-        let mut hw = HardwareGraph::from_toml(LAN).unwrap();
+        let mut hw = HardwareGraph::from_toml(FIXTURES[fixture]).unwrap();
         let gpu = gpu_gb * 1_000_000_000;
-        with_capacity(&mut hw, Some("a"), gpu, ram_a * 1_000_000_000);
-        with_capacity(&mut hw, Some("b"), gpu, ram_b * 1_000_000_000);
+        let nodes: Vec<String> = hw.nodes().into_iter().flatten().map(str::to_string).collect();
+        let rams: Vec<u64> = nodes
+            .iter()
+            .enumerate()
+            .map(|(i, _)| if i == 0 { ram_a } else { ram_b } * 1_000_000_000)
+            .collect();
+        for (n, ram) in nodes.iter().zip(&rams) {
+            with_capacity(&mut hw, Some(n), gpu, *ram);
+        }
         let (cands, _) = enumerate_cluster(&hw, &layout, &Hints::default(), Phase(6));
         for c in &cands {
             let ub = c.plan.knobs.ubatch.unwrap();
@@ -92,7 +119,7 @@ proptest! {
                 let (Some(vram_slots), Some(ram_slots)) = (slots("gpu0"), slots("cpu0")) else { continue };
                 let sub = segment_layout(&layout, seg.layers, seg.embed, seg.head);
                 let f = footprint(&sub, Placement::Builder { vram_slots, ram_slots }, ub, &W, KvFormat::default());
-                let ram = if node == "a" { ram_a } else { ram_b } * 1_000_000_000;
+                let ram = rams[nodes.iter().position(|n| n == node).unwrap()];
                 prop_assert!(f.host <= budget(ram), "{} on {node}: {} of {}", c.id, f.host, budget(ram));
                 prop_assert!(f.gpu <= budget(gpu), "{} on {node}: {} of {}", c.id, f.gpu, budget(gpu));
             }

@@ -34,8 +34,10 @@ fn replay_of(layout: &ModelLayout, span: Span, v: u32, r: u32) -> Replay {
             prefill_tokens: 2048,
             layers: Some((span.0, span.1)),
             warm: 1,
+            prompt_hash: "909eb7a3c358d2a8".into(),
         },
         outcomes: vec![tier_of(layout, span, v, r)],
+        judged_prompt: Some("909eb7a3c358d2a8".into()),
     }
 }
 
@@ -109,14 +111,8 @@ fn the_whole_model_prices_as_node_predict() {
     for pick in all.iter().take(6) {
         let (v, r) = (pick.vram_slots, pick.ram_slots);
         let replay = replay_of(&layout, Span(0, n), v, r);
-        let (runs, _) = single_node_runs_replay(
-            &node,
-            &layout,
-            &W,
-            Some((v, r)),
-            Some(&replay),
-        )
-        .unwrap();
+        let (runs, _) =
+            single_node_runs_replay(&node, &layout, &W, Some((v, r)), Some(&replay)).unwrap();
         let want = runs.iter().find(|x| x.ubatch == pick.ubatch).unwrap();
         let (got, fitted) = segment_predict(
             &node,

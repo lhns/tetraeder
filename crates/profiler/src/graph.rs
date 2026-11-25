@@ -718,12 +718,12 @@ impl HardwareGraph {
 
     /// Structural check: unique ids, link endpoints and lane groups exist.
     pub fn validate(&self) -> Result<(), String> {
-        self.check_node_names()?;
         for (i, d) in self.devices.iter().enumerate() {
             if self.devices[..i].iter().any(|o| o.id == d.id) {
                 return Err(format!("duplicate device id {}", d.id));
             }
         }
+        self.check_node_names()?;
         for l in &self.links {
             for end in [&l.a, &l.b] {
                 if self.device(end).is_none() {
@@ -967,7 +967,8 @@ mod tests {
     #[test]
     fn node_names_are_one_path_segment_and_not_repeated() {
         let one = HardwareGraph::from_toml(FIXTURE).unwrap();
-        let named = |n: &str| HardwareGraph::merge_cluster(&[(n.into(), one.clone())], vec![], vec![]);
+        let named =
+            |n: &str| HardwareGraph::merge_cluster(&[(n.into(), one.clone())], vec![], vec![]);
         assert!(named("a").check_node_names().is_ok());
         for bad in ["", ".", "..", "a/b", "a\\b", "/"] {
             let g = named(bad);

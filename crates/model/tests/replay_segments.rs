@@ -72,7 +72,10 @@ fn engine_layers(
         .skip(span.start)
         .take(span.len())
         .map(|(la, lb)| {
-            let (f, p) = (lb.full_steps - la.full_steps, lb.partial_steps - la.partial_steps);
+            let (f, p) = (
+                lb.full_steps - la.full_steps,
+                lb.partial_steps - la.partial_steps,
+            );
             let (ra, rb) = (la.ram.unwrap(), lb.ram.unwrap());
             let (rh, rm) = (rb.hits - ra.hits, rb.misses - ra.misses);
             let (h, c) = (lb.compute.hits - la.compute.hits, lb.cpu - la.cpu);
@@ -125,14 +128,18 @@ fn cpu_replay_of_a_span_matches_the_segment_run_per_layer() {
         let nv = segs[1].n_vocab();
         let out = step(&mut segs, &prompt, true);
         {
-            let [a, b] = &mut segs[..] else { unreachable!() };
+            let [a, b] = &mut segs[..] else {
+                unreachable!()
+            };
             rec.drain_chain(&mut [a, b]);
         }
         let before = segs[1].expert_stats().unwrap();
         let mut next = argmax(&out[out.len() - nv..]) as i32;
         for _ in 0..N_DECODE {
             let out = step(&mut segs, &[next], false);
-            let [a, b] = &mut segs[..] else { unreachable!() };
+            let [a, b] = &mut segs[..] else {
+                unreachable!()
+            };
             rec.drain_chain(&mut [a, b]);
             next = argmax(&out) as i32;
         }

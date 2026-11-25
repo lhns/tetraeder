@@ -422,6 +422,8 @@ pub struct ReplayMeta {
     pub layers: Option<(u32, u32)>,
     /// Warm requests replayed before the counted one (`scope.warm`).
     pub warm: u32,
+    /// Hash of the prompt the trace recorded (`trace.header.prompt_hash`).
+    pub prompt_hash: String,
 }
 
 /// A replay file: its header and outcomes.
@@ -429,6 +431,9 @@ pub struct ReplayMeta {
 pub struct Replay {
     pub meta: ReplayMeta,
     pub outcomes: Vec<TierOutcome>,
+    /// Hash of the prompt the prediction is for. The replay's prefill describes that prompt only
+    /// when the trace header names the same hash; without one the prefill is never taken.
+    pub judged_prompt: Option<String>,
 }
 
 impl Replay {
@@ -459,8 +464,22 @@ impl Replay {
             prefill_tokens: v["outcomes"][0]["prefill"]["tokens"].as_u64().unwrap_or(0),
             layers,
             warm: small(&v["scope"]["warm"]).unwrap_or(0),
+            prompt_hash: v["trace"]["header"]["prompt_hash"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         };
-        Ok(Replay { meta, outcomes })
+        Ok(Replay {
+            meta,
+            outcomes,
+            judged_prompt: None,
+        })
+    }
+
+    /// The same replay, for the prompt with this hash (`None`: unknown).
+    pub fn for_prompt(mut self, hash: Option<&str>) -> Self {
+        self.judged_prompt = hash.map(str::to_string);
+        self
     }
 
     /// The outcome of a slot pair under the engine's policy (`lru`, prefetch on).
@@ -473,13 +492,16 @@ impl Replay {
         })
     }
 
-    /// The replay's prefill describes a run of `prompt` tokens in ubatches of `ubatch` only when
-    /// the trace header says it recorded that: a 2048-token ubatch routes nearly every expert, a
-    /// 512-token one does not, and a 32K prefill reads other bytes per token than a 2048 one.
+    /// The replay's prefill describes the judged run only when the trace header names the judged
+    /// prompt hash, its length and ubatch (ADR 0092 section 1): a 2048-token ubatch routes nearly
+    /// every expert, a 512-token one does not, and a 32K prefill reads other bytes per token than
+    /// a 2048 one. Replay version 1 has no prefill rows worth taking.
     pub fn prefill_matches(&self, ubatch: u32, prompt: u32) -> bool {
         self.meta.replay_version >= 2
             && self.meta.trace_ubatch == ubatch
             && self.meta.prefill_tokens == u64::from(prompt)
+            && !self.meta.prompt_hash.is_empty()
+            && self.judged_prompt.as_deref() == Some(self.meta.prompt_hash.as_str())
     }
 
     /// The tier a prediction prices: decode (with its per-layer rows) from the replay `o`,
@@ -1497,48 +1519,12 @@ mod tests {
         assert_eq!(builder_run(&[]), BuilderRun::default());
     }
 
-    /// ADR 0092: an anchor whose exit JSON carries `vram_pair_share` is priced at the routing it
-    /// measured, which for the synthetic box is the routing of `truth_outcome`: the same
-    /// features, so a fit on those anchors finds the graph the times came from.
+    /// ADR 0092: a file from before the pair share was recorded keeps the hit model. (The anchor
+    /// that carries it is priced at the routing it measured: see
+    /// `anchor_times_from_a_known_graph_are_fitted_back_through_the_scorer`.)
     // hardware: none
     #[test]
-    fn a_run_that_measured_its_routing_prices_as_the_replay_of_that_routing() {
-        let l = fixtures::moe();
-        let truth = truth_outcome(&l, 32, 60);
-        let tokens = 128.0;
-        let run = serde_json::json!({"runs": [{
-            "decode_tokens": 128,
-            "decode_layers": {
-                "vram_pair_share": truth.decode.vram_share,
-                "full_hit_rate_mean": truth.decode.full_hit(),
-                "ram_hit_rate_mean": truth.decode.ram_hit_rate_engine_mean,
-            },
-            "decode_io": {"bytes_per_token": truth.decode.disk_bytes_per_token},
-            "decode_prefetch": {"bytes": truth.decode.prefetch_bytes_per_token * tokens},
-            "prefill_io": {"bytes_per_token": truth.prefill.disk_bytes_per_token},
-        }]});
-        let measured = builder_run(&[run]).measured_outcome(32, 60).unwrap();
-        let hw = HardwareGraph::from_toml(RTX3090_PRIOR).unwrap();
-        let tg = |o: &TierOutcome| {
-            let f = builder_features_tier(
-                &l,
-                32,
-                o,
-                (12, 256, true),
-                ReadPath::Reader,
-                (16, 16),
-                BUILDER_DISK,
-            )
-            .unwrap();
-            let p = predict(&hw, &f, 512, 64).unwrap();
-            (p.tg_tok_s, p.pp_tok_s)
-        };
-        let (a, b) = (tg(&measured), tg(&truth));
-        assert!(
-            (a.0 - b.0).abs() <= 1e-9 * b.0 && (a.1 - b.1).abs() <= 1e-9 * b.1,
-            "{a:?} {b:?}"
-        );
-        // a file from before the pair share was recorded keeps the hit model
+    fn a_run_without_a_pair_share_has_no_measured_routing() {
         let old = serde_json::json!({"runs": [{"decode_layers": {"full_hit_rate_mean": 0.5}}]});
         assert!(builder_run(&[old]).measured_outcome(32, 60).is_none());
     }
@@ -1551,7 +1537,10 @@ mod tests {
         std::fs::create_dir_all(dir).unwrap();
         let put = |name: &str, text: String| std::fs::write(dir.join(name), text).unwrap();
         put("layout.json", serde_json::to_string_pretty(&l).unwrap());
-        put("candidates.json", serde_json::to_string_pretty(&file).unwrap());
+        put(
+            "candidates.json",
+            serde_json::to_string_pretty(&file).unwrap(),
+        );
         let tokens = 128.0;
         let variants = file
             .anchors
@@ -1638,7 +1627,11 @@ mod tests {
         let dir = root.join("same");
         write_measured_builder(&dir, &prior);
         let s = score_dir(&dir).unwrap();
-        assert!(s.tier_source.contains("anchors measured"), "{}", s.tier_source);
+        assert!(
+            s.tier_source.contains("anchors measured"),
+            "{}",
+            s.tier_source
+        );
         assert!(!s.anchor_residuals.is_empty());
         for (id, r) in &s.anchor_residuals {
             assert!(r.abs() < 1e-6, "{id}: {r}");
@@ -1658,7 +1651,11 @@ mod tests {
             .as_mut()
             .unwrap()
             .flops_per_s *= 1.25;
-        for k in truth.links.iter_mut().filter(|k| k.a == "gpu0" || k.b == "gpu0") {
+        for k in truth
+            .links
+            .iter_mut()
+            .filter(|k| k.a == "gpu0" || k.b == "gpu0")
+        {
             k.beta_bytes_per_s.value *= 0.8;
         }
         let dir = root.join("moved");
@@ -1668,11 +1665,31 @@ mod tests {
             assert!(r.abs() < 0.01, "{id}: {r}");
         }
         let (t, p, f) = (rate(&truth), rate(&prior), rate(&s.calibrated));
-        let off = |a: f64, b: f64| (a / b).ln().abs();
-        assert!(
-            off(f.0, t.0) < off(p.0, t.0) || off(f.2, t.2) < off(p.2, t.2),
-            "the fit moved away from the truth: prior {p:?}, truth {t:?}, fit {f:?}"
+        eprintln!(
+            "fit-back: fit/truth gpu flops {:.6}, gpu bandwidth {:.6}, link {:.6}; prior/truth {:.4}, {:.4}, {:.4}",
+            f.0 / t.0,
+            f.1 / t.1,
+            f.2 / t.2,
+            p.0 / t.0,
+            p.1 / t.1,
+            p.2 / t.2
         );
+        let off = |a: f64, b: f64| (a / b).ln().abs();
+        // measured 2026-11-25: fit/truth 0.9635 (GPU flops, prior 0.80), 0.9904 (GPU bandwidth,
+        // prior 1.00), 1.0028 (link, prior 1.25): the prior pull (LAMBDA 1e-3) leaves a few percent
+        for (name, fit, want, start) in [
+            ("gpu flops", f.0, t.0, p.0),
+            ("gpu bandwidth", f.1, t.1, p.1),
+            ("link", f.2, t.2, p.2),
+        ] {
+            assert!(off(fit, want) < 0.05, "{name}: fit {fit} truth {want}");
+            if off(start, want) > 0.1 {
+                assert!(
+                    off(fit, want) < off(start, want) / 4.0,
+                    "{name} did not move"
+                );
+            }
+        }
         std::fs::remove_dir_all(&root).ok();
     }
 

@@ -825,7 +825,10 @@ impl<'a> Checker<'a> {
 
     /// A device of some node (ADR 0091) named by a rule or a buffer of `st`.
     fn names_node_device(&self, st: &Stage) -> bool {
-        let rules = st.assign.iter().flat_map(|a| a.home.iter().chain(&a.compute).flatten());
+        let rules = st
+            .assign
+            .iter()
+            .flat_map(|a| a.home.iter().chain(&a.compute).flatten());
         let buffers = (st.kv.iter().flatten().map(|b| &b.device))
             .chain(st.workspace.iter().map(|b| &b.device))
             .chain(st.expert_cache.iter().map(|c| &c.device))

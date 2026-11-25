@@ -544,7 +544,14 @@ pub fn cluster_features_routed(
             let found = replays.iter().position(|r| r.span == s.layers);
             let mut tier = None;
             let (mut source, mut prefill, mut hash) = (RoutingSource::Uniform, "uniform", None);
-            if let (Some(i), Placement::Builder { vram_slots, ram_slots }) = (found, placement) {
+            if let (
+                Some(i),
+                Placement::Builder {
+                    vram_slots,
+                    ram_slots,
+                },
+            ) = (found, placement)
+            {
                 used[i] = true;
                 let r = &replays[i].replay;
                 if r.meta.layers.is_some_and(|l| l != span) {
@@ -638,12 +645,12 @@ pub fn predict_cluster_routed(
 ) -> Result<RoutedPrediction, String> {
     let (f, segments) = cluster_features_routed(hw, layout, plan, w, replays)?;
     let prediction = predict_cluster(hw, &f, w.prompt, w.r#gen).map_err(|e| e.to_string())?;
-    let routing = if !segments.is_empty() && segments.iter().all(|s| s.routing == RoutingSource::Trace)
-    {
-        RoutingSource::Trace
-    } else {
-        RoutingSource::Uniform
-    };
+    let routing =
+        if !segments.is_empty() && segments.iter().all(|s| s.routing == RoutingSource::Trace) {
+            RoutingSource::Trace
+        } else {
+            RoutingSource::Uniform
+        };
     Ok(RoutedPrediction {
         prediction,
         routing,
@@ -1066,8 +1073,10 @@ pub fn single_node_runs(
             prefill_tokens: 0,
             layers: None,
             warm: 0,
+            prompt_hash: String::new(),
         },
         outcomes: o.to_vec(),
+        judged_prompt: None,
     });
     single_node_runs_replay(hw, layout, w, pin, bare.as_ref())
 }
