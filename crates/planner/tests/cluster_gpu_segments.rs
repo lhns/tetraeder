@@ -8,7 +8,8 @@
 //! none in RAM. Run on the rehearsal's own hardware graph and layout, and as a property over
 //! the cluster fixtures and cuts.
 //!
-//! Hardware label: none (the graph and layout are the rehearsal's recorded ones).
+//! Hardware label: none (the graph and layout are copies of the rehearsal's `a/hw.json` and `a/layout.json`,
+//! kept in `fixtures/phase6-rehearsal` because boxes do not get `bench/results`).
 
 use proptest::prelude::*;
 use tetraeder_costmodel::cluster::predict_cluster;
@@ -20,8 +21,8 @@ use tetraeder_planner::{
 };
 use tetraeder_profiler::HardwareGraph;
 
-const HW: &str = include_str!("../../../bench/results/phase6-rehearsal-20261125/a/hw.json");
-const LAYOUT: &str = include_str!("../../../bench/results/phase6-rehearsal-20261125/a/layout.json");
+const HW: &str = include_str!("../fixtures/phase6-rehearsal/hw.json");
+const LAYOUT: &str = include_str!("../fixtures/phase6-rehearsal/layout.json");
 const W: Workload = Workload {
     prompt: 2048,
     r#gen: 128,
