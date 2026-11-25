@@ -2650,20 +2650,23 @@ nodes:
   title: Review the cluster serving code
   track: ops
   kind: refactor
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/transport/tests/flood.rs
+  - crates/control/tests/serving_review.rs
+  verdict_quote: 'test cpu_a_fetched_prefix_decodes_like_a_recomputed_one ... ok; 846 passed, 2 skipped, 6 xfailed (CI run 45528294401)'
+  headline: '7 of 9 fixed, 2 partly'
   depends_on:
   - cluster-integration
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-25
+  end: 2026-11-25
   folded: []
   overview: false
-  plain: A read-only security and correctness review of Phase 6 steps 3 to 5 and cluster-integration (Replica and Prefix purposes, the loopback prefix port, requests and grammars deserialized from peers, the head's HTTP exposure), with its fixes, before any box opens a TLS port.
+  plain: A read-only review of Phase 6 steps 3 to 5 and cluster-integration found 9 issues; 7 are fixed (per-IP handshake cap and TLS deadline, leader-only segment use, single-use prefix grants, request frame caps, snapshot checks, tokened prefix relay, bounded outbox, key required for a public cluster head) and 2 partly (snapshots served whole, no per-peer rate limit beyond grants; probe frames stay at 64 MiB for the link probe).
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster

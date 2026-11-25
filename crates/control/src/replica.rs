@@ -12,7 +12,7 @@
 //! connection cancels what that connection started (a zombie request after a partition heals
 //! would otherwise run to its end for nobody).
 
-use crate::kv::{PrefixKey, PrefixStore, fetch_prefix};
+use crate::kv::{PrefixGrants, PrefixKey, PrefixStore, fetch_prefix};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -40,6 +40,10 @@ const EVENT_BUFFER: usize = 1024;
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the replica's first answer (`Info`) may take.
 const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
+/// Requests one connection may have running at once, as a multiple of the engine's `cap` (the
+/// router keeps to `cap`; some queue inside the engine) and at least this many.
+const RUNNING_PER_CAP: usize = 4;
+const RUNNING_MIN: usize = 64;
 
 /// The constraint of a request as its source (compiled on the leader).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,6 +92,12 @@ pub enum ReplicaRequest {
     },
     Cancel {
         id: u64,
+    },
+    /// The head announces that `peer` may fetch `key` from this replica once. Nothing else is
+    /// served on the `Prefix` purpose.
+    Offer {
+        peer: NodeId,
+        key: PrefixKey,
     },
     /// One step of the engine; answered with `Probed`. A replica joins the router after it.
     Probe,
@@ -141,6 +151,9 @@ pub struct KvHooks {
     pub store: Arc<dyn PrefixStore>,
     pub transport: Arc<dyn Transport>,
     pub peers: PeerLookup,
+    /// What other nodes may fetch from `store`: filled by the head's `Offer`s, read by the
+    /// prefix server (`kv::serve_prefix_io`).
+    pub grants: Arc<PrefixGrants>,
 }
 
 /// The replica side: serves one engine over frames.
@@ -191,6 +204,8 @@ impl ReplicaServer {
         let tx = Arc::new(Mutex::new(tx));
         let running: Arc<Mutex<HashMap<u64, CancellationToken>>> = Arc::default();
         let mut current = 0u64;
+        let probing = Arc::new(AtomicBool::new(false));
+        let max_running = (self.cap as usize * RUNNING_PER_CAP).max(RUNNING_MIN);
         let cancel_all = |running: &Mutex<HashMap<u64, CancellationToken>>| {
             for (_, t) in lock(running).drain() {
                 t.cancel();
@@ -230,10 +245,29 @@ impl ReplicaServer {
                         t.cancel();
                     }
                 }
+                ReplicaRequest::Offer { peer, key } => {
+                    if let Some(kv) = &self.kv {
+                        kv.grants.offer(peer, key);
+                    }
+                }
                 ReplicaRequest::Probe => {
-                    let (s, tx) = (Arc::clone(self), Arc::clone(&tx));
+                    // One probe step at a time: a peer that repeats the call does not get a
+                    // thread each.
+                    if probing.swap(true, Ordering::SeqCst) {
+                        let busy = ReplicaEvent::Probed {
+                            ok: false,
+                            msg: "a probe step is running".into(),
+                        };
+                        if !send(&tx, &busy) {
+                            break;
+                        }
+                        continue;
+                    }
+                    let (s, tx, probing) =
+                        (Arc::clone(self), Arc::clone(&tx), Arc::clone(&probing));
                     std::thread::spawn(move || {
                         let r = s.probe_step();
+                        probing.store(false, Ordering::SeqCst);
                         let _ = send(
                             &tx,
                             &ReplicaEvent::Probed {
@@ -244,6 +278,18 @@ impl ReplicaServer {
                     });
                 }
                 ReplicaRequest::Generate { id, req, fetch } => {
+                    if lock(&running).len() >= max_running {
+                        let busy = ReplicaEvent::Event {
+                            id,
+                            event: GenEvent::Error(
+                                "the replica has too many requests running".into(),
+                            ),
+                        };
+                        if !send(&tx, &busy) {
+                            break;
+                        }
+                        continue;
+                    }
                     let cancel = CancellationToken::new();
                     lock(&running).insert(id, cancel.clone());
                     let (s, tx, running) =
@@ -367,9 +413,29 @@ impl ReplicaServer {
         let Some(peer) = (kv.peers)(&f.node) else {
             return false;
         };
+        // What a snapshot of this replica looks like: a reply is checked against it before it
+        // is read and before it is installed. Without a known row size nothing can be checked.
+        let row = kv.store.row_bytes();
+        let max_tokens = kv.store.max_tokens();
+        if row == 0 || f.key.tokens.is_empty() || f.key.tokens.len() as u64 > max_tokens {
+            return false;
+        }
+        let max_reply = max_tokens
+            .min(u64::from(u32::MAX))
+            .saturating_mul(row)
+            .saturating_add(1 << 20);
         let _one = lock(&self.fetching);
-        match fetch_prefix(kv.transport.as_ref(), &peer, &f.key) {
+        match fetch_prefix(kv.transport.as_ref(), &peer, &f.key, max_reply) {
             Ok(Some((tokens, bytes))) => {
+                // The holder is another node: it must send what was asked, the size its rows
+                // make, within this replica's context.
+                let sized = (tokens.len() as u64).checked_mul(row) == Some(bytes.len() as u64);
+                if !tokens.starts_with(&f.key.tokens) || tokens.len() as u64 > max_tokens || !sized
+                {
+                    tetraeder_transport::metrics::rejected("bad_snapshot");
+                    tracing::warn!(node = %f.node, "prefix reply does not match its key; discarded");
+                    return false;
+                }
                 // Installed under the tokens the snapshot really holds.
                 kv.store.put(
                     PrefixKey {
@@ -704,6 +770,13 @@ impl RemoteEngine {
 
     pub fn is_connected(&self) -> bool {
         self.live().is_some()
+    }
+
+    /// Tells the replica's leader that `peer` may fetch `key` from it once (`Offer`); false when
+    /// the link is down.
+    pub fn offer(&self, peer: NodeId, key: PrefixKey) -> bool {
+        self.live()
+            .is_some_and(|l| l.write(&ReplicaRequest::Offer { peer, key }).is_ok())
     }
 
     /// [`Engine::generate`] with a prefix to fetch first. The second value is the request's id

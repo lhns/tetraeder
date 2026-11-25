@@ -5,14 +5,16 @@ groups:
     rules:
       # Step 1 (transport): a handshake was refused, so a peer has an unknown, unpinned or expired
       # certificate, or dials the wrong node. Reasons: untrusted, unknown_node, no_identity, wrong_peer,
-      # duplicate, bad_hello, handshake.
+      # duplicate, bad_hello, handshake, tls_timeout, limit, ip_limit, peer_limit; the control code adds
+      # not_leader, no_grant, bad_snapshot, bad_profile, bad_frame, bad_relay (a node that is not the
+      # head or the leader used a worker, a prefix, or sent an implausible frame or graph).
       - alert: TetraederTlsRejected
         expr: sum by (reason) (increase(tetraeder_cluster_tls_rejected_total[10m])) > 0
         labels:
           severity: warning
         annotations:
           summary: "A node refused a connection ({{ $labels.reason }})"
-          description: "Handshakes were refused in the last 10 minutes. untrusted or unknown_node: a peer's certificate is not pinned in cluster.toml or its id is not listed; wrong_peer: a dial reached another node; duplicate: a second connection for one purpose."
+          description: "Handshakes were refused in the last 10 minutes. untrusted or unknown_node: a peer's certificate is not pinned in cluster.toml or its id is not listed; wrong_peer: a dial reached another node; duplicate: a second connection for one purpose; ip_limit, peer_limit, limit or tls_timeout: someone opens more half-open or open connections than a node allows; not_leader, no_grant, bad_snapshot, bad_profile, bad_frame or bad_relay: a configured node (or a process on the box) sent something it may not."
 
       # Step 3 (membership): a configured node has not been up for a minute. The head's monitor
       # sets tetraeder_cluster_node_up for every node of cluster.toml (0 while joining, down or

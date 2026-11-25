@@ -45,6 +45,92 @@ fn peer_of(cfg: &ClusterConfig, id: &NodeId) -> Result<Peer, String> {
     cfg.peer(id).ok_or_else(|| format!("`{id}` is not a node"))
 }
 
+/// Most of anything a node's hardware graph may hold, and the largest size or rate it may claim
+/// (1 PiB, 1 EB/s): a graph comes from another machine, and the planner trusts its numbers.
+const MAX_ITEMS: usize = 256;
+const MAX_QUANTITY: f64 = 1.0e18;
+
+fn plausible(what: &str, v: f64) -> Result<(), String> {
+    if v.is_finite() && (0.0..=MAX_QUANTITY).contains(&v) {
+        Ok(())
+    } else {
+        Err(format!("{what} is {v}"))
+    }
+}
+
+fn plausible_m(what: &str, m: &Measurement) -> Result<(), String> {
+    plausible(what, m.value)?;
+    plausible(&format!("{what} spread"), m.spread)
+}
+
+/// Refuses a hardware graph from a node that holds NaN, negative or absurd numbers or too many
+/// items, before the planner prices anything with it. `validate` checks the structure only.
+pub fn check_profile(g: &HardwareGraph) -> Result<(), String> {
+    if g.devices.len() > MAX_ITEMS
+        || g.links.len() > MAX_ITEMS
+        || g.lane_groups.len() > MAX_ITEMS
+        || g.collectives.len() > MAX_ITEMS
+        || g.notes.len() > MAX_ITEMS
+    {
+        return Err(format!("more than {MAX_ITEMS} devices, links or curves"));
+    }
+    for d in &g.devices {
+        let id = &d.id;
+        if d.capacity_bytes as f64 > MAX_QUANTITY {
+            return Err(format!("device {id}: capacity {} bytes", d.capacity_bytes));
+        }
+        if let Some(b) = &d.bandwidth_bytes_per_s {
+            plausible_m(&format!("device {id}: bandwidth"), b)?;
+        }
+        if let Some(c) = &d.compute {
+            for (n, v) in [
+                ("flops_per_s", c.flops_per_s),
+                ("c0_graph_s", c.c0_graph_s),
+                ("c0_eager_s", c.c0_eager_s),
+                ("expert_flops_per_s", c.expert_flops_per_s.unwrap_or(0.0)),
+            ] {
+                plausible(&format!("device {id}: {n}"), v)?;
+            }
+        }
+        if let Some(v) = d.copy_bytes_per_s {
+            plausible(&format!("device {id}: copy_bytes_per_s"), v)?;
+        }
+        if d.thread_curve.len() > MAX_ITEMS || d.queue_curve.len() > MAX_ITEMS {
+            return Err(format!("device {id}: too many curve points"));
+        }
+        for t in &d.thread_curve {
+            plausible(&format!("device {id}: thread flops_per_s"), t.flops_per_s)?;
+            plausible(&format!("device {id}: thread bytes_per_s"), t.bytes_per_s)?;
+        }
+        for q in &d.queue_curve {
+            plausible(&format!("device {id}: queue bytes_per_s"), q.bytes_per_s)?;
+        }
+    }
+    for l in &g.links {
+        plausible_m(&format!("link {}: alpha_s", l.id), &l.alpha_s)?;
+        plausible_m(
+            &format!("link {}: beta_bytes_per_s", l.id),
+            &l.beta_bytes_per_s,
+        )?;
+    }
+    for lg in &g.lane_groups {
+        plausible(
+            &format!("lane group {}: capacity", lg.id),
+            lg.capacity_bytes_per_s,
+        )?;
+    }
+    for c in &g.collectives {
+        if c.points.len() > MAX_ITEMS || c.ranks.len() > MAX_ITEMS {
+            return Err("a collective curve has too many points".into());
+        }
+        for (b, t) in &c.points {
+            plausible("collective bytes", *b)?;
+            plausible("collective seconds", *t)?;
+        }
+    }
+    Ok(())
+}
+
 /// Asks every node for its hardware graph; the result is the merged graph (ids `<node>/<id>`,
 /// `node` set), with the links and curves of `probe` when given.
 pub fn profile_cluster(
@@ -63,6 +149,10 @@ pub fn profile_cluster(
         let g = HardwareGraph::from_json(&text)
             .map_err(|e| format!("node `{}`: bad hardware graph: {e}", n.id))?;
         g.validate().map_err(|e| format!("node `{}`: {e}", n.id))?;
+        if let Err(e) = check_profile(&g) {
+            tetraeder_transport::metrics::rejected("bad_profile");
+            return Err(format!("node `{}`: implausible hardware graph: {e}", n.id));
+        }
         if g.device("cpu0").is_none() {
             return Err(format!("node `{}` reports no cpu0 device", n.id));
         }

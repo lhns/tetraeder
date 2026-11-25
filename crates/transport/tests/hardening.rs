@@ -186,13 +186,13 @@ fn handshakes_in_flight_are_capped_and_the_listener_recovers() {
     let trust = anchors(&[&ga, &gb]);
     let a = Arc::new(node(&ga, &trust, &["a", "b"]));
     let b = node(&gb, &trust, &["a", "b"]);
-    let before = rejected_total("limit");
-    // 100 sockets that never speak: they hold handshake slots until they close.
+    let before = rejected_total("ip_limit");
+    // 100 sockets of one source that never speak: they hold its handshake slots until they close.
     let silent: Vec<_> = (0..100)
         .map(|_| std::net::TcpStream::connect(a.local_addr().unwrap()).unwrap())
         .collect();
     let t0 = std::time::Instant::now();
-    while rejected_total("limit") == before {
+    while rejected_total("ip_limit") == before {
         assert!(
             t0.elapsed() < Duration::from_secs(10),
             "no connection was dropped"

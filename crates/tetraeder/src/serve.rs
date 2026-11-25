@@ -565,6 +565,7 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         a.cluster.is_none() || a.plan.is_none(),
         "--plan is the single-node plan; a cluster's plan is --cluster-plan"
     );
+    check_cluster_exposure(a.cluster.is_some(), &a.host, &a.api_keys()?)?;
     // A plan file the executor runs (see [`exec_plan`]) is served as written; every other
     // `--plan` is the replanner's.
     let planned = match &a.plan {
@@ -1046,6 +1047,27 @@ impl LoadArgs {
     }
 }
 
+/// Whether `host` (a `--host` value) only accepts connections from this machine.
+fn is_loopback_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
+/// A head that serves a cluster (`--cluster`) hands the client's prompts to the cluster's
+/// nodes: reachable from the network without API keys, anyone could use the whole cluster.
+/// Refused unless the listener is loopback or keys are set.
+fn check_cluster_exposure(cluster: bool, host: &str, keys: &[String]) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !cluster || !keys.is_empty() || is_loopback_host(host),
+        "--cluster serves the whole cluster to whoever reaches {host}: set --api-key or \
+         --api-key-file, or listen on a loopback address (--host 127.0.0.1)"
+    );
+    Ok(())
+}
+
 /// The keys of `--api-key` (comma separated) and `--api-key-file` (one per line, `#` comments),
 /// as llama-server reads them.
 /// Lines are trimmed and blank ones dropped. A key option that yields no key is an error: an
@@ -1256,6 +1278,22 @@ mod tests {
         let mut args = vec!["x", "-m", "m.gguf"];
         args.extend(extra);
         P::parse_from(args).serve
+    }
+
+    // hardware: none
+    #[test]
+    fn a_cluster_head_off_loopback_needs_api_keys() {
+        let keys = vec!["k".to_owned()];
+        // Without --cluster nothing changes.
+        check_cluster_exposure(false, "0.0.0.0", &[]).unwrap();
+        for host in ["127.0.0.1", "::1", "[::1]", "localhost", "127.0.0.7"] {
+            check_cluster_exposure(true, host, &[]).unwrap();
+        }
+        for host in ["0.0.0.0", "::", "192.168.1.5", "example.org"] {
+            let e = check_cluster_exposure(true, host, &[]).unwrap_err();
+            assert!(e.to_string().contains("--api-key"), "{e}");
+            check_cluster_exposure(true, host, &keys).unwrap();
+        }
     }
 
     // hardware: none
