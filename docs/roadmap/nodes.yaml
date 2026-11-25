@@ -2814,6 +2814,24 @@ nodes:
   folded: []
   overview: false
   plain: A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI.
+- id: bench-phase6-loopback-f-flake
+  title: Case F loopback fault timing flake
+  track: bench
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-exit-f
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The real Case F loopback in CI failed once with fault hit nothing in flight on B (daemon trial 1) and the fake loopback once with B not in service after 30 s; both passed on rerun; make the trigger wait for in-flight requests deterministically.
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster
