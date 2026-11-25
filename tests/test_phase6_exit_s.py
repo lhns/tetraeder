@@ -16,14 +16,15 @@ import phase6_exit_s_summary as s6  # noqa: E402
 from test_sc_gates import LSCPU_1, LSCPU_2, gpu_txt, reading, run_json, write  # noqa: E402
 
 PH = "9f8e7d6c5b4a3920"
-PLAN = """[[replicas]]
-[[replicas.stages]]
-layers = [0, 47]
-devices = ["a/gpu0"]
-[[replicas.stages]]
-layers = [47, 94]
-devices = ["b/gpu0"]
-"""
+def plan_of(v=32, r=96):
+    stage = '[[replicas.stages]]\nlayers = [{lo}, {hi}]\ndevices = ["{n}/gpu0"]\n' \
+            '[[replicas.stages.expert_cache]]\ndevice = "{n}/gpu0"\nslots = {v}\n' \
+            '[[replicas.stages.expert_cache]]\ndevice = "{n}/cpu0"\nslots = {r}\n'
+    return "[[replicas]]\n" + stage.format(lo=0, hi=47, n="a", v=v, r=r) + stage.format(lo=47, hi=94, n="b", v=v, r=r)
+
+
+PLAN = plan_of()
+THIN = plan_of(32, 64)  # 96 of 128 experts: not covering
 SINGLE = """[[replicas]]
 [[replicas.stages]]
 layers = [0, 94]
@@ -69,8 +70,9 @@ def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, pla
           second=None, gate=(700.0, 1.0, 1.0)):
     res = tmp_path / "res"
     write(res / "session.json", {"model_sha256": "ab" * 32, "prompt": {"tokens": 2048, "gen": 128, "fnv1a64": PH},
-                                 "segments": [{"node": "a", "span": [0, 47], "embed": True, "head": False},
-                                              {"node": "b", "span": [47, 94], "embed": False, "head": False}]})
+                                 "segments": [{"node": "a", "span": [0, 47], "embed": True, "head": False, "slots": [32, 96]},
+                                              {"node": "b", "span": [47, 94], "embed": False, "head": False, "slots": [32, 96]}]})
+    write(res / "layout.json", {"n_expert": 128, "n_layer": 94})
     for n in ("a", "b"):
         write(res / "gates" / n / "lscpu.txt", lscpu_b if n == "b" else LSCPU_1)
         write(res / "gates" / n / "cotenant.json", reading(1.0, 256))
@@ -84,12 +86,14 @@ def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, pla
                                                                "replay_ram_hit_rate": 1.0}})
     write(res / "trace" / "routing.sha256", "t" * 64 + "  routing\n")
     write(res / "trace" / "hidden.sha256", "h" * 64 + "  hidden\n")
+    write(res / "plans" / "judged-plan.toml", plan)  # the gate prices it
     if gate is not None:  # the link gate before the download: (seconds between the probes, pp and tg of the second price / the first)
         write(res / "link" / "probe-gate1.json", probe())
         write(res / "link" / "probe-gate2.json", probe(1.02))
         write(res / "link" / "gate-times.json", {"gate1": 100.0, "gate2": 100.0 + gate[0]})
-        write(res / "link" / "gate" / "predict-gate1.json", {"prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
-        write(res / "link" / "gate" / "predict-gate2.json", {"prediction": {"pp_tps": 280.0 * gate[1], "tg_tps": 4.8 * gate[2], "request_s": 30.0}})
+        write(res / "link" / "gate" / "predict-gate1.json", {"plan_sha256": sha((res / "plans" / "judged-plan.toml").read_bytes()), "prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
+        write(res / "link" / "gate" / "predict-gate2.json", {"plan_sha256": sha((res / "plans" / "judged-plan.toml").read_bytes()),
+                                                              "prediction": {"pp_tps": 280.0 * gate[1], "tg_tps": 4.8 * gate[2], "request_s": 30.0}})
     write(res / "link" / "probe-start.json", probe())
     write(res / "link" / "probe-end.json", probe_end or probe(1.02))
     (res / "plans" / "candidates").mkdir(parents=True)
@@ -427,17 +431,53 @@ def test_the_cli_writes_the_verdict(tmp_path):
     assert json.loads((res / "verdict-s.json").read_text())["verdict"] == "pass"
 
 
-def test_the_plans_slots_must_be_the_anchors(tmp_path):
-    plan = tmp_path / "p.toml"
-    plan.write_text(
-        '[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n'
-        '[[replicas.stages.expert_cache]]\ndevice = "a/gpu0"\nslots = 32\n[[replicas.stages.expert_cache]]\ndevice = "a/cpu0"\nslots = 96\n'
-    )
-    assert s6.check_slots(str(plan), 32, 96) == []
-    why = s6.check_slots(str(plan), 32, 64)
-    assert len(why) == 1 and "cpu0 has 96 slots" in why[0]
-    plan.write_text('[[replicas]]\n[[replicas.stages]]\nlayers = [0, 47]\ndevices = ["a/gpu0"]\n')
-    assert s6.check_slots(str(plan), 1, 1) == []  # no cache, nothing to compare
+def test_the_pick_must_cover_every_expert_and_the_anchors_run_its_slots(tmp_path):
+    res, _ = build(tmp_path)
+    assert "segments_covering" not in failed(summary(res))
+    # a plan holding 96 of 128 experts per layer is no judged segment (ADR 0091 History 2026-11-25)
+    res, _ = build(tmp_path / "thin", plan=THIN)
+    o = summary(res)
+    assert "segments_covering" in failed(o)
+    assert "96 of 128 experts" in next(r["detail"] for r in o["rules"] if r["name"] == "segments_covering")
+    # anchors that ran other slots than the pick's
+    res, _ = build(tmp_path / "other", plan=plan_of(40, 88))
+    why = next(r["detail"] for r in summary(res)["rules"] if r["name"] == "segments_covering")
+    assert "the anchors ran slots [32, 96], the pick has [40, 88]" in why
+
+
+def test_the_slots_cli_prints_the_picks_slots_per_node_and_refuses_a_thin_plan(tmp_path):
+    cli = [sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "slots"]
+    good, thin = tmp_path / "good.toml", tmp_path / "thin.toml"
+    good.write_text(plan_of(41, 87))
+    thin.write_text(THIN)
+    r = subprocess.run([*cli, str(good), "--n-expert", "128"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.split("\n")[:2] == ["a 41 87", "b 41 87"]
+    r = subprocess.run([*cli, str(thin), "--n-expert", "128"], capture_output=True, text=True)
+    assert r.returncode == 1 and "GATE FAILED slots" in r.stderr and "not a covering segment" in r.stderr
+
+
+def test_the_pick_drops_candidates_that_do_not_cover(tmp_path):
+    res, _ = build(tmp_path)
+    write(res / "plans" / "candidates" / "m-c3.toml", THIN)
+    doc = json.loads((res / "plans" / "candidates.json").read_text())
+    doc["candidates"].append({"id": "c3", "plan": "m-c3.toml", "prediction": {"request_s": 10.0}})  # the fastest, but thin
+    write(res / "plans" / "candidates.json", doc)
+    args = (str(res / "plans" / "candidates.json"), str(res / "plans" / "candidates"))
+    assert s6.pick(*args)[0]["id"] == "c3"
+    info, why = s6.pick(*args, n_expert=128)
+    assert not why and info["id"] == "c1" and set(info["dropped_single_node"]) == {"c2", "c3"}
+    write(res / "plans" / "candidates" / "m-c1.toml", THIN)
+    info, why = s6.pick(*args, n_expert=128)
+    assert why and "covers all 128 experts" in why[0]
+
+
+def test_the_link_gate_must_have_priced_the_judged_pick(tmp_path):
+    res, _ = build(tmp_path)
+    write(res / "link" / "gate" / "predict-gate2.json", {"plan_sha256": "0" * 64, "prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
+    o = summary(res)
+    assert "link_gate" in failed(o)
+    assert "not the judged pick" in next(r["detail"] for r in o["rules"] if r["name"] == "link_gate")
+
 
 # ---- the link gate before the download -----------------------------------------------------------------------------------------
 

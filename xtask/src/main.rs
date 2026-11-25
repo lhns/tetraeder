@@ -267,9 +267,29 @@ fn tiny_fixture(script: &str, file: &str, args: &[String]) -> Res<()> {
     Ok(())
 }
 
-/// The synthetic qwen3moe fixture (ADR 0030).
+/// The synthetic qwen3moe fixture (ADR 0030). `--layers N` (N > 2) writes the N-layer variant
+/// `tiny-qwen3moe-lN-f16.gguf` (the Case S dry run cuts the 8-layer one into two segments).
 fn tiny_moe() -> Res<()> {
-    tiny_fixture("tiny_moe.py", "tiny-qwen3moe-f16.gguf", &[])
+    let mut args = std::env::args().skip(2);
+    let mut layers = 2u32;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--layers" => {
+                layers = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .filter(|&n| n >= 1)
+                    .ok_or("--layers needs a positive number")?;
+            }
+            other => return Err(format!("tiny-moe: unknown argument `{other}`")),
+        }
+    }
+    if layers == 2 {
+        tiny_fixture("tiny_moe.py", "tiny-qwen3moe-f16.gguf", &[])
+    } else {
+        let file = format!("tiny-qwen3moe-l{layers}-f16.gguf");
+        tiny_fixture("tiny_moe.py", &file, &[layers.to_string()])
+    }
 }
 
 /// The synthetic qwen3 dense fixture (ADR 0066). `--layers N` (N > 2) writes the N-layer variant

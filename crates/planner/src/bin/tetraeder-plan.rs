@@ -83,6 +83,11 @@ enum Command {
         /// `--plans-dir`, ready for `serve --cluster-plan`, and `--out` as a JSON summary.
         #[arg(long, requires_all = ["hw", "plans_dir"], conflicts_with = "multi")]
         cluster: bool,
+        /// With `--cluster`: only covering segments, every node's VRAM plus RAM slots hold all
+        /// experts of its layers and fit the graph's budgets (the judged Case S candidates,
+        /// ADR 0091 History 2026-11-25).
+        #[arg(long, requires = "cluster")]
+        covering: bool,
     },
     /// Fit the cost model to the anchor runs of a Phase 5 session (ADR 0068): `c_range` and
     /// `c_step` included. Reads `anchors-<model>-r<k>.json` and `<model>.json` layouts.
@@ -1012,6 +1017,7 @@ fn main() -> Result<()> {
             plans_dir,
             anchor,
             cluster,
+            covering,
         } => {
             if cluster {
                 let (Some(hw), Some(dir)) = (hw, plans_dir) else {
@@ -1027,18 +1033,20 @@ fn main() -> Result<()> {
                     }),
                     ..Default::default()
                 };
-                let (cands, pruned) = tetraeder_planner::enumerate_cluster(
-                    &graph,
-                    &layout,
-                    &hints,
-                    tetraeder_plan::Phase(6),
-                );
+                let search = if covering {
+                    tetraeder_planner::enumerate_cluster_covering
+                } else {
+                    tetraeder_planner::enumerate_cluster
+                };
+                let (cands, pruned) = search(&graph, &layout, &hints, tetraeder_plan::Phase(6));
                 anyhow::ensure!(
                     !cands.is_empty(),
-                    "no plan across the nodes of {}: {}",
+                    "no {}plan across the nodes of {}: {}",
+                    if covering { "covering " } else { "" },
                     hw.display(),
                     pruned
                         .iter()
+                        .filter(|(_, why)| !covering || why.contains("covering"))
                         .take(3)
                         .map(|(w, why)| format!("{w}: {why}"))
                         .collect::<Vec<_>>()

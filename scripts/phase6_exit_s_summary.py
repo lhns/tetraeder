@@ -3,9 +3,10 @@
 rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
 
     phase6_exit_s_summary.py summary RESULTS_DIR      writes RESULTS_DIR/verdict-s.json, prints the tables
-    phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml     the analytic pick among the spanning plans
+    phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml [--n-expert N]    the analytic pick among the spanning (and covering) plans
+    phase6_exit_s_summary.py layout-same COMMITTED.json MODEL.json   the model's own layout is the committed one the plan was made on
     phase6_exit_s_summary.py span PLAN.toml           the plan computes on both nodes, one node per stage
-    phase6_exit_s_summary.py slots PLAN.toml --vram V --ram R   the plan's expert cache is the slots the anchors ran (V and R)
+    phase6_exit_s_summary.py slots PLAN.toml [--n-expert N]   `node V R` per stage from the plan's expert cache (what the anchors run); with N: every stage covers
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
     phase6_exit_s_summary.py gate RESULTS_DIR         the link gate before the download: writes link/gate.json, exit 1 when it fails
     phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
@@ -29,13 +30,15 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
   prediction_judged     predict-cluster.json is routing `trace`, judged, priced from the sha256 of the trace on disk, for the
                         frozen prompt and the judged plan
   freeze                FROZEN.sha256 and every frozen file match; every judged round ran under that hash, started after t_frozen
+  segments_covering     every stage of the judged plan holds all experts of its layers in VRAM plus RAM slots (layout.json n_expert) and the anchors
+                        ran the pick's slots per node (session.json segments; ADR 0091 History 2026-11-25)
   span_both_nodes       the judged plan is the planner's analytic pick (fastest predicted) among plans that compute on both
                         nodes, and no candidate that does not is considered
   link_gate             the link gate before the 142 GB download (advisor, delegated by the owner, 2026-11-25): two full probes (frames to
-                        64 MiB) at least 10 minutes apart (link/probe-gate{1,2}.json, times in link/gate-times.json), the frozen-candidate
-                        prediction priced with each (link/gate/predict-gate{1,2}.json: the pick on the first probe's graph and the committed
-                        235B layout, then the same graph with the second probe's link curves); predicted pp and tg each move by at most 0.08,
-                        else the pair is aborted before the download. Recomputed from the files here; missing evidence fails
+                        64 MiB) at least 10 minutes apart (link/probe-gate{1,2}.json, times in link/gate-times.json), the judged pick
+                        itself priced with each (link/gate/predict-gate{1,2}.json: the plan's graph and the committed 235B layout with only the
+                        gate probe's link curves swapped in; the plan hash of both prices is the judged plan's); predicted pp and tg each move
+                        by at most 0.08, else the pair is aborted before the download. Recomputed from the files here; missing evidence fails
   link_reprice          the link rule (advisor, delegated by the owner, 2026-11-25; docs/notes/phase6-rule-changes.md): the frozen judged plan
                         is priced again with the end probe's link curves and nothing else changed (predictions/predict-cluster-end.json);
                         predicted pp and tg each move by at most 0.08. Raw probe points (start, before each round, end) are reported, not gated
@@ -141,6 +144,12 @@ def gate_check(res: str) -> tuple[dict, list[str]]:
         except (OSError, ValueError, KeyError, TypeError) as e:
             why.append(f"no probe-{k}.json ({e})")
     try:
+        # the gate prices the judged pick itself (ADR 0091 History 2026-11-25), not a nominal candidate
+        want = sha_file(os.path.join(res, "plans", "judged-plan.toml"))
+        for k in ("gate1", "gate2"):
+            got = load(os.path.join(res, "link", "gate", f"predict-{k}.json")).get("plan_sha256")
+            if got != want:
+                why.append(f"predict-{k}.json priced plan {str(got)[:12]}, not the judged pick {want[:12]}")
         p1 = load(os.path.join(res, "link", "gate", "predict-gate1.json"))["prediction"]
         p2 = load(os.path.join(res, "link", "gate", "predict-gate2.json"))["prediction"]
         info["pp_move"], info["tg_move"] = (p2[k] / p1[k] - 1.0 for k in ("pp_tps", "tg_tps"))
@@ -153,21 +162,43 @@ def gate_check(res: str) -> tuple[dict, list[str]]:
     return info, why
 
 
-def check_slots(plan_toml: str, vram: int, ram: int) -> list[str]:
-    """The workers take their slots from the plan's `expert_cache` (gpu0: compute tier, cpu0: RAM tier), the anchors from V and R:
-    a stage whose cache differs would be judged on other slots than it was fitted on. A stage without a cache is not checked."""
+def stage_slots(plan_toml: str) -> list[tuple[str, int, int]]:
+    """(node, VRAM slots, RAM slots) of every stage from its `expert_cache` (gpu0: compute tier, cpu0: RAM tier). The workers run these
+    slots and the calibration anchors run the same (ADR 0091 History 2026-11-25: slots come from the pick, not from a global V and R)."""
     plan = tomllib.loads(open(plan_toml, encoding="utf-8").read())
-    why = []
-    for i, st in enumerate(s_ for r in plan.get("replicas", []) for s_ in r.get("stages", [])):
+    out = []
+    for st in (s_ for r in plan.get("replicas", []) for s_ in r.get("stages", [])):
         got = {c["device"].rsplit("/", 1)[-1]: c["slots"] for c in st.get("expert_cache", [])}
-        for dev, want in (("gpu0", vram), ("cpu0", ram)):
-            if got and got.get(dev) != want:
-                why.append(f"stage {i}: {dev} has {got.get(dev)} slots in the plan, the anchors ran {want} (V and R)")
+        nodes = sorted({d.split("/", 1)[0] for d in st.get("devices", []) if "/" in d})
+        out.append((nodes[0] if nodes else "?", int(got.get("gpu0", 0)), int(got.get("cpu0", 0))))
+    return out
+
+
+def layout_same(a: str, b: str) -> list[str]:
+    """The model's own layout (`tetraeder plan layout`, after the download) is the committed one the plan was made on: the same layer count,
+    expert count and per-layer and embedding bytes, for every key both files have."""
+    x, y = load(a), load(b)
+    why = []
+    for k in ("n_layer", "n_expert", "n_embd", "embed_bytes", "output_bytes", "layers"):
+        if k in x and k in y and x[k] != y[k]:
+            why.append(f"{k} differs ({str(x[k])[:60]} against {str(y[k])[:60]})")
+    if not any(k in x and k in y for k in ("n_layer", "layers")):
+        why.append("the layouts share no key to compare")
+    return why
+
+
+def check_covering(plan_toml: str, n_expert: int) -> list[str]:
+    """Every stage's VRAM plus RAM slots hold all `n_expert` experts of each of its layers: the regime cost model 6 is confirmed on
+    (segment-confirm-20261125b), which reads no expert from disk in prefill. A stage without a cache holds none."""
+    why = []
+    for i, (node, v, r) in enumerate(stage_slots(plan_toml)):
+        if v + r < n_expert:
+            why.append(f"stage {i} on {node} holds {v} + {r} = {v + r} of {n_expert} experts: not a covering segment")
     return why
 
 
 # what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
-PRE_CALIB = ("gates_", "ram_budget_", "link_gate", "trace_hidden", "anchors_", "fit_band_")
+PRE_CALIB = ("gates_", "ram_budget_", "link_gate", "segments_covering", "trace_hidden", "anchors_", "fit_band_")
 PRE_FREEZE = PRE_CALIB + ("prediction_judged", "freeze", "span_both_nodes")
 
 
@@ -198,20 +229,21 @@ def check_span(plan_toml: str, nodes: tuple[str, ...] | None = None) -> list[str
     return why
 
 
-def pick(candidates_json: str, plans_dir: str, nodes: tuple[str, ...] = ("a", "b")) -> tuple[dict, list[str]]:
+def pick(candidates_json: str, plans_dir: str, nodes: tuple[str, ...] = ("a", "b"), n_expert: int | None = None) -> tuple[dict, list[str]]:
     """The analytic pick: lowest predicted request time among the candidates whose plan computes on both nodes. A plan on one
-    node is never considered (ADR 0091 Case S)."""
+    node is never considered (ADR 0091 Case S). With `n_expert` a plan that is not covering is not considered either."""
     doc = load(candidates_json)
     spanning, dropped = [], []
     for c in doc.get("candidates", []):
         plan = c.get("plan")
         p = os.path.join(plans_dir, plan) if plan else ""
-        if plan and os.path.isfile(p) and not check_span(p, nodes):
+        if plan and os.path.isfile(p) and not check_span(p, nodes) and not (n_expert and check_covering(p, n_expert)):
             spanning.append((c["prediction"]["request_s"], c["id"], plan))
         else:
             dropped.append(c.get("id"))
     if not spanning:
-        return {"error": "no candidate computes on both nodes", "dropped": dropped}, ["no candidate computes on both nodes"]
+        what = "computes on both nodes" + (f" and covers all {n_expert} experts" if n_expert else "")
+        return {"error": f"no candidate {what}", "dropped": dropped}, [f"no candidate {what}"]
     t, cid, plan = min(spanning)
     return {"id": cid, "plan": plan, "request_s": t, "spanning": len(spanning), "dropped_single_node": dropped}, []
 
@@ -324,7 +356,8 @@ def node_rules(res: str, sess: dict, rule) -> None:
         if seg["span"][0] == 0:  # a span from layer 0 takes tokens: no hidden rows, so the prompt hash is the evidence
             bad = []
             for f in files:
-                got = (ss.run_of(load(f)).get("prompt") or {}).get("fnv1a64")
+                j = load(f)
+                got = (ss.run_of(j).get("prompt") or j.get("prompt") or {}).get("fnv1a64")  # exit_regime writes it at the top of the file
                 if not ph or got != ph:
                     bad.append(f"{os.path.basename(f)} prompt {got}")
             why = bad
@@ -409,10 +442,28 @@ def summarize(res: str) -> dict:
     rule("freeze", not why, "; ".join(why) or f"{(frozen_sha or '')[:16]} frozen before every judged round")
 
     # span and pick
+    plan = os.path.join(res, "plans", "judged-plan.toml")
     try:
-        plan = os.path.join(res, "plans", "judged-plan.toml")
+        n_expert = int(load(os.path.join(res, "layout.json"))["n_expert"])
+    except (OSError, ValueError, KeyError, TypeError):
+        n_expert = None
+    # ADR 0091 History 2026-11-25: judged segments are covering and run the pick's own slots, the anchors' included
+    try:
+        why = [] if n_expert else ["no layout.json with n_expert"]
+        if n_expert:
+            why += check_covering(plan, n_expert)
+        got = {n: (v, r) for n, v, r in stage_slots(plan)}
+        for seg in segs:
+            want = tuple(seg.get("slots") or ())
+            if want != got.get(seg["node"]):
+                why.append(f"{seg['node']}: the anchors ran slots {list(want)}, the pick has {list(got.get(seg['node']) or ())}")
+        rule("segments_covering", not why, "; ".join(why) or "every stage holds all experts, the anchors ran the pick's slots: "
+             + ", ".join(f"{n} {v}+{r}" for n, (v, r) in sorted(got.items())))
+    except (OSError, ValueError, KeyError) as e:
+        rule("segments_covering", False, f"no plan ({e})")
+    try:
         why = check_span(plan, nodes)
-        info, w2 = pick(os.path.join(res, "plans", "candidates.json"), os.path.join(res, "plans", "candidates"), nodes)
+        info, w2 = pick(os.path.join(res, "plans", "candidates.json"), os.path.join(res, "plans", "candidates"), nodes, n_expert)
         why += w2
         if not w2:
             if sha_file(plan) != sha_file(os.path.join(res, "plans", "candidates", info["plan"])):
@@ -570,11 +621,14 @@ def main() -> int:
     p.add_argument("candidates")
     p.add_argument("plans_dir")
     p.add_argument("out")
+    p.add_argument("--n-expert", type=int, help="drop plans that do not hold all experts in VRAM plus RAM slots on every stage")
+    ls = sub.add_parser("layout-same")
+    ls.add_argument("committed")
+    ls.add_argument("model")
     sub.add_parser("span").add_argument("plan")
     sl = sub.add_parser("slots")
     sl.add_argument("plan")
-    sl.add_argument("--vram", type=int, required=True)
-    sl.add_argument("--ram", type=int, required=True)
+    sl.add_argument("--n-expert", type=int, help="also check that every stage covers all experts")
     lk = sub.add_parser("link")
     lk.add_argument("start")
     lk.add_argument("end")
@@ -600,22 +654,29 @@ def main() -> int:
         print_tables(o)
         return 0
     if a.cmd == "pick":
-        info, why = pick(a.candidates, a.plans_dir)
+        info, why = pick(a.candidates, a.plans_dir, n_expert=a.n_expert)
         print(json.dumps(info))
         if why:
             return 1
         with open(a.out, "wb") as f, open(os.path.join(a.plans_dir, info["plan"]), "rb") as src:
             f.write(src.read())
         return 0
+    if a.cmd == "layout-same":
+        why = layout_same(a.committed, a.model)
+        for w in why:
+            print(f"GATE FAILED layout: {w}")
+        return 1 if why else 0
     if a.cmd == "span":
         why = check_span(a.plan)
         for w in why:
             print(f"GATE FAILED span: {w}")
         return 1 if why else 0
     if a.cmd == "slots":
-        why = check_slots(a.plan, a.vram, a.ram)
+        why = check_covering(a.plan, a.n_expert) if a.n_expert else []
+        for n, v, r in stage_slots(a.plan):
+            print(f"{n} {v} {r}")
         for w in why:
-            print(f"GATE FAILED slots: {w}")
+            print(f"GATE FAILED slots: {w}", file=sys.stderr)
         return 1 if why else 0
     if a.cmd == "link":
         why, rows = check_link(load(a.start), load(a.end), a.band)

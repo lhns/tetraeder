@@ -218,13 +218,16 @@ fn run_features(
 }
 
 /// The best placement of `sub` on `node` for `ubatch`, by predicted request time, with `extra`
-/// GPU bytes already taken. `Err` names what does not fit.
+/// GPU bytes already taken. `Err` names what does not fit. With `covering` only builder
+/// placements whose VRAM and RAM slots together hold every expert of each layer are considered
+/// (every slot count that fits, not only the builder's tiers), and none without a GPU.
 fn choose(
     node: &Node,
     sub: &ModelLayout,
     ubatch: u32,
     extra_gpu: u64,
     w: &Workload,
+    covering: bool,
 ) -> Result<Choice, String> {
     let label = node.name.as_deref().unwrap_or("local");
     let threads = node.threads;
@@ -243,20 +246,37 @@ fn choose(
             threads,
         };
         let mut dropped = Vec::new();
+        let n = sub.n_expert.max(1);
+        // The least GPU and the least host bytes any covering pair needs, for the reason.
+        let mut least: Option<(u64, u64)> = None;
         for v in feasible_vram_tiers(&budget, sub, w, &mut dropped) {
             for r in ram_slot_options(sub, v) {
+                if covering && v + r < n {
+                    continue;
+                }
                 let p = Placement::Builder {
                     vram_slots: v,
                     ram_slots: r,
                 };
                 let f = footprint(sub, p, ubatch, w, KvFormat::default());
+                least = Some(least.map_or((f.gpu, f.host), |l| (l.0.min(f.gpu), l.1.min(f.host))));
                 if f.gpu <= budget.gpu_bytes && f.host <= budget.ram_bytes {
                     feasible.push(p);
                 }
             }
         }
+        if covering && feasible.is_empty() {
+            let need = least.map_or_else(
+                || "no VRAM tier fits".to_string(),
+                |(g, h)| format!("needs at least {g} B of VRAM and {h} B of RAM"),
+            );
+            return Err(format!(
+                "node {label}: layers {} have no covering placement within {} B of VRAM and {} B of RAM ({need})",
+                sub.n_layer, budget.gpu_bytes, budget.ram_bytes
+            ));
+        }
     }
-    if feasible.is_empty() {
+    if feasible.is_empty() && !covering {
         let f = footprint(sub, Placement::Cpu, ubatch, w, KvFormat::default());
         if f.host <= node.ram_bytes / 100 * 99 {
             feasible.push(Placement::Cpu);
@@ -842,6 +862,29 @@ pub fn enumerate_cluster(
     hints: &Hints,
     phase: Phase,
 ) -> (Vec<ClusterCandidate>, Vec<(String, String)>) {
+    enumerate_cluster_with(hw, layout, hints, phase, false)
+}
+
+/// [`enumerate_cluster`] for the judged Case S candidates (ADR 0091, History 2026-11-25): only
+/// covering segments, where every node's VRAM plus RAM slots hold all experts of its layers, so
+/// no prefill read reaches the disk (the regime cost model 6 is confirmed on). The budgets are
+/// the graph's: the measured RAM budget on each CPU and the GPU's memory.
+pub fn enumerate_cluster_covering(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    hints: &Hints,
+    phase: Phase,
+) -> (Vec<ClusterCandidate>, Vec<(String, String)>) {
+    enumerate_cluster_with(hw, layout, hints, phase, true)
+}
+
+fn enumerate_cluster_with(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    hints: &Hints,
+    phase: Phase,
+    covering: bool,
+) -> (Vec<ClusterCandidate>, Vec<(String, String)>) {
     let w = Workload {
         prompt: hints
             .workload
@@ -934,7 +977,7 @@ pub fn enumerate_cluster(
                                 j == 0,
                                 head_here,
                             );
-                            choose(ns[j], &sub, ubatch, extra, &w)
+                            choose(ns[j], &sub, ubatch, extra, &w, covering)
                         });
                         match c {
                             Ok(c) => choices.push(c.clone()),
@@ -1050,7 +1093,7 @@ pub fn single_node_references(
     for node in usable_nodes(hw, hints, &mut pruned) {
         let mut best: Option<(f64, Plan, ClusterPrediction)> = None;
         for &ubatch in &CLUSTER_UBATCHES {
-            let choice = choose(&node, layout, ubatch, 0, &w);
+            let choice = choose(&node, layout, ubatch, 0, &w, false);
             let Ok(c) = choice else { continue };
             let plan = assemble(&[&node], layout, &[], HeadAt::Last, ubatch, 1, &[c], &w);
             if let Ok(p) = predict_cluster_plan(hw, layout, &plan, &w)

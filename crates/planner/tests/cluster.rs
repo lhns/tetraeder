@@ -16,8 +16,8 @@ use tetraeder_planner::cluster::{candidate_segments, segment_layout};
 use tetraeder_planner::layout::{ModelLayout, fixtures};
 use tetraeder_planner::serve::{predict_plan_tier, uniform_tier};
 use tetraeder_planner::{
-    ClusterCandidate, Workload, cluster_features, enumerate_cluster, predict_cluster_plan,
-    single_node_references, single_node_runs,
+    ClusterCandidate, Workload, cluster_features, enumerate_cluster, enumerate_cluster_covering,
+    predict_cluster_plan, single_node_references, single_node_runs,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -226,6 +226,40 @@ fn the_235b_spans_both_nodes_on_every_two_node_fixture() {
             assert!(!cands.iter().any(|c| c.plan == r.plan));
         }
     }
+}
+
+/// Judged Case S candidates (ADR 0091 History 2026-11-25) on every fixture: the same properties
+/// as any candidate, plus every stage's VRAM and RAM slots hold all experts of its layers, and
+/// every covering candidate is also one of the unrestricted search.
+#[test]
+fn covering_candidates_hold_the_properties_and_cover_every_expert() {
+    let layout = fixtures::moe_235b();
+    let hints = Hints::default();
+    let mut with_candidates = 0;
+    for (name, hw) in graphs() {
+        let (cands, pruned) = enumerate_cluster_covering(&hw, &layout, &hints, Phase(6));
+        if cands.is_empty() {
+            // Nothing covers: the reason says what is missing.
+            assert!(
+                pruned
+                    .iter()
+                    .any(|(_, w)| w.contains("no covering placement")),
+                "{name}: {pruned:#?}"
+            );
+            continue;
+        }
+        with_candidates += 1;
+        let (all, _) = enumerate_cluster(&hw, &layout, &hints, Phase(6));
+        for c in cands.iter().take(6) {
+            check(c, &hw, &layout, &hints, &all_nodes(&hw), &W, name);
+            for st in &c.plan.replicas[0].stages {
+                let slots: u32 = st.expert_cache.iter().map(|e| e.slots).sum();
+                assert!(slots >= layout.n_expert, "{name} {}: {slots} slots", c.id);
+            }
+            assert!(all.iter().any(|a| a.plan == c.plan), "{name} {}", c.id);
+        }
+    }
+    assert!(with_candidates > 0, "no fixture has a covering candidate");
 }
 
 #[test]

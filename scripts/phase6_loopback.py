@@ -7,6 +7,7 @@ their loopback dry run (LOOPBACK=1) with two "boxes" as two sets of processes. I
     cluster merge HW [--node ID=F] [--swap-link PROBE] [--ram-budget ID=BYTES] -o F      the session's additions (fitted graphs pass through)
     cluster judged-round ... --out DIR        one judged round of the two-node plan: cluster.json and the segment files
     plan candidates|predict ...               tetraeder-plan: two cluster candidates (one on a single node), a judged prediction
+    cluster model-id PATH [--install DIR]     the sha256 of a single file, copied into DIR as <id>.gguf
     sc-box --node N --out DIR --stages ...    scripts/sc_box.sh's calibration stages: the files they leave, from fixed numbers
     node --cluster F --key K --cert C --state-dir D ...      the daemon of one node: control port, supervises one replica engine
     serve --cluster F --key K --cert C --replicas R --port P --request-log L ...     the head: gateway, router, two replicas
@@ -18,7 +19,7 @@ behaviour that Case F judges is modelled after the real head: a node is down aft
 in-flight requests end with one error naming the replica, a request waits for a free replica, and a restored node rejoins on its own.
 Env: LB_LOAD_S (engine load time, 0.5), LB_TOKEN_S (seconds per token, 0.02), LB_MAX_TOKENS (tokens per answer, 40).
 Case S scenarios (LB_SCENARIO, comma list): gate_drift (the second link-gate probe 50% slower on bulk), fit_band_miss (node b's fit band 0.12), link_drift (the end probe 12% slower), single_node
-(no candidate computes on both nodes), aa_early_miss (judged round 2 at half the rate), aa_last_miss, unclean_rounds (rounds 1 and 3
+(no candidate computes on both nodes), no_covering (the covering search finds no plan and refuses), aa_early_miss (judged round 2 at half the rate), aa_last_miss, unclean_rounds (rounds 1 and 3
 report a busy co-tenant), seed_anchors (node b's anchors on fixed-seed input), wrong_prompt (round prompt hash differs).
 """
 
@@ -348,14 +349,18 @@ def run_head(a: argparse.Namespace) -> None:
 
 PH = "9f8e7d6c5b4a3920"  # the frozen prompt's fnv1a64 of the stand-in
 POINTS = [[4096, 0.032], [16384, 0.046], [65536, 0.054], [262144, 0.055], [1048576, 0.056], [4194304, 0.099], [16777216, 0.324], [67108864, 1.342]]
-PLAN = """[[replicas]]
-[[replicas.stages]]
-layers = [0, 47]
-devices = ["a/gpu0"]
-[[replicas.stages]]
-layers = [47, 94]
-devices = ["b/gpu0"]
-"""
+
+
+def cached_plan(v: int, r: int) -> str:
+    """A two-stage plan with the expert cache of each stage (VRAM slots on gpu0, RAM slots on cpu0), as the planner writes it."""
+    stage = ('[[replicas.stages]]\nlayers = [{lo}, {hi}]\ndevices = ["{n}/gpu0", "{n}/cpu0"]\n'
+             '[[replicas.stages.expert_cache]]\ndevice = "{n}/gpu0"\nslots = {v}\n'
+             '[[replicas.stages.expert_cache]]\ndevice = "{n}/cpu0"\nslots = {r}\n')
+    return "[[replicas]]\n" + stage.format(lo=0, hi=47, n="a", v=v, r=r) + stage.format(lo=47, hi=94, n="b", v=v, r=r)
+
+
+PLAN = cached_plan(32, 96)
+THIN = cached_plan(32, 64)  # 96 of 128 experts: not a covering plan
 SINGLE = """[[replicas]]
 [[replicas.stages]]
 layers = [0, 94]
@@ -389,7 +394,8 @@ def fake_probe(out: str) -> None:
     gate = "gate" in os.path.basename(out)  # the link gate's two probes before the download count apart from the session's
     n = os.path.join(os.path.dirname(os.path.abspath(out)), ".probe-count-gate" if gate else ".probe-count")
     calls = int(open(n).read()) if os.path.exists(n) else 0
-    open(n, "w").write(str(calls + 1))
+    if os.path.basename(out) != "probe-plan.json":  # the plan stage's probe is not one of the session's (the start probe is the first)
+        open(n, "w").write(str(calls + 1))
     small = 1.15 if (calls >= 1 and scenario("small_drift") and not gate) else 1.0  # raw small-message latency 15% up, bulk unchanged
     big = 1.0
     if calls >= 1 and scenario("link_move") and not gate:
@@ -455,6 +461,10 @@ def fake_plan(argv: list[str]) -> int:
         wjson(a.out, {"model": "m", "n_layer": 94})
         return 0
     if a.cmd == "candidates":
+        if scenario("no_covering"):  # `candidates --cluster --covering` finds no covering placement within the budgets: it refuses
+            print("Error: no covering plan across the nodes of hw: node b: layers 94 have no covering placement within 25512105663 B of VRAM and "
+                  "59400000000 B of RAM (needs at least 14124736512 B of VRAM and 117708816384 B of RAM)", file=sys.stderr)
+            return 1
         os.makedirs(a.plans_dir, exist_ok=True)
         wtext(os.path.join(a.plans_dir, "m-c1.toml"), SINGLE if scenario("single_node") else PLAN)
         wtext(os.path.join(a.plans_dir, "m-c2.toml"), SINGLE)
@@ -487,7 +497,7 @@ def fake_sc_box(a: argparse.Namespace) -> int:
         if st == "balloon":
             wjson(os.path.join(out, "env.json"), {"ram_budget": {"ram_budget_bytes": 59_450_000_000, "memory_max": 64_000_000_000}})
         elif st == "disk":
-            wjson(os.path.join(out, "layout.json"), {"n_layer": 94})
+            wjson(os.path.join(out, "layout.json"), {"n_layer": 94, "n_expert": 128})
             wtext(os.path.join(out, "predictions", "hw.toml"), "# stand-in\n")
         elif st == "trace":
             wtext(os.path.join(out, "trace", "routing.sha256"), "t" * 64 + "  routing 1 bytes\n")
@@ -562,6 +572,19 @@ def main() -> int:
         ap.add_argument("--ram-budget", action="append", default=[])
         a, _ = ap.parse_known_args(argv[2:])
         fake_probe(a.out) if argv[1] == "probe" else fake_profile(a.out, a.probe, ram_budgets(a.ram_budget))
+        return 0
+    if argv[:2] == ["cluster", "model-id"]:  # a single file: its sha256, linked into the models folder as <id>.gguf (as the real command does)
+        ap = argparse.ArgumentParser(allow_abbrev=False)
+        ap.add_argument("path")
+        ap.add_argument("--install")
+        a = ap.parse_args(argv[2:])
+        mid = sha_bytes(open(a.path, "rb").read())
+        if a.install:
+            os.makedirs(a.install, exist_ok=True)
+            import shutil
+
+            shutil.copyfile(a.path, os.path.join(a.install, f"{mid}.gguf"))
+        print(mid)
         return 0
     if argv[:1] == ["cluster"] and argv[1:2] == ["cert"]:
         ap = argparse.ArgumentParser()

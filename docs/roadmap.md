@@ -422,7 +422,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 150 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 151 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -844,6 +844,7 @@ Generated on 2026-11-25.
 - `bench-phase6-rehearsal`: First two-box cluster session (✔ done · unrated). Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).
 - `bench-phase6-rehearsal-2`: Second two-box cluster session (✔ done · unrated). Two rented boxes ran the Case F script end to end with the rejoin fix (rejoin 5.3 to 9.6 s in all nine trials), then a drain without a plan (holds), a prefix fetch attempt (not shown working) and a 30B split over the WAN link against a frozen prediction (tg within 6 percent, pp 55 to 64 percent low because the start probe was unlike the later ones).
 - `bench-phase6-serve-node-state`: phase6_box.sh serve lacks --node-state (✔ fixed). The serve stage now passes --node-state, and a CI step runs a real head and two real daemons through the box commands and checks that the head registered its prefix listener in the daemon directory; the prefix fetch itself is still open (cluster-prefix-fetch-not-observed).
+- `cluster-case-s-ready`: Case S readiness, covering pick, stage order and a real-binary dry run (✔ done · unrated). On two 3090 nodes at 59.4 GB the planner now picks a covering 0..44 and 44..94 split at 32 + 96 slots; the driver measures the budget and plans before the link gate and the download, prices that pick in the gate, takes each node slots from it, and a CI step runs the real model split, model id, calibration, merge and one judged round on a tiny MoE (the same code is the dryrun stage on the boxes); no verdict was measured.
 - `cluster-discovery-disk-names`: Discovery names the builder disk (✔ fixed). Discovery named every disk disk0 and gave the device no read rate, so the planner homed every 235B expert in RAM and the validator rejected all candidates; the volume that holds the node's models dir is now nvme0 with its link prior as the rate, and the test builds the graph from recorded volumes with no edit. The RAM budget of a judged session is still a graph edit unless the box's RAM is the budget.
 - `cluster-drain-without-plan`: Node drain does not move load without a cluster plan (✔ fixed). With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.
 - `cluster-failover-bound`: Failover bound per Case F mode (✔ done · unrated). The worst time from a node fault to the in-flight error on the head, from the code, a killed engine or daemon closes the connection with no timer, a partition costs node_down_after plus the tick plus one pause step, 2.13 s at 2 s, plus one one-way delay on a real link. Simulated nodes confirm each mode within its bound. Findings, an engine that hangs with its daemon alive has no timer, and a receiver that does not drain delays the errors by up to 60 s each.
@@ -894,5 +895,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 54 nodes (41 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 33 nodes (27 done, 3 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 34 nodes (28 done, 3 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

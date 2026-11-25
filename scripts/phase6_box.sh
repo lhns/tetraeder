@@ -4,7 +4,10 @@
 # peers' certificates, models/<sha256>.gguf, node-state/, logs/, pids/. Long stages run detached and end with a
 # `P6_<STAGE>_DONE rc=N` line in logs/<stage>.log.
 #   build                 cargo release build of tetraeder (cuda) and tetraeder-plan
-#   model                 download Qwen3-30B-A3B Q4_K_M, link it as models/<sha256>.gguf
+#   model                 download Qwen3-30B-A3B Q4_K_M, install it under its id (`tetraeder cluster model-id --install`)
+#   model-id [FIRST]      the id of a model, single file or split (the first shard; default the 235B Q4_K_M under .hf_cache), installed
+#                         in models/ and written to model.sha256; it hashes every shard, so run it through `launch`. Ends with a
+#                         `P6_MODELID_DONE rc=N id=...` line in logs/model-id.log
 #   cert ID               tetraeder cluster cert --node ID (skipped when keys exist)
 #   node [BUFFERS]        start `tetraeder node` (autotuned buffers by default, or SEND,RECV)
 #   serve ARGS...         start the head: `tetraeder serve --cluster ...` with the engine flags and ARGS
@@ -46,6 +49,15 @@ par="${PAR:-4}"
 ctx="${CTX:-4096}"
 gguf_rel=".hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf"
 sha() { cat "$P6/model.sha256" 2> /dev/null; }
+# the id of a model (a single file: its sha256; a split one: the sha256 of its shards' manifest) linked into the node's models folder under
+# that id, and written to model.sha256; prints it, or fails
+install_model() { # install_model FIRST_FILE
+  local id
+  id=$("$bin" cluster model-id "$1" --install "$P6/models" 2>> "$P6/logs/model-id.err" | tail -n 1) || return 1
+  [[ "$id" =~ ^[0-9a-f]{64}$ ]] || return 1
+  echo "$id" > "$P6/model.sha256"
+  echo "$id"
+}
 # the engine flags of a replica or a whole-model server on this box
 engine_flags=(--engine moe --ngl -1 -t "$threads" --ctx "$ctx" --parallel "$par" --accept-any-model --alias qwen3-30b-a3b)
 
@@ -84,12 +96,13 @@ case "$stage" in
     echo "build started $(date +%T)"
     ;;
   model)
-    if [ -n "${P6_LOOPBACK:-}" ]; then # the tiny MoE fixture under its own sha256, as a box holds the 30B
+    if [ -n "${P6_LOOPBACK:-}" ]; then # the tiny MoE fixture under its id, as a box holds the 30B
       src="${P6_LB_MODEL:-$root/tests/fixtures/tiny-qwen3moe-f16.gguf}"
-      h=$(sha256sum "$src" | cut -d' ' -f1)
-      echo "$h" > "$P6/model.sha256"
-      cp "$src" "$P6/models/$h.gguf"
-      echo "P6_MODEL_DONE rc=0 sha256=$h bytes=$(stat -c %s "$src")" >> "$P6/logs/model.log"
+      if h=$(install_model "$src"); then
+        echo "P6_MODEL_DONE rc=0 sha256=$h bytes=$(stat -c %s "$src")" >> "$P6/logs/model.log"
+      else
+        echo "P6_MODEL_DONE rc=1 (model-id of $src failed: logs/model-id.err)" >> "$P6/logs/model.log"
+      fi
       tail -n 1 "$P6/logs/model.log"
       exit 0
     fi
@@ -99,12 +112,20 @@ case "$stage" in
         TAXAMETER_DIR="$PWD" bash "${TAXAMETER_HOME:-/root/.taxameter}/box.sh" models "Qwen/Qwen3-30B-A3B-GGUF:Qwen3-30B-A3B-Q4_K_M.gguf" 8>&-
       fi
       [ -s "$gguf_rel" ] || { echo "P6_MODEL_DONE rc=1 (no file)"; exit 1; }
-      h=$(sha256sum "$gguf_rel" | cut -d' ' -f1)
-      echo "$h" > "$P6/model.sha256"
-      ln -sf "$root/$gguf_rel" "$P6/models/$h.gguf"
+      h=$(install_model "$root/$gguf_rel") || { echo "P6_MODEL_DONE rc=1 (model-id failed: logs/model-id.err)"; exit 1; }
       echo "P6_MODEL_DONE rc=0 sha256=$h bytes=$(stat -c %s "$gguf_rel")"
     ) >> "$P6/logs/model.log" 2>&1 8>&- &
     echo "model started $(date +%T)"
+    ;;
+  model-id)
+    first="${1:-$root/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf}"
+    echo "=== RUN $(date +%FT%T) model-id $first ===" >> "$P6/logs/model-id.log"
+    if h=$(install_model "$first"); then
+      echo "P6_MODELID_DONE rc=0 id=$h" >> "$P6/logs/model-id.log"
+    else
+      echo "P6_MODELID_DONE rc=1 (logs/model-id.err)" >> "$P6/logs/model-id.log"
+    fi
+    tail -n 1 "$P6/logs/model-id.log"
     ;;
   cert)
     id="${1:?node id}"
