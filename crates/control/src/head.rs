@@ -850,6 +850,10 @@ impl Drop for ClusterHead {
     }
 }
 
+/// Pause between two tries to start and join a replica, first and longest.
+const RETRY_MIN: Duration = Duration::from_millis(100);
+const RETRY_MAX: Duration = Duration::from_secs(2);
+
 fn sleep_unless(stop: &AtomicBool, d: Duration) {
     let t0 = std::time::Instant::now();
     while t0.elapsed() < d && !stop.load(Ordering::SeqCst) {
@@ -885,6 +889,9 @@ fn join_loop(
 ) {
     // The spec the last attempt started: what a new spec must clean up.
     let mut previous: Option<StartSpec> = None;
+    // Pause between failed tries: doubles up to `RETRY_MAX`, starts over after a join.
+    let mut backoff = RETRY_MIN;
+    let mut attempts = 0u64;
     while !stop.load(Ordering::SeqCst) {
         let (generation, spec) = cell.snapshot();
         let needed = spec.nodes(node);
@@ -962,8 +969,13 @@ fn join_loop(
             remote.probe()?;
             Ok(info)
         };
+        attempts += 1;
+        tracing::info!(replica = r, %node, attempts, "starting the replica and joining it");
         match attempt() {
             Ok(info) => {
+                metrics::join_attempt(r, "joined");
+                backoff = RETRY_MIN;
+                tracing::info!(replica = r, %node, "replica joined");
                 e.set_kv_format(r, &info.kv_format);
                 e.set_kv_row_bytes(r, info.kv_row_bytes);
                 e.set_reported_cap(r, info.cap);
@@ -972,17 +984,31 @@ fn join_loop(
                 if alive() && remote.is_connected() && current() {
                     e.set_up(r, true);
                 }
+                // A node told to drain (`tetraeder node --drain`) takes no new request on this
+                // replica; what is in flight finishes. With a cluster plan the replanner drains
+                // and replaces the replica as well, and sets the same flag.
+                let mut draining = false;
                 while !stop.load(Ordering::SeqCst) && remote.is_connected() && alive() && current()
                 {
+                    let d = needed
+                        .iter()
+                        .any(|n| monitor.state(n) == Some(NodeState::Draining));
+                    if d != draining {
+                        draining = d;
+                        tracing::info!(replica = r, %node, draining, "node drain: replica {}", if d { "takes no new request" } else { "takes requests again" });
+                        e.set_draining(r, d);
+                    }
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 e.set_up(r, false);
                 remote.disconnect();
             }
             Err(err) => {
-                tracing::debug!(replica = r, "join attempt failed: {err}");
+                metrics::join_attempt(r, "failed");
+                tracing::warn!(replica = r, %node, attempts, "join attempt failed: {err}; next in {backoff:?}");
                 remote.disconnect();
-                sleep_unless(stop, Duration::from_millis(100));
+                sleep_unless(stop, backoff);
+                backoff = (backoff * 2).min(RETRY_MAX);
             }
         }
     }
