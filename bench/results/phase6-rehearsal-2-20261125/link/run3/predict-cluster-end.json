@@ -1,0 +1,121 @@
+{
+  "hw_sha256": "961e65fca17e63797b85ba6e1793580c6c1a00967d29fba92349831962736997",
+  "judged": false,
+  "kind": "predict-cluster",
+  "layout_sha256": "8f42c8df185aea5dc6ddaa026a37ec96b743dfab5040d744b6d29f6dac73e685",
+  "plan_sha256": "bb1f240982e2cb274663a2eb4cda7d74088c6b716c5f748d01455321331d2963",
+  "prediction": {
+    "hop_s_per_token": 0.05128450866666667,
+    "pp_tps": 2402.8696073689775,
+    "request_s": 8.733868335460373,
+    "segments": [
+      {
+        "binding": "compute:gpu0",
+        "pp_breakdown": [
+          [
+            "compute:gpu0",
+            0.004410296869859155
+          ]
+        ],
+        "pp_tok_s": 464367.8329221869,
+        "request_s": 0.033730217553619844,
+        "tg_breakdown": [
+          [
+            "compute:gpu0",
+            0.00022906188034188036
+          ]
+        ],
+        "tg_tok_s": 4365.632546574209
+      },
+      {
+        "binding": "compute:gpu0",
+        "pp_breakdown": [
+          [
+            "compute:gpu0",
+            0.1977135257942535
+          ]
+        ],
+        "pp_tok_s": 10358.421315753627,
+        "request_s": 1.446455461931006,
+        "tg_breakdown": [
+          [
+            "compute:gpu0",
+            0.009755796376068378
+          ]
+        ],
+        "tg_tok_s": 102.50316442162189
+      },
+      {
+        "binding": "compute:gpu0",
+        "pp_breakdown": [
+          [
+            "compute:gpu0",
+            0.026199598435355242
+          ],
+          [
+            "offload_compute:cpu0",
+            0.0
+          ],
+          [
+            "compute:cpu0",
+            0.0
+          ],
+          [
+            "switches",
+            0.00525288
+          ]
+        ],
+        "pp_tok_s": 65114.10552937141,
+        "request_s": 0.07052760076014157,
+        "tg_breakdown": [
+          [
+            "compute:gpu0",
+            0.0002927143931623932
+          ],
+          [
+            "compute:cpu0",
+            0.0
+          ],
+          [
+            "switches",
+            0.000012560000000000002
+          ]
+        ],
+        "tg_tok_s": 3275.741504686382
+      }
+    ],
+    "tg_tps": 16.240451890968075
+  },
+  "routing": "uniform",
+  "routing_trace": {
+    "prompt_hash": null,
+    "replay_version": null,
+    "segments": [
+      {
+        "fnv1a64": null,
+        "layers": [
+          0,
+          1
+        ],
+        "node": "b",
+        "prefill": "uniform",
+        "routing": "uniform"
+      },
+      {
+        "fnv1a64": null,
+        "layers": [
+          1,
+          48
+        ],
+        "node": "a",
+        "prefill": "uniform",
+        "routing": "uniform"
+      }
+    ],
+    "sha256": null
+  },
+  "workload": {
+    "gen": 128,
+    "prompt": 2048
+  }
+}

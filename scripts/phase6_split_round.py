@@ -67,6 +67,7 @@ def main():
     ap.add_argument("--label", default="round")
     ap.add_argument("--cut-only", action="store_true", help="write the cut prompt's facts and send nothing")
     ap.add_argument("--prompt-out", help="write the cut prompt text here")
+    ap.add_argument("--nonce", action="store_true", help="start the prompt with a unique tag, so no prefix cache has it (the tag costs a few tokens)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     u = urllib.parse.urlparse(a.url)
@@ -76,7 +77,10 @@ def main():
         with open(a.key_file) as f:
             key = next((x.strip() for x in f if x.strip() and not x.startswith("#")), "")
     text = open(a.prompt_file, encoding="utf-8").read()
-    prompt, n = cut_prompt(host, port, key, text, a.prompt_tokens)
+    prompt, n = cut_prompt(host, port, key, text, a.prompt_tokens - (12 if a.nonce else 0))
+    if a.nonce:
+        prompt = f"[{a.label}-{int(time.time())}] " + prompt
+        n = ntok(host, port, key, prompt)
     facts = {"prompt_tokens": n, "chars": len(prompt), "sha256": hashlib.sha256(prompt.encode()).hexdigest(),
              "fnv1a64": fnv1a64(prompt.encode()), "source": a.prompt_file}
     if a.prompt_out:

@@ -1,0 +1,2 @@
+gpu 0: limit 350.00 W, default 350.00 W, max 365.00 W ok
+power gate: 1 GPUs at default power limit

@@ -1,0 +1,6 @@
+1795611985.320875731 armed mode=daemon delay=0 target=1795612043.129
+1795612043.136475919 fault kill -9 daemon 29449 and children: 30855 
+1795612043.148644024 fault done
+1795612083.153243721 restore start daemon
+node started pid 31356
+1795612083.371036160 restore done

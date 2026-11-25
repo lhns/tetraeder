@@ -1,0 +1,6 @@
+1536000 100000
+23995613184
+Model name:                              11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz
+Socket(s):                               1
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-15

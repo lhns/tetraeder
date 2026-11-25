@@ -1,0 +1,20 @@
+{
+  "label": "r3",
+  "prompt": {
+    "prompt_tokens": 2050,
+    "chars": 8163,
+    "sha256": "59a83014ac16968f8102fd92902570055b9b9acbba2a9a7febd95911f356f0eb",
+    "fnv1a64": "74665e2dc0023320",
+    "source": "bench/prompts/exit_prompt.txt"
+  },
+  "gen_asked": 128,
+  "t_submit": 1795615377.9142606,
+  "t_first": null,
+  "t_last": null,
+  "chunks": 0,
+  "usage": null,
+  "error": null,
+  "text": "",
+  "status": 200,
+  "t_end": 1795615383.3411825
+}

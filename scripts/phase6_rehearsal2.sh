@@ -57,7 +57,7 @@ st_prefix() {
   sed "s/^cap = \(.*\)$/cap = \1\nprefill_tps = $tps/" "$out/cluster/replicas.toml" > "$out/cluster/replicas-prefix.toml"
   put a "$out/cluster/replicas-prefix.toml" replicas-prefix.toml
   say "head on replicas-prefix.toml (declared prefill $tps tok/s)"
-  restart_head "--replicas $P/replicas-prefix.toml"
+  restart_head "--replicas $P/replicas-prefix.toml ${PREFIX_HEAD_ARGS:-}"
   bx a 120 "python3 scripts/phase6_load.py http://127.0.0.1:8080 --key-file $P/api-key.txt --concurrency 4 --duration 15 --prompt-tokens 300 --max-tokens 32 --label warm-prefix --out $P/warm-prefix.jsonl" | tail -n 1
   local mode
   for mode in head-holder remote-holder; do
@@ -165,7 +165,7 @@ st_rounds() {
   for k in $(seq 1 "$rounds"); do
     tag="mid-$k"
     PROBE=$tag st_probe
-    bx a 900 "python3 scripts/phase6_split_round.py http://127.0.0.1:8080 --key-file $P/api-key.txt --prompt-file bench/prompts/exit_prompt.txt --prompt-tokens $ptok --gen $gen --label r$k --out $P/round-r$k.json" | tail -n 1
+    bx a 900 "python3 scripts/phase6_split_round.py http://127.0.0.1:8080 --key-file $P/api-key.txt --prompt-file bench/prompts/exit_prompt.txt --prompt-tokens $ptok --gen $gen --nonce --label r$k --out $P/round-r$k.json" | tail -n 1
     get a "round-r$k.json" "$out/split30/round-r$k.json"
   done
   bx a 60 "grep -a ' admit ' $P/logs/serve.log | tail -n 20" > "$out/split30/admits-head.txt" || true

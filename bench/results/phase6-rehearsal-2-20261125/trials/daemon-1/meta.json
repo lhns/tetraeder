@@ -1,0 +1,11 @@
+{
+  "mode": "daemon",
+  "trial": 1,
+  "t_fault": 1795612043.024,
+  "t_restore": 1795612083.041,
+  "t_fault_b_clock": 1795612043.1364758,
+  "t_restore_source": "restore start daemon",
+  "load_label": "daemon-t1-1795611929",
+  "load_end": 1795612166.5417037,
+  "clock_b_minus_a_s": 0.1126
+}
