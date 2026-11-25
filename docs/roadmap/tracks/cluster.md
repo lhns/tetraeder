@@ -22,6 +22,10 @@ flowchart TB
     cluster_failover["✔ Keep serving when a<br/>node dies"]
     cluster_planner_hardening>"✔ Harden the cluster<br/>planner inputs"]
     cluster_pipeline_prefill["✔ Prefill pipelined<br/>across stages"]
+    cluster_rejoin_after_restore>"⚠ Head does not<br/>restart a replica<br/>after its node is<br/>restored"]
+    cluster_prefix_fetch_not_triggered>"⚠ No prefix fetch<br/>between replicas on<br/>two GPU nodes"]
+    cluster_plan_source_gpu_segments>"⚠ Planner proposes no<br/>plan for two real GPU<br/>boxes"]
+    cluster_drain_without_plan>"⚠ Node drain does not<br/>move load without a<br/>cluster plan"]
     cluster_step_tokens_from_plan>"⚠ Replica step size<br/>from the plan"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
@@ -37,9 +41,15 @@ flowchart TB
     cluster_integration ~~~ cluster_failover
     cluster_join_leave ~~~ cluster_planner_hardening
     cluster_remote_kv ~~~ cluster_pipeline_prefill
-    cluster_failover ~~~ cluster_step_tokens_from_plan
-    cluster_planner_hardening ~~~ cluster_experts_nodes
-    cluster_pipeline_prefill ~~~ cluster_replica_scaling
+    cluster_failover ~~~ cluster_rejoin_after_restore
+    cluster_planner_hardening ~~~ cluster_prefix_fetch_not_triggered
+    cluster_pipeline_prefill ~~~ cluster_plan_source_gpu_segments
+    cluster_rejoin_after_restore ~~~ cluster_drain_without_plan
+    cluster_prefix_fetch_not_triggered ~~~ cluster_step_tokens_from_plan
+    cluster_plan_source_gpu_segments ~~~ cluster_experts_nodes
+    cluster_drain_without_plan ~~~ cluster_replica_scaling
+    cluster_step_tokens_from_plan ~~~ cluster_replica_scaling
+    cluster_experts_nodes ~~~ cluster_replica_scaling
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
     cluster_transport --> cluster_mtls
@@ -72,7 +82,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_pipeline_prefill unrated
     class cluster_planner_hardening succ
-    class cluster_step_tokens_from_plan finding
+    class cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan,cluster_step_tokens_from_plan finding
     class cluster_experts_nodes parked
     class cluster_replica_scaling blocked
 ```
@@ -102,6 +112,10 @@ flowchart TB
 | `cluster-failover` | Keep serving when a node dies | feature | cluster | done | unrated | 2026-11-24 | 2026-11-24 | cluster-replicas, cluster-join-leave |  |  | in-flight requests on the lost replica end with one error each within node_down_after plus 1 s for a killed engine, a killed daemon and a blackholed link, an engine that fails its steps keeps its replica in the router, no request on the other replica fails and later requests succeed, on simulated nodes with a 1 s node_down_after | docs/adr/0091-phase6-multi-node.md; crates/control/tests/case_f.rs; crates/control/tests/router_props.rs; crates/control/tests/replica_daemon.rs; crates/tetraeder/tests/replica_smoke.rs |
 | `cluster-replica-scaling` | Add and remove replicas live | feature | cluster | blocked | unrated |  |  | cluster-replicas, bench-m3-report |  |  |  |  |
 | `cluster-owner-routing-input` | Routing trace as prediction input | owner-decision | owner | done | n/a | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  | trace allowed | docs/notes/stream-predict-diagnosis.md |
+| `cluster-rejoin-after-restore` | Head does not restart a replica after its node is restored | defect | cluster | next | unrated | 2026-11-25 |  | bench-phase6-rehearsal |  |  |  | bench/results/phase6-rehearsal-20261125/README.md |
+| `cluster-prefix-fetch-not-triggered` | No prefix fetch between replicas on two GPU nodes | defect | cluster | next | unrated | 2026-11-25 |  | bench-phase6-rehearsal |  |  |  | bench/results/phase6-rehearsal-20261125/README.md |
+| `cluster-plan-source-gpu-segments` | Planner proposes no plan for two real GPU boxes | defect | cluster | next | unrated | 2026-11-25 |  | bench-phase6-rehearsal |  |  |  | bench/results/phase6-rehearsal-20261125/README.md |
+| `cluster-drain-without-plan` | Node drain does not move load without a cluster plan | defect | cluster | next | unrated | 2026-11-25 |  | bench-phase6-rehearsal |  |  |  | bench/results/phase6-rehearsal-20261125/README.md |
 
 ### Details per node
 
@@ -126,6 +140,10 @@ flowchart TB
 | `cluster-failover` | Keep serving when a node dies | case_f mode=KillDaemon requests=173 in_flight_errors=3 max_error_s=0.001 bound_s=2.0 moved=2 ok_after_bound=18 rejoin_s=0.076 (CI run 45424566387, ubuntu and windows) | in-flight requests on the lost replica end with one error each within node_down_after plus 1 s for a killed engine, a killed daemon and a blackholed link, an engine that fails its steps keeps its replica in the router, no request on the other replica fails and later requests succeed, on simulated nodes with a 1 s node_down_after | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). | Done when (ADR 0091, Case F), the kill test passes in CI on simulated nodes for a killed worker, a killed node and a silent node, with every in-flight request on it ending in one clean error within node_down_after plus 1 s. Done as built (ADR 0091 History, step 5) on simulated nodes; the boxes repeat it in the rehearsal and the exit test (SIGSTOP instead of the blackhole). |  |  |  |  |
 | `cluster-replica-scaling` | Add and remove replicas live |  |  | Replicas are added or removed under load as traffic changes (plan feature 39). | Done when: a load step adds a replica and a quiet period removes it, with no failed request. Phase 7, blocked behind the M3 report. |  |  |  |  |
 | `cluster-owner-routing-input` | Routing trace as prediction input | Allow the frozen exit prompt routing trace (owner 2026-11-24) | trace allowed | The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft). |  |  |  |  |  |
+| `cluster-rejoin-after-restore` | Head does not restart a replica after its node is restored |  |  | After B's engine was killed, B's daemon was killed and restarted, or the cluster was started cold, the head sometimes never started the replica on B again until the head itself was restarted (Case F modes 1 and 2 failed the 60 s rejoin rule; the very first start stalled for minutes). |  |  |  |  |  |
+| `cluster-prefix-fetch-not-triggered` | No prefix fetch between replicas on two GPU nodes |  |  | A request sent to the replica without a prefix recomputed it although the fetch was priced to win; the head's own replica may lack the KV format and row size the fetch rule needs. |  |  |  |  |  |
+| `cluster-plan-source-gpu-segments` | Planner proposes no plan for two real GPU boxes |  |  | The cost model refuses a segment that is all on the GPU, so a pipeline plan cannot be priced and the replan source made no proposal when a node left. |  |  |  |  |  |
+| `cluster-drain-without-plan` | Node drain does not move load without a cluster plan |  |  | With a replicas file, draining a node marks it but the router keeps sending it requests; only a cluster plan with the replanner drains a replica. |  |  |  |  |  |
 
 ### Folded items per node
 
