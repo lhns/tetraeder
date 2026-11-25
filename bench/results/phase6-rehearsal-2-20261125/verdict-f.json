@@ -1,0 +1,532 @@
+{
+  "case": "F",
+  "bound_s": 3.0,
+  "rejoin_limit_s": 60,
+  "trials": [
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "4 of 8 in flight ended with an error, delays [0.527, 0.528, 0.528, 0.528] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 233 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "8 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 376 client requests, 376 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +9.61 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "85 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "no operator action"
+        }
+      },
+      "stats": {
+        "requests": 376,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 4,
+        "in_flight_error_delay_s": [
+          0.527,
+          0.528,
+          0.528,
+          0.528
+        ],
+        "submitted_in_bound": 8,
+        "submitted_after_bound": 233,
+        "rejoin_s": 9.61
+      },
+      "mode": "worker",
+      "mode_number": 1,
+      "trial": 1,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "1 of 8 in flight ended with an error, delays [1.101] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 238 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "12 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 385 client requests, 385 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +9.20 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "68 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "not trial 1"
+        }
+      },
+      "stats": {
+        "requests": 385,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 1,
+        "in_flight_error_delay_s": [
+          1.101
+        ],
+        "submitted_in_bound": 12,
+        "submitted_after_bound": 238,
+        "rejoin_s": 9.2
+      },
+      "mode": "worker",
+      "mode_number": 1,
+      "trial": 2,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "4 of 8 in flight ended with an error, delays [0.824, 0.824, 0.824, 0.824] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 233 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "7 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 374 client requests, 374 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +8.44 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "77 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "not trial 1"
+        }
+      },
+      "stats": {
+        "requests": 374,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 4,
+        "in_flight_error_delay_s": [
+          0.824,
+          0.824,
+          0.824,
+          0.824
+        ],
+        "submitted_in_bound": 7,
+        "submitted_after_bound": 233,
+        "rejoin_s": 8.44
+      },
+      "mode": "worker",
+      "mode_number": 1,
+      "trial": 3,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "4 of 8 in flight ended with an error, delays [0.16, 0.16, 0.161, 0.161] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 205 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "7 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 346 client requests, 346 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +6.85 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "73 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "no operator action"
+        }
+      },
+      "stats": {
+        "requests": 346,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 4,
+        "in_flight_error_delay_s": [
+          0.16,
+          0.16,
+          0.161,
+          0.161
+        ],
+        "submitted_in_bound": 7,
+        "submitted_after_bound": 205,
+        "rejoin_s": 6.85
+      },
+      "mode": "daemon",
+      "mode_number": 2,
+      "trial": 1,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": false,
+          "detail": "0 of 8 in flight ended with an error, delays [] s against 3.0 (none in flight on B: the fault hit nothing)"
+        },
+        "no_failure_on_r_a": {
+          "ok": false,
+          "detail": "0 failures do not name 'replica 1', 4 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 208 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "3 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 350 client requests, 350 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +5.27 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "85 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "not trial 1"
+        }
+      },
+      "stats": {
+        "requests": 350,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 0,
+        "in_flight_error_delay_s": [],
+        "submitted_in_bound": 3,
+        "submitted_after_bound": 208,
+        "rejoin_s": 5.27
+      },
+      "mode": "daemon",
+      "mode_number": 2,
+      "trial": 2,
+      "ok": false
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "3 of 8 in flight ended with an error, delays [0.612, 0.612, 0.612] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 211 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "9 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 353 client requests, 353 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +5.53 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "79 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "not trial 1"
+        }
+      },
+      "stats": {
+        "requests": 353,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 3,
+        "in_flight_error_delay_s": [
+          0.612,
+          0.612,
+          0.612
+        ],
+        "submitted_in_bound": 9,
+        "submitted_after_bound": 211,
+        "rejoin_s": 5.53
+      },
+      "mode": "daemon",
+      "mode_number": 2,
+      "trial": 3,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "4 of 8 in flight ended with an error, delays [2.02, 2.021, 2.021, 2.021] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 199 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "7 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 343 client requests, 343 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +0.41 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "74 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "no operator action"
+        }
+      },
+      "stats": {
+        "requests": 343,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 4,
+        "in_flight_error_delay_s": [
+          2.02,
+          2.021,
+          2.021,
+          2.021
+        ],
+        "submitted_in_bound": 7,
+        "submitted_after_bound": 199,
+        "rejoin_s": 0.41
+      },
+      "mode": "stop",
+      "mode_number": 3,
+      "trial": 1,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "4 of 8 in flight ended with an error, delays [1.738, 1.738, 1.738, 1.738] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 183 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "7 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 321 client requests, 321 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +0.32 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "81 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "not trial 1"
+        }
+      },
+      "stats": {
+        "requests": 321,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 4,
+        "in_flight_error_delay_s": [
+          1.738,
+          1.738,
+          1.738,
+          1.738
+        ],
+        "submitted_in_bound": 7,
+        "submitted_after_bound": 183,
+        "rejoin_s": 0.32
+      },
+      "mode": "stop",
+      "mode_number": 3,
+      "trial": 2,
+      "ok": true
+    },
+    {
+      "rules": {
+        "clean_error_in_bound": {
+          "ok": true,
+          "detail": "4 of 8 in flight ended with an error, delays [2.078, 2.078, 2.078, 2.078] s against 3.0"
+        },
+        "no_failure_on_r_a": {
+          "ok": true,
+          "detail": "0 failures do not name 'replica 1', 0 outside the in-flight set and the first 3.0 s"
+        },
+        "ok_after_bound": {
+          "ok": true,
+          "detail": "0 of 184 failed"
+        },
+        "queued_move": {
+          "ok": true,
+          "detail": "8 submitted in the first 3.0 s, 0 neither ok nor a clean error"
+        },
+        "exactly_once": {
+          "ok": true,
+          "detail": "0 ambiguous, 0 chunks after an error; 323 client requests, 323 gateway entries, same outcomes"
+        },
+        "rejoin": {
+          "ok": true,
+          "detail": "B admitted at +0.58 s after its restore"
+        },
+        "b_served_before": {
+          "ok": true,
+          "detail": "86 admits on B in the 60 s before the fault"
+        },
+        "trial1_no_manual": {
+          "ok": true,
+          "detail": "not trial 1"
+        }
+      },
+      "stats": {
+        "requests": 323,
+        "in_flight_at_fault": 8,
+        "in_flight_errors": 4,
+        "in_flight_error_delay_s": [
+          2.078,
+          2.078,
+          2.078,
+          2.078
+        ],
+        "submitted_in_bound": 8,
+        "submitted_after_bound": 184,
+        "rejoin_s": 0.58
+      },
+      "mode": "stop",
+      "mode_number": 3,
+      "trial": 3,
+      "ok": true
+    }
+  ],
+  "session_rules": [
+    {
+      "name": "gates_a",
+      "ok": true,
+      "detail": "one NUMA node, co-tenant under the limit, power and idle gates passed"
+    },
+    {
+      "name": "gates_b",
+      "ok": true,
+      "detail": "one NUMA node, co-tenant under the limit, power and idle gates passed"
+    },
+    {
+      "name": "same_model",
+      "ok": true,
+      "detail": "a 0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5, b 0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5, expected 0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5"
+    },
+    {
+      "name": "certificates_pinned",
+      "ok": true,
+      "detail": "certificate sha256 a c7f8514cd598936907ab71fbda8adcc7ea9e5e028834e886ac86d2410829b29e, b 6850536088e82c5fc74d3594310e164a9d59f70d11ea588b5a004ef4d302b9de, pinned on ['a', 'b']"
+    },
+    {
+      "name": "cluster_toml_after_create",
+      "ok": true,
+      "detail": "created at 1795607195.296 and 1795609545.083, cluster.toml written at 1795610849.8952932"
+    },
+    {
+      "name": "load_shape",
+      "ok": true,
+      "detail": "concurrency 8, 180 s, prompt 512 tokens against 512 +-5%, 256 output tokens, stream True"
+    },
+    {
+      "name": "clock_offset",
+      "ok": false,
+      "detail": "offset 0.2872 s, uncertainty 2.5298 s against 0.5"
+    }
+  ],
+  "missing_trials": [],
+  "reading": "mode 2 fails on the clean error within 3 s; mode 2 fails on failures off R_B",
+  "manual_actions": [
+    {
+      "t": 1795610815.6372828,
+      "what": "head and both daemons stopped by hand after setup: box b had no certificate (cert ran before its build); setup stage rerun"
+    }
+  ],
+  "pass": false,
+  "verdict": "fail",
+  "status": "fail: mode 2 fails on the clean error within 3 s; mode 2 fails on failures off R_B; failing daemon-2.clean_error_in_bound, daemon-2.no_failure_on_r_a, clock_offset"
+}

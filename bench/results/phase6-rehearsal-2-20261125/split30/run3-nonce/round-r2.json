@@ -1,0 +1,27 @@
+{
+  "label": "r2",
+  "prompt": {
+    "prompt_tokens": 2050,
+    "chars": 8163,
+    "sha256": "74c1a84c52ee60f3860b57c864804ff3e7dd196c400167ca68fd02051fc20fc1",
+    "fnv1a64": "1472c788bfb3a068",
+    "source": "bench/prompts/exit_prompt.txt"
+  },
+  "gen_asked": 128,
+  "t_submit": 1795615352.7499387,
+  "t_first": null,
+  "t_last": null,
+  "chunks": 0,
+  "usage": {
+    "prompt_tokens": 2050,
+    "completion_tokens": 0,
+    "total_tokens": 2050,
+    "prompt_tokens_details": {
+      "cached_tokens": 1
+    }
+  },
+  "error": null,
+  "text": "",
+  "status": 200,
+  "t_end": 1795615359.2991812
+}

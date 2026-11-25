@@ -1,0 +1,11 @@
+{
+  "mode": "stop",
+  "trial": 2,
+  "t_fault": 1795613159.292,
+  "t_restore": 1795613219.299,
+  "t_fault_b_clock": 1795613159.2746563,
+  "t_restore_source": "restore SIGCONT",
+  "load_label": "stop-t2-1795613051",
+  "load_end": 1795613282.1697705,
+  "clock_b_minus_a_s": -0.0178
+}

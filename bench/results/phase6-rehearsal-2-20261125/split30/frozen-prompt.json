@@ -1,0 +1,7 @@
+{
+  "prompt_tokens": 2048,
+  "chars": 8207,
+  "sha256": "65d51fd45ad4cc17a8ab32b710ad6a9926131e4cc8a1b24a3e62902bf1695f11",
+  "fnv1a64": "352eab807a227192",
+  "source": "bench/prompts/exit_prompt.txt"
+}

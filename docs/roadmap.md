@@ -344,6 +344,8 @@ flowchart TB
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
+| Case F clock offset between the boxes is 2 to 6 s uncertain | ⚠ open | taxameter ssh latency of 1 to 3 s makes the three-exchange offset uncertain by 2.3 to 6.3 s, so the clock_offset rule fails and daemon trial 2 had no request in flight at its fault; the offset needs a better source. |
+| phase6_box.sh serve lacks --node-state | ⚠ open | The serve stage starts the head from the repo directory, so its in-process replica registers in ./node-state while the daemon reads /root/p6/node-state; a fetch from the head replica is closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
@@ -351,8 +353,13 @@ flowchart TB
 | Judged round across two nodes | ○ next | A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI. |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
+| KV cache on another machine | ○ next | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
+| Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
+| A plan led by the head runs the whole model in process | ⚠ open | The planner picked a plan whose leader is the head; the head started its in-process engine for the whole model and never used node b; the plan source should refuse or serve it. |
+| Second cold request through a split plan returns an empty stream | ⚠ open | Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read. |
+| cluster probe to 64 MiB dies on the daemon control-idle limit | ⚠ open | On a link with bulk 2 to 15 s per 4 to 32 MiB the probe to 64 MiB with 10 repeats is cut by the control connection idle limit, so no start probe could be taken at the specified sizes. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -370,12 +377,22 @@ flowchart TB
 - `planner-footprint-validator-gap`: Planner footprint against the validator
 - `cluster-judged-round-cmd`: Judged round across two nodes
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
+- `bench-phase6-clock-offset`: Case F clock offset between the boxes is 2 to 6 s uncertain
+- `bench-phase6-serve-node-state`: phase6_box.sh serve lacks --node-state
 
 **box-later**
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-magnitude-q36`: Magnitude against llama-server on Qwen3.6
+
+**cluster**
+
+- `cluster-remote-kv`: KV cache on another machine
+- `cluster-prefix-fetch-not-observed`: Prefix fetch between real processes not demonstrated
+- `cluster-head-led-plan-ignores-segments`: A plan led by the head runs the whole model in process
+- `cluster-second-cold-request-empty`: Second cold request through a split plan returns an empty stream
+- `cluster-probe-control-idle`: cluster probe to 64 MiB dies on the daemon control-idle limit
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -825,7 +842,6 @@ Generated on 2026-11-25.
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
 - `cluster-owner-routing-input`: Routing trace as prediction input (✔ done · n/a). The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
-- `cluster-remote-kv`: KV cache on another machine (✔ done · unrated). A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).
 - `cluster-replicas`: Model replicas behind one router (✔ done · unrated). Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11).
 - `engine-exit-segment-harness`: Exit segment harness (✔ done · unrated). The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and runs warm requests before a timed one that recomputes every token and reports its disk bytes (a covering plan that reads any is flagged unclean).
 - `memory-ram-tier-complement`: Read-free covering expert tiers (✔ fixed). When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
@@ -834,6 +850,7 @@ Generated on 2026-11-25.
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 - `bench-235b-segment-confirm-2`: Rerun the segment confirmation (✔ done · successful). Rerun of the one-segment confirmation on a one-NUMA-node host (EPYC 7542, RTX A6000 planned against 24 GiB) with real-hidden anchors and the gates as code. The prediction (pp 445.08, tg 17.426 tok/s, fit band 0.050) was frozen and pushed before the judged rounds; the median of the three clean rounds is pp 452.46 and tg 17.761, within 2%, the routing gate held and the A/A (early and last) are inside 0.08. Two of the first three rounds were unclean (co-tenant over the limit), so two more rounds were run on the same frozen prediction; the five-round median agrees (e_pp -0.013, e_tg +0.008).
 - `bench-phase6-rehearsal`: First two-box cluster session (✔ done · unrated). Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).
+- `bench-phase6-rehearsal-2`: Second two-box cluster session (✔ done · unrated). Two rented boxes ran the Case F script end to end with the rejoin fix (rejoin 5.3 to 9.6 s in all nine trials), then a drain without a plan (holds), a prefix fetch attempt (not shown working) and a 30B split over the WAN link against a frozen prediction (tg within 6 percent, pp 55 to 64 percent low because the start probe was unlike the later ones).
 - `cluster-discovery-disk-names`: Discovery names the builder disk (✔ fixed). Discovery named every disk disk0 and gave the device no read rate, so the planner homed every 235B expert in RAM and the validator rejected all candidates; the volume that holds the node's models dir is now nvme0 with its link prior as the rate, and the test builds the graph from recorded volumes with no edit. The RAM budget of a judged session is still a graph edit unless the box's RAM is the budget.
 - `cluster-drain-without-plan`: Node drain does not move load without a cluster plan (✔ fixed). With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.
 - `cluster-failover-bound`: Failover bound per Case F mode (✔ done · unrated). The worst time from a node fault to the in-flight error on the head, from the code, a killed engine or daemon closes the connection with no timer, a partition costs node_down_after plus the tick plus one pause step, 2.13 s at 2 s, plus one one-way delay on a real link. Simulated nodes confirm each mode within its bound. Findings, an engine that hangs with its daemon alive has no timer, and a receiver that does not drain delays the errors by up to 60 s each.
@@ -878,7 +895,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 50 nodes (37 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 53 nodes (38 done, 4 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 28 nodes (24 done, 1 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 32 nodes (23 done, 6 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

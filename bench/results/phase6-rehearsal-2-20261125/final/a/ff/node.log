@@ -1,0 +1,169 @@
+=== RUN 2026-11-25T12:45:56 node ===
+error: node `b`: no certificate in the PEM file
+=== RUN 2026-11-25T12:47:59 node ===
+2026-11-25T12:47:59.345544Z  INFO tetraeder::node: tetraeder node node=a listen=0.0.0.0:7000
+node a listening on 0.0.0.0:7000
+2026-11-25T12:48:01.469739Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T12:48:15.318705Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T12:48:15.371449Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T12:50:54.750867Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T12:51:45.860459Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T12:51:45.908779Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T12:52:00.987653Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T12:52:01.287940Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T12:52:03.876553Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:38:03.059438Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:38:09.435486Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:41:35.215728Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:41:40.433348Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:43:45.944250Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+=== RUN 2026-11-25T13:44:06 node ===
+2026-11-25T13:44:06.897204Z  INFO tetraeder::node: tetraeder node node=a listen=0.0.0.0:7000
+node a listening on 0.0.0.0:7000
+2026-11-25T13:44:34.964363Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:44:35.247183Z  INFO tetraeder::node: hardware: gpu0: PCIe link is gen1 x16 now, max gen4 x16 (may be idle power saving)
+2026-11-25T13:44:35.247202Z  INFO tetraeder::node: hardware: pcie topology: 1 GPUs from NVML but 2 PCI display devices, not matched
+2026-11-25T13:44:35.247210Z  INFO tetraeder::node: hardware: cpu0: compute is a prior of 5e10 flop/s per core; fit it with anchors
+2026-11-25T13:44:35.247571Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:47:54.863152Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:48:24.729180Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:48:24.776543Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:48:28.495950Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:48:28.785362Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:48:31.077188Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:48:43.136875Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:48:43.184883Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:48:51.100540Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:48:51.389849Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:48:53.737337Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:49:04.729144Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:49:04.782821Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:49:18.753593Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:49:19.056346Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:49:21.654021Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:49:37.094408Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:49:37.147234Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:49:42.104193Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:49:42.426449Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:49:45.018661Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:51:16.848648Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:51:22.395288Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:51:23.054773Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:51:23.055793Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:51:23.271122Z  WARN llama: load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+2026-11-25T13:51:23.304796Z  INFO tetraeder_model::qwen3moe: cpu threadpool polling level=0 auto=true quota=Some(15.36) online=Some(16) threads=15
+2026-11-25T13:51:23.888173Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="hidden" send=87040 recv=131072 requested=Auto
+2026-11-25T13:51:26.842788Z  INFO tetraeder_model::readback: kv readback staging bytes=16777216 pinned=true
+2026-11-25T13:51:54.109232Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:51:54.162510Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:52:05.321549Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:52:05.613215Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:52:07.903350Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:52:41.151362Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:52:41.198568Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:52:45.684027Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:52:46.007250Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:52:48.599745Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:53:15.235647Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:53:15.289109Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:53:20.888997Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:53:21.179284Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:53:23.486207Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:53:56.147919Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:53:56.195734Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:53:58.728672Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:53:59.018262Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=87040 recv=131072 requested=Auto
+2026-11-25T13:54:01.328572Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:54:49.161651Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+=== RUN 2026-11-25T13:54:53 node ===
+2026-11-25T13:54:53.524913Z  INFO tetraeder::node: tetraeder node node=a listen=0.0.0.0:7000
+node a listening on 0.0.0.0:7000
+2026-11-25T13:55:33.167184Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:55:33.861613Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:55:33.863048Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:55:34.061930Z  WARN llama: load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+2026-11-25T13:55:34.096278Z  INFO tetraeder_model::qwen3moe: cpu threadpool polling level=0 auto=true quota=Some(15.36) online=Some(16) threads=15
+2026-11-25T13:55:34.653005Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="hidden" send=800768 recv=131072 requested=Auto
+2026-11-25T13:55:37.671624Z  INFO tetraeder_model::readback: kv readback staging bytes=16777216 pinned=true
+2026-11-25T13:56:02.500972Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:56:02.549311Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:56:07.057360Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:56:07.357679Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:56:10.124407Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:56:26.926724Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:56:26.974738Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:56:43.795702Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:56:44.088017Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:56:46.425429Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:56:55.852166Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="hidden" send=800768 recv=131072 requested=Auto
+2026-11-25T13:57:00.682207Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:57:00.729994Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:57:11.608627Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:57:11.898603Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:57:14.236937Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:57:59.028859Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T13:57:59.082883Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:58:17.257507Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T13:58:17.549578Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T13:58:19.880980Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T13:59:48.706342Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+=== RUN 2026-11-25T13:59:53 node ===
+2026-11-25T13:59:53.060809Z  INFO tetraeder::node: tetraeder node node=a listen=0.0.0.0:7000
+node a listening on 0.0.0.0:7000
+2026-11-25T14:01:07.695598Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:01:08.355417Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:01:08.356820Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:01:08.558168Z  WARN llama: load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+2026-11-25T14:01:08.592646Z  INFO tetraeder_model::qwen3moe: cpu threadpool polling level=0 auto=true quota=Some(15.36) online=Some(16) threads=15
+2026-11-25T14:01:09.150123Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="hidden" send=800768 recv=131072 requested=Auto
+2026-11-25T14:01:12.156943Z  INFO tetraeder_model::readback: kv readback staging bytes=16777216 pinned=true
+2026-11-25T14:01:40.936907Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:01:40.989671Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:01:45.500377Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:01:45.815454Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:01:48.151300Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T14:02:08.180271Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:02:08.233837Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:02:24.213668Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:02:24.526790Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:02:26.878625Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T14:02:33.020763Z  INFO tetraeder_model::snapshot_pool: snapshot buffer pool spares=2 thp=false
+2026-11-25T14:02:39.131620Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="hidden" send=800768 recv=131072 requested=Auto
+2026-11-25T14:02:43.633285Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:02:43.680803Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:02:50.680694Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:02:50.994712Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:02:53.302845Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T14:03:12.699917Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:03:12.747845Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:03:15.618046Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:03:15.941354Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:03:18.524075Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T14:04:14.061253Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:04:19.288882Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:04:20.379461Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:04:20.456021Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:04:20.749791Z  WARN llama: load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+2026-11-25T14:04:20.788987Z  INFO tetraeder_model::qwen3moe: cpu threadpool polling level=0 auto=true quota=Some(15.36) online=Some(16) threads=15
+2026-11-25T14:04:21.158920Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="hidden" send=800768 recv=131072 requested=Auto
+2026-11-25T14:04:24.471196Z  INFO tetraeder_model::readback: kv readback staging bytes=16777216 pinned=true
+2026-11-25T14:04:47.329912Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:04:47.382897Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:04:54.246028Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:04:54.556805Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:04:56.858282Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T14:05:24.951572Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="probe" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:05:24.999858Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:05:33.700925Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:05:34.012256Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="probe" send=800768 recv=131072 requested=Auto
+2026-11-25T14:05:36.311260Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=b
+2026-11-25T14:06:12.725966Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+=== RUN 2026-11-25T14:06:26 node ===
+2026-11-25T14:06:26.103445Z  INFO tetraeder::node: tetraeder node node=a listen=0.0.0.0:7000
+node a listening on 0.0.0.0:7000
+2026-11-25T14:06:49.591687Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:07:24.102715Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="kv" send=800768 recv=131072 requested=Auto
+2026-11-25T14:07:24.102956Z  WARN tetraeder::node: a prefix connection arrived and no replica listens for it; closed peer=b
+2026-11-25T14:08:48.944032Z  WARN tetraeder_control::node: bad request frame: read failed: connection reset peer=a
+2026-11-25T14:08:54.100050Z  INFO tetraeder_transport::tls_transport: socket buffers peer=a purpose="control" send=2626560 recv=131072 requested=Auto
+2026-11-25T14:09:29.990472Z  INFO tetraeder_transport::tls_transport: socket buffers peer=b purpose="kv" send=800768 recv=131072 requested=Auto

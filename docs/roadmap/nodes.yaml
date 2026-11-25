@@ -2952,7 +2952,7 @@ nodes:
   title: KV cache on another machine
   track: cluster
   kind: feature
-  state: done
+  state: next
   outcome: unrated
   evidence:
   - docs/adr/0091-phase6-multi-node.md
@@ -2968,7 +2968,7 @@ nodes:
   folded: []
   overview: false
   plain: 'A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).'
-  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Step 5 did it with fake stores; the real scheduler prefix store (cache entry or idle sequence) is now served and installed over the Prefix purpose and a fetched prefix decodes equal to a recomputed one (ADR 0091 History, step 6, cluster-integration). Open before the rehearsal measures a fetch on GPU boxes.'
+  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Step 5 did it with fake stores; the real scheduler prefix store (cache entry or idle sequence) is now served and installed over the Prefix purpose and a fetched prefix decodes equal to a recomputed one (ADR 0091 History, step 6, cluster-integration). Open before the rehearsal measures a fetch on GPU boxes. Reopened 2026-11-25 (advisor) - the prefix fetch was never seen through a real head in either rehearsal and the existing test bypasses the head policy; needs decision logging and a test through the head HTTP endpoint; gates the M3 report, not the box sessions.'
 - id: cluster-replicas
   title: Model replicas behind one router
   track: cluster
@@ -4515,3 +4515,148 @@ nodes:
   folded: []
   overview: false
   plain: 'With a replicas file a node told to drain now takes no new request on its replica within 0.2 s, what it had in flight finishes, and the other replica serves the rest; the ADR states this and what happens when every replica drains.'
+
+- id: bench-phase6-rehearsal-2
+  title: Second two-box cluster session
+  track: bench
+  kind: experiment
+  state: done
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  - bench/results/phase6-rehearsal-2-20261125/verdict-f.json
+  - bench/results/phase6-rehearsal-2-20261125/link/drift.txt
+  - bench/results/phase6-rehearsal-2-20261125/predictions/predict-cluster.json
+  verdict_quote: 'Status: rehearsal 2, no verdict. Case F by scripts/phase6_exit_f.sh end to end (nine trials): the summary says fail, on the clock offset (uncertainty 2.3 to 6.3 s against 0.5 s) and daemon trial 2 (the fault hit no request in flight); rejoin holds in all nine.'
+  headline: 'Case F nine trials: rejoin holds in all, summary fails on the clock offset only; 30B split tg within 6 percent'
+  depends_on:
+  - bench-phase6-rehearsal
+  - cluster-rejoin-after-restore
+  - cluster-drain-without-plan
+  replaced_by: []
+  lane: box-later
+  start: '2026-11-25'
+  end: '2026-11-25'
+  folded: []
+  overview: false
+  plain: 'Two rented boxes ran the Case F script end to end with the rejoin fix (rejoin 5.3 to 9.6 s in all nine trials), then a drain without a plan (holds), a prefix fetch attempt (not shown working) and a 30B split over the WAN link against a frozen prediction (tg within 6 percent, pp 55 to 64 percent low because the start probe was unlike the later ones).'
+
+- id: bench-phase6-clock-offset
+  title: Case F clock offset between the boxes is 2 to 6 s uncertain
+  track: bench
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  verdict_quote: 'clock_offset FAIL offset 0.2872 s, uncertainty 2.5298 s against 0.5 (bench/results/phase6-rehearsal-2-20261125/verdict-f.json)'
+  headline: 'the offset by ssh round trips misses the 0.5 s rule and moved a fault out of its window'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'taxameter ssh latency of 1 to 3 s makes the three-exchange offset uncertain by 2.3 to 6.3 s, so the clock_offset rule fails and daemon trial 2 had no request in flight at its fault; the offset needs a better source.'
+
+- id: bench-phase6-serve-node-state
+  title: phase6_box.sh serve lacks --node-state
+  track: bench
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  verdict_quote: 'node a: a prefix connection arrived and no replica listens for it; closed (bench/results/phase6-rehearsal-2-20261125/README.md, step 2)'
+  headline: 'the head replica registers its prefix listener where the daemon does not look'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The serve stage starts the head from the repo directory, so its in-process replica registers in ./node-state while the daemon reads /root/p6/node-state; a fetch from the head replica is closed.'
+
+- id: cluster-prefix-fetch-not-observed
+  title: Prefix fetch between real processes not demonstrated
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  verdict_quote: 'prefix: no fetch line, x2 recomputed (common=0) with declared prefill 5 tok/s and --cluster-hw (bench/results/phase6-rehearsal-2-20261125/README.md, step 2)'
+  headline: 'a fetch priced to win was not seen, no grant log line, no readable counter'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread.'
+
+- id: cluster-head-led-plan-ignores-segments
+  title: A plan led by the head runs the whole model in process
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  verdict_quote: 'c00 leader a: node b idle, pp 5200 tok/s, tg 190 tok/s (bench/results/phase6-rehearsal-2-20261125/split30/c00-local-run)'
+  headline: 'serve --cluster-plan with the head as leader silently drops the other nodes segments'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The planner picked a plan whose leader is the head; the head started its in-process engine for the whole model and never used node b; the plan source should refuse or serve it.'
+
+- id: cluster-second-cold-request-empty
+  title: Second cold request through a split plan returns an empty stream
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  verdict_quote: 'round r2 and r3: status 200, no token (bench/results/phase6-rehearsal-2-20261125/split30, runs 2 to 4)'
+  headline: 'after one cold 2048-token request the next cold one ends with nothing'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'Two nodes served the c01 split; the first cold request after a head start worked, a different cold prompt after it returned an empty 200 stream, with no error in the logs read.'
+
+- id: cluster-probe-control-idle
+  title: cluster probe to 64 MiB dies on the daemon control-idle limit
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/phase6-rehearsal-2-20261125/README.md
+  verdict_quote: 'error: node a: probe of b failed: write failed: Broken pipe (bench/results/phase6-rehearsal-2-20261125/README.md, deviations)'
+  headline: 'a slow link makes the full probe exceed the 30 s idle limit'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'On a link with bulk 2 to 15 s per 4 to 32 MiB the probe to 64 MiB with 10 repeats is cut by the control connection idle limit, so no start probe could be taken at the specified sizes.'

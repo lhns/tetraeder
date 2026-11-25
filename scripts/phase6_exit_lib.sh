@@ -13,7 +13,12 @@ bx() { # bx BOX TIMEOUT CMD...: CMD runs in the box's repo with its P6 work dir
     (cd "$repo" && P6="$lb/$box" P6_LOOPBACK=1 P6_LB_PORT="$([ "$box" = a ] && echo "$port_a" || echo "$port_b")" HEAD_HOST=127.0.0.1 HEAD_PORT="$head_port" \
       TETRAEDER_BIN="$lb/tetraeder" POLL_S="$poll_s" bash -c "$*")
   else
-    uv run taxameter ssh --id "$(box_id "$box")" --timeout "$t" -- "cd /root/tetraeder && export P6=/root/p6 && $*"
+    # taxameter prints its own "box running ..." status line (CRLF) on stdout before the command's output: drop it, keep the exit status
+    local rc
+    uv run taxameter ssh --id "$(box_id "$box")" --timeout "$t" -- "cd /root/tetraeder && export P6=/root/p6 && $*" \
+      | tr -d '\r' | sed -u '/^\[[0-9:]*\] box running /d'
+    rc=${PIPESTATUS[0]}
+    return "$rc"
   fi
 }
 put() { # put BOX LOCAL_FILE REL_PATH_UNDER_P6

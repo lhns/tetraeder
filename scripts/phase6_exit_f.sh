@@ -27,7 +27,7 @@
 # REJOIN_S 12, NODE_DOWN_MS 1000, 40 tokens). The loop and the verdict are the real ones; the verdict fails only the load-shape
 # rule there, because 14 s is not 180 s. Needs a POSIX userland with pgrep, setsid and flock.
 cd "$(dirname "$0")/.." || exit 1
-repo=$PWD
+repo=$(pwd -W 2> /dev/null || pwd) # a Windows driver needs C:/ paths for python3
 export MSYS_NO_PATHCONV=1
 LOOPBACK="${LOOPBACK:-0}"
 say() { echo "[$(date +%T)] $*"; }
@@ -92,6 +92,12 @@ write_tetraeder_shim() { # the loopback binary: the stand-in of scripts/phase6_l
 st_setup() {
   local b
   [ "$LOOPBACK" = 1 ] && { rm -rf "$lb"; write_tetraeder_shim; }
+  if [ "$LOOPBACK" != 1 ]; then
+    # `cluster cert` is the tetraeder binary: on a box that has not built yet it fails silently and the certificate stays empty
+    say "build on both boxes (the certificates need the binary)"
+    for b in a b; do bx "$b" 120 "bash scripts/phase6_box.sh build" | tail -n 1; done
+    for b in a b; do wait_line "$b" logs/build.log '^P6_BUILD_DONE rc=0' 3600 || die "build on $b did not finish ok"; done
+  fi
   say "certificates"
   for b in a b; do
     bx "$b" 120 "bash scripts/phase6_box.sh cert $b" | tail -n 2

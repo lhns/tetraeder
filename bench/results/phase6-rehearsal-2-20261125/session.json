@@ -1,0 +1,42 @@
+{
+  "certs": {
+    "a": "c7f8514cd598936907ab71fbda8adcc7ea9e5e028834e886ac86d2410829b29e",
+    "b": "6850536088e82c5fc74d3594310e164a9d59f70d11ea588b5a004ef4d302b9de",
+    "pinned_on": [
+      "a",
+      "b"
+    ]
+  },
+  "t_cluster_toml": 1795610849.8952932,
+  "t_created": {
+    "a": 1795607195.296,
+    "b": 1795609545.083
+  },
+  "model_sha256": "0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5",
+  "boxes": {
+    "a": {
+      "id": "62513726",
+      "model_sha256": "0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5"
+    },
+    "b": {
+      "id": "62518492",
+      "model_sha256": "0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5"
+    }
+  },
+  "replica_b": "replica 1",
+  "bound_s": 3.0,
+  "rejoin_limit_s": 60,
+  "trials_per_mode": 3,
+  "load": {
+    "concurrency": 8,
+    "duration_s": 180,
+    "prompt_tokens": 512,
+    "max_tokens": 256,
+    "stream": true
+  },
+  "clock": {
+    "b_minus_a_s": 0.2872,
+    "uncertainty_s": 2.5298,
+    "samples": 3
+  }
+}

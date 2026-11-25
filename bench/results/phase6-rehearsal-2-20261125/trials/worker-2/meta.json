@@ -1,0 +1,11 @@
+{
+  "mode": "worker",
+  "trial": 2,
+  "t_fault": 1795611514.637,
+  "t_restore": 1795611517.557,
+  "t_fault_b_clock": 1795611514.891816,
+  "t_restore_source": "restore child-up",
+  "load_label": "worker-t2-1795611399",
+  "load_end": 1795611637.616443,
+  "clock_b_minus_a_s": 0.2547
+}

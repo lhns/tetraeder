@@ -1,0 +1,6 @@
+1152000 100000
+32236371968
+Model name:                              AMD Ryzen 5 3600 6-Core Processor
+Socket(s):                               1
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-11

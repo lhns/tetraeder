@@ -1,0 +1,114 @@
+model = "Qwen3 30B Gptq Fp16"
+
+[knobs]
+prefill_micro_batches = 4
+cuda_graphs = true
+ubatch = 2048
+op_offload = true
+
+[[replicas]]
+
+[[replicas.stages]]
+layers = [
+    0,
+    31,
+]
+devices = [
+    "b/gpu0",
+    "b/cpu0",
+]
+tp = 1
+ep = 1
+
+[[replicas.stages.assign]]
+home = ["b/cpu0"]
+format = "Q4_K"
+
+[replicas.stages.assign.units]
+kinds = ["embed"]
+
+[[replicas.stages.assign]]
+home = ["b/gpu0"]
+format = "Q4_K"
+
+[replicas.stages.assign.units]
+kinds = [
+    "attn",
+    "mlp",
+]
+
+[[replicas.stages.assign]]
+home = ["b/cpu0"]
+format = "Q4_K"
+
+[replicas.stages.assign.units]
+kinds = ["expert"]
+
+[[replicas.stages.kv]]
+device = "b/gpu0"
+bytes = 146276352
+
+[[replicas.stages.workspace]]
+device = "b/gpu0"
+bytes = 1647312896
+
+[[replicas.stages.expert_cache]]
+device = "b/gpu0"
+slots = 128
+
+[[replicas.stages.expert_cache]]
+device = "b/cpu0"
+slots = 8
+
+[[replicas.stages]]
+layers = [
+    31,
+    48,
+]
+devices = [
+    "a/gpu0",
+    "a/cpu0",
+]
+tp = 1
+ep = 1
+
+[[replicas.stages.assign]]
+home = ["a/gpu0"]
+format = "Q4_K"
+
+[replicas.stages.assign.units]
+kinds = [
+    "attn",
+    "mlp",
+]
+
+[[replicas.stages.assign]]
+home = ["a/cpu0"]
+format = "Q4_K"
+
+[replicas.stages.assign.units]
+kinds = ["expert"]
+
+[[replicas.stages.assign]]
+home = ["b/gpu0"]
+compute = ["b/gpu0"]
+format = "Q4_K"
+
+[replicas.stages.assign.units]
+kinds = ["head"]
+
+[[replicas.stages.kv]]
+device = "a/gpu0"
+bytes = 80216064
+
+[[replicas.stages.workspace]]
+device = "a/gpu0"
+bytes = 1647312896
+
+[[replicas.stages.expert_cache]]
+device = "a/gpu0"
+slots = 128
+
+[[replicas.stages.expert_cache]]
+device = "a/cpu0"
+slots = 8
