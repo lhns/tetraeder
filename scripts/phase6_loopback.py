@@ -348,6 +348,7 @@ def run_head(a: argparse.Namespace) -> None:
 # ---- Case S stand-ins: files of fixed numbers in the layouts the real tools write -------------------------------------------------
 
 PH = "9f8e7d6c5b4a3920"  # the frozen prompt's fnv1a64 of the stand-in
+AFTER_INSTALL_BUDGET = 59_430_000_000  # the RAM budget the stand-in balloon reads the second time (after the install)
 POINTS = [[4096, 0.032], [16384, 0.046], [65536, 0.054], [262144, 0.055], [1048576, 0.056], [4194304, 0.099], [16777216, 0.324], [67108864, 1.342]]
 
 
@@ -356,7 +357,8 @@ def cached_plan(v: int, r: int) -> str:
     stage = ('[[replicas.stages]]\nlayers = [{lo}, {hi}]\ndevices = ["{n}/gpu0", "{n}/cpu0"]\n'
              '[[replicas.stages.expert_cache]]\ndevice = "{n}/gpu0"\nslots = {v}\n'
              '[[replicas.stages.expert_cache]]\ndevice = "{n}/cpu0"\nslots = {r}\n')
-    return "[[replicas]]\n" + stage.format(lo=0, hi=47, n="a", v=v, r=r) + stage.format(lo=47, hi=94, n="b", v=v, r=r)
+    knobs = "[knobs]\nubatch = 2048\nprefill_micro_batches = 4\n\n"  # four micro-batches of 512 tokens in the 2048-token step
+    return knobs + "[[replicas]]\n" + stage.format(lo=0, hi=47, n="a", v=v, r=r) + stage.format(lo=47, hi=94, n="b", v=v, r=r)
 
 
 PLAN = cached_plan(32, 96)
@@ -435,6 +437,14 @@ def fake_merge(a: argparse.Namespace) -> int:
     for d in hw["devices"]:
         if d.get("kind") == "cpu" and d.get("node") in ram_budgets(a.ram_budget):
             d["capacity_bytes"] = ram_budgets(a.ram_budget)[d["node"]]
+    for spec in a.node:  # a fitted node graph: its devices' compute rates replace the node's own (the real merge replaces more)
+        node, path = spec.split("=", 1)
+        import tomllib
+
+        for fd in tomllib.load(open(path, "rb")).get("devices", []):
+            for d in hw["devices"]:
+                if d["id"] == f"{node}/{fd['id']}" and fd.get("compute"):
+                    d["compute"] = fd["compute"]
     if a.swap_link:
         hw["collectives"] = json.load(open(a.swap_link, encoding="utf-8"))["curves"]
     wjson(a.out, hw)
@@ -465,8 +475,13 @@ def fake_plan(argv: list[str]) -> int:
             print("Error: no covering plan across the nodes of hw: node b: layers 94 have no covering placement within 25512105663 B of VRAM and "
                   "59400000000 B of RAM (needs at least 14124736512 B of VRAM and 117708816384 B of RAM)", file=sys.stderr)
             return 1
+        cpu = [d["capacity_bytes"] for d in json.load(open(a.hw, encoding="utf-8"))["devices"] if d["kind"] == "cpu"]
+        if scenario("rebudget_thin") and cpu and min(cpu) < 50_000_000_000:  # the budget measured after the install no longer holds a covering plan
+            print("Error: no covering plan across the nodes of hw: no covering placement (needs at least 117708816384 B of RAM)", file=sys.stderr)
+            return 1
         os.makedirs(a.plans_dir, exist_ok=True)
-        wtext(os.path.join(a.plans_dir, "m-c1.toml"), SINGLE if scenario("single_node") else PLAN)
+        other = scenario("rebudget_other_pick") and cpu and min(cpu) == AFTER_INSTALL_BUDGET  # another covering cut on the new budget
+        wtext(os.path.join(a.plans_dir, "m-c1.toml"), SINGLE if scenario("single_node") else (cached_plan(33, 95) if other else PLAN))
         wtext(os.path.join(a.plans_dir, "m-c2.toml"), SINGLE)
         wjson(a.out, {"kind": "candidates-cluster", "candidates": [
             {"id": "c1", "plan": "m-c1.toml", "prediction": {"request_s": 40.0}},
@@ -495,7 +510,10 @@ def fake_sc_box(a: argparse.Namespace) -> int:
     first = a.span.startswith("0..")
     for st in stages:
         if st == "balloon":
-            wjson(os.path.join(out, "env.json"), {"ram_budget": {"ram_budget_bytes": 59_450_000_000, "memory_max": 64_000_000_000}})
+            budget = 59_450_000_000
+            if os.path.exists(os.path.join(out, "env.json")):  # the balloon back after the install: measured again, a little different
+                budget = 40_000_000_000 if scenario("rebudget_thin") else AFTER_INSTALL_BUDGET
+            wjson(os.path.join(out, "env.json"), {"ram_budget": {"ram_budget_bytes": budget, "memory_max": 64_000_000_000}})
         elif st == "disk":
             wjson(os.path.join(out, "layout.json"), {"n_layer": 94, "n_expert": 128})
             wtext(os.path.join(out, "predictions", "hw.toml"), "# stand-in\n")
@@ -506,8 +524,9 @@ def fake_sc_box(a: argparse.Namespace) -> int:
             for r in (1, 2):
                 for k in ("a1", "a2"):
                     seg = {} if first else {"hidden_in": {"seed": 1} if (scenario("seed_anchors") and n == "b") else {"file": "/root/hidden.bin"}}
+                    ub = 2048 if scenario("anchors_whole_prompt") else a.ubatch  # the batch the anchors ran (sc_box.sh stamps it)
                     wjson(os.path.join(out, "anchors", f"{k}-r{r}.json"), {"runs": [{"prefill_tok_s": 900.0, "decode_tok_s": 40.0, "prompt": {"tokens": 2048, "fnv1a64": PH},
-                                                                                     "segment": seg}]})
+                                                                                     "segment": seg}], "exit_ubatch": ub})
         elif st == "predict":
             band = 0.12 if (n == "b" and scenario("fit_band_miss")) else 0.05
             wjson(os.path.join(out, "predictions", "pred.json"), {"routing": "trace", "prediction": {
@@ -528,11 +547,13 @@ def fake_judged_round(a: argparse.Namespace) -> int:
         pp = 150.0
     bad = scenario("unclean_rounds") and k in (1, 3)
     wjson(os.path.join(a.out, "cluster.json"), {"runs": [{"prefill_tok_s": pp, "decode_tok_s": tg, "prompt": {"tokens": 2048, "fnv1a64": "0badf00d" if scenario("wrong_prompt") else PH}}]})
+    # a card of 32 GiB whose peak after the warm request is over (or under) the 24 GiB line, or the 24 GiB card of the stand-in's default
+    total, peak = (32768, 25000 if scenario("vram_peak_over") else 24000) if (scenario("vram_peak_over") or scenario("vram_peak_ok")) else (24576, 20000)
     for n in a.nodes.split(","):
         wjson(os.path.join(a.out, f"seg-{n}.json"), {"runs": [{"prefill_tok_s": 900.0, "decode_tok_s": 40.0, "warm": {"covering": True, "unclean": False},
                                                               "prefill_io": {"bytes": 0},
                                                               "decode_layers": {"vram_pair_share": 0.39, "full_hit_rate_mean": 0.005, "ram_hit_rate_mean": 1.0}}],
-                                                    "balloon_ok": True, "cotenant_ok": not (bad and n == "a")})
+                                                    "gpu_mem_peak_mib": peak, "gpu_mem_total_mib": total, "balloon_ok": True, "cotenant_ok": not (bad and n == "a")})
         wtext(os.path.join(a.out, f"seg-{n}.gpu.txt"), "before: 0x0, 100.0 W, 350.0 W, 350.0 W\nafter: 0x0, 300.0 W, 350.0 W, 350.0 W\n")
     print(f"judged round {a.round} written")
     return 0
@@ -549,6 +570,7 @@ def main() -> int:
         ap.add_argument("--out", required=True)
         ap.add_argument("--stages")
         ap.add_argument("--span", default="0..47")
+        ap.add_argument("--ubatch", type=int, default=2048)
         a = ap.parse_args(argv)
         return fake_sc_box(a)
     if argv[:2] == ["cluster", "judged-round"]:

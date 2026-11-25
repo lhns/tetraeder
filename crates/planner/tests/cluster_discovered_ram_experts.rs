@@ -325,8 +325,9 @@ fn the_235b_pick_priced_on_each_rehearsal_2_probe() {
         );
     }
     println!(
-        "link_feasibility pick={} leader={} stages={:?} max_pp_move={max_pp:.4} max_tg_move={max_tg:.4}",
+        "link_feasibility pick={} micro={} leader={} stages={:?} max_pp_move={max_pp:.4} max_tg_move={max_tg:.4}",
         pick.id,
+        pick.plan.knobs.prefill_micro_batches,
         stages[0].devices.first().cloned().unwrap_or_default(),
         stages
             .iter()
@@ -339,15 +340,23 @@ fn the_235b_pick_priced_on_each_rehearsal_2_probe() {
         "{:?}",
         stages[0].devices
     );
-    // Priced on the start probe (pp rides on the curve extrapolated from 4 MiB to the 32 MiB
-    // hidden state of a micro-batch, tg on the small frames).
+    // Priced on the start probe (pp rides on the curve extrapolated from 4 MiB to the 32 MiB hidden
+    // state of the one batch of 2048, tg on the small frames). Cost model 6 now prices each
+    // micro-batch as a batch of its own (the offload copy and the weight reads once per
+    // micro-batch): the pick that was ubatch 2048 with four micro-batches at 53.6 tok/s (pp move
+    // 5.8%) is one batch of 2048 at 40.1 tok/s (2026-11-26).
+    assert_eq!(pick.plan.knobs.prefill_micro_batches, 1);
     assert!(
-        (pp0 - 53.6).abs() < 0.5 && (tg0 - 3.96).abs() < 0.05,
+        (pp0 - 40.1).abs() < 0.5 && (tg0 - 3.96).abs() < 0.05,
         "{pp0} {tg0}"
     );
-    // The link rule (ADR 0091 answer 10) would pass: the frozen pick moves under 0.08 in both
-    // rates across the five probes, though the largest frames of the 30B split moved 3.5 times.
-    assert!(max_pp < 0.08 && max_tg < 0.08, "{max_pp} {max_tg}");
+    // On priors the pick's pp moves 18.7% across the five probes, over 0.08, because one batch of
+    // 2048 sends one 32 MiB frame that nothing hides (the gate prices on the fitted rates instead:
+    // see the fitted tests below); tg stays under.
+    assert!(
+        (max_pp - 0.187).abs() < 0.01 && max_tg < 0.08,
+        "{max_pp} {max_tg}"
+    );
     // The swap took: the five prices are not one price.
     assert!(
         rows.iter()
@@ -438,9 +447,10 @@ fn show(c: &ClusterCandidate, layout: &tetraeder_planner::layout::ModelLayout) -
         })
         .collect();
     format!(
-        "{} ub {:?} pp {:.1} tg {:.2}: {}",
+        "{} ub {:?} micro {} pp {:.1} tg {:.2}: {}",
         c.id,
         c.plan.knobs.ubatch,
+        c.plan.knobs.prefill_micro_batches,
         c.prediction.pp_tps,
         c.prediction.tg_tps,
         parts.join(" | ")
@@ -522,4 +532,348 @@ fn no_covering_candidate_when_the_budget_cannot_hold_the_experts_and_the_reason_
             .iter()
             .any(|s| s.v + s.r < layout.n_expert)
     );
+}
+
+// ---- link feasibility on fitted rates (ADR 0091 History 2026-11-26) ------------------------------
+
+/// A node graph fitted from the anchors of the confirmed segment session (a 3090 box,
+/// `segment-confirm-20261125b`): the compute rates the Case S link gate prices with.
+const FITTED: &str =
+    include_str!("../../../bench/results/segment-confirm-20261125b/predictions/fitted.toml");
+
+/// The three probes of rehearsal 1 (`phase6-rehearsal-20261125/a/`): 64 MiB frames, a to b in
+/// about 1.3 s with autotuned buffers; the explicit-buffer runs slow only b to a.
+const R1_PROBES: [(&str, &str); 3] = [
+    (
+        "auto",
+        include_str!("../../../bench/results/phase6-rehearsal-20261125/a/probe-auto.json"),
+    ),
+    (
+        "explicit-4m",
+        include_str!(
+            "../../../bench/results/phase6-rehearsal-20261125/a/probe-explicit-4194304.json"
+        ),
+    ),
+    (
+        "explicit-16m",
+        include_str!(
+            "../../../bench/results/phase6-rehearsal-20261125/a/probe-explicit-16777216.json"
+        ),
+    ),
+];
+
+/// Rehearsal 1's probes with only the a to b curve of each: the explicit-buffer runs slowed b to a
+/// 6 to 7 times (a setting of the probe, see the README of that session), which is no link
+/// variance; the like-for-like set keeps the autotuned run's b to a curve and link and takes a to b
+/// from each run (64 MiB in 1.342, 1.313 and 1.282 s, a 4.6% spread).
+fn r1_a_to_b_only() -> Vec<(String, String)> {
+    let auto: serde_json::Value = serde_json::from_str(R1_PROBES[0].1).unwrap();
+    let ab = |c: &serde_json::Value| c["ranks"][0] == "a/cpu0";
+    R1_PROBES
+        .iter()
+        .map(|(n, p)| {
+            let v: serde_json::Value = serde_json::from_str(p).unwrap();
+            let mut mixed = auto.clone();
+            let from = v["curves"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| ab(c))
+                .unwrap();
+            let slot = mixed["curves"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|c| ab(c))
+                .unwrap();
+            *slot = from.clone();
+            ((*n).to_string(), mixed.to_string())
+        })
+        .collect()
+}
+
+/// The graph with the fitted node graph in place of each node's own rates, as
+/// `tetraeder cluster merge --node a=F --node b=F` does (`hw_merge::merge_fitted`): a fitted
+/// device replaces the fields of `<node>/<id>` except its identity and a GPU's capacity, a fitted
+/// link its alpha and beta; the links of the network and the curves stay.
+fn with_fitted(hw: &HardwareGraph) -> HardwareGraph {
+    const KEEP: [&str; 8] = [
+        "id",
+        "name",
+        "kind",
+        "tier",
+        "node",
+        "index",
+        "numa_nodes",
+        "cores",
+    ];
+    let fitted: serde_json::Value =
+        serde_json::from_str(&HardwareGraph::from_toml(FITTED).unwrap().to_json().unwrap())
+            .unwrap();
+    let mut v: serde_json::Value = serde_json::from_str(&hw.to_json().unwrap()).unwrap();
+    let s = |x: &serde_json::Value, k: &str| x.get(k).and_then(|y| y.as_str()).map(str::to_owned);
+    for node in ["a", "b"] {
+        for fd in fitted["devices"].as_array().unwrap() {
+            let id = format!("{node}/{}", s(fd, "id").unwrap());
+            let dst = v["devices"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|d| s(d, "id").as_deref() == Some(&id))
+                .unwrap_or_else(|| panic!("no device {id}"));
+            let gpu = s(dst, "kind").as_deref() == Some("gpu");
+            for (k, x) in fd.as_object().unwrap() {
+                if !(KEEP.contains(&k.as_str()) || (k == "capacity_bytes" && gpu)) {
+                    dst[k] = x.clone();
+                }
+            }
+        }
+        for fl in fitted["links"].as_array().unwrap() {
+            let (a, b) = (
+                format!("{node}/{}", s(fl, "a").unwrap()),
+                format!("{node}/{}", s(fl, "b").unwrap()),
+            );
+            let dst = v["links"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|l| {
+                    s(l, "kind") == s(fl, "kind")
+                        && ((s(l, "a").as_deref() == Some(&a) && s(l, "b").as_deref() == Some(&b))
+                            || (s(l, "a").as_deref() == Some(&b)
+                                && s(l, "b").as_deref() == Some(&a)))
+                })
+                .unwrap_or_else(|| panic!("no link {a} {b}"));
+            for k in ["alpha_s", "beta_bytes_per_s"] {
+                dst[k] = fl[k].clone();
+            }
+        }
+    }
+    HardwareGraph::from_json(&serde_json::to_string(&v).unwrap()).unwrap()
+}
+
+/// One row per probe: (name, pp, tg) of `plan` priced on `base` with the probe swapped in.
+fn rates_by_probe(
+    base: &HardwareGraph,
+    layout: &tetraeder_planner::layout::ModelLayout,
+    plan: &Plan,
+    probes: &[(&str, &str)],
+) -> Vec<(String, f64, f64)> {
+    let w = tetraeder_planner::Workload {
+        prompt: 2048,
+        r#gen: 128,
+    };
+    probes
+        .iter()
+        .map(|(n, p)| {
+            let hw = with_probe(base, p);
+            let r =
+                tetraeder_planner::cluster::predict_cluster_plan(&hw, layout, plan, &w).unwrap();
+            ((*n).to_string(), r.pp_tps, r.tg_tps)
+        })
+        .collect()
+}
+
+/// Prints the table and returns (max pp move, max tg move) against the first probe.
+fn report(tag: &str, rows: &[(String, f64, f64)]) -> (f64, f64) {
+    let (pp0, tg0) = (rows[0].1, rows[0].2);
+    let (mut mp, mut mt) = (0.0f64, 0.0f64);
+    for (n, pp, tg) in rows {
+        let (dp, dt) = ((pp / pp0 - 1.0).abs(), (tg / tg0 - 1.0).abs());
+        mp = mp.max(dp);
+        mt = mt.max(dt);
+        println!(
+            "fitted_feasibility {tag} probe={n} pp_tps={pp:.2} tg_tps={tg:.3} pp_move={dp:.4} tg_move={dt:.4}"
+        );
+    }
+    println!("fitted_feasibility {tag} max_pp_move={mp:.4} max_tg_move={mt:.4}");
+    (mp, mt)
+}
+
+// hardware: none
+#[test]
+fn the_fitted_graph_replaces_the_discovered_rates_and_keeps_the_nodes_identity() {
+    let base = discovered_at(true, MEASURED_RAM);
+    let fit = with_fitted(&base);
+    for n in ["a", "b"] {
+        let (c0, c1) = (
+            base.device(&format!("{n}/cpu0")).unwrap(),
+            fit.device(&format!("{n}/cpu0")).unwrap(),
+        );
+        assert_ne!(c0.compute, c1.compute, "{n} cpu rate is the fitted one");
+        let g = fit.device(&format!("{n}/gpu0")).unwrap();
+        assert_eq!(
+            g.compute.as_ref().unwrap().flops_per_s,
+            37_191_779_652_309.76
+        );
+        assert_eq!(
+            g.capacity_bytes,
+            base.device(&format!("{n}/gpu0")).unwrap().capacity_bytes
+        );
+    }
+    assert_eq!(fit.network_curve("a", "b"), base.network_curve("a", "b"));
+}
+
+/// The covering pick of Case S (a 0..44, b 44..94, 32 + 96 slots), chosen on the discovered
+/// graph with the start probe, as the plan stage does.
+fn covering_pick() -> (ClusterCandidate, tetraeder_planner::layout::ModelLayout) {
+    let hw = with_probe(&discovered_at(true, MEASURED_RAM), PROBES[0].1);
+    let layout = real_235b();
+    let (cands, _) = enumerate_cluster_covering(&hw, &layout, &Hints::default(), Phase(6));
+    (cands.into_iter().next().unwrap(), layout)
+}
+
+// hardware: none
+#[test]
+fn the_covering_pick_is_a_0_44_b_44_94_with_32_and_96_slots() {
+    let (pick, layout) = covering_pick();
+    let s: Vec<(String, (u32, u32), u32, u32)> = segs(&pick.plan, &layout)
+        .into_iter()
+        .map(|s| (s.node, s.layers, s.v, s.r))
+        .collect();
+    assert_eq!(
+        s,
+        vec![
+            ("a".to_string(), (0, 44), 32, 96),
+            ("b".to_string(), (44, 94), 32, 96)
+        ]
+    );
+}
+
+// hardware: none
+#[test]
+fn the_covering_pick_priced_on_fitted_rates_on_each_rehearsal_probe() {
+    let (pick, layout) = covering_pick();
+    let fit = with_fitted(&discovered_at(true, MEASURED_RAM));
+    let r2 = rates_by_probe(&fit, &layout, &pick.plan, &PROBES);
+    let (mp, mt) = report("covering r2", &r2);
+    // The same plan cut into four micro-batches (the pick before the per-micro-batch copy).
+    let mut plan4 = pick.plan.clone();
+    plan4.knobs.prefill_micro_batches = 4;
+    let r2m4 = rates_by_probe(&fit, &layout, &plan4, &PROBES);
+    report("covering 4 micro-batches r2", &r2m4);
+    let r1 = rates_by_probe(&fit, &layout, &pick.plan, &R1_PROBES);
+    let (mp1, mt1) = report("covering r1 as probed", &r1);
+    // The like-for-like set: the explicit-buffer runs only differ from the auto one in b to a.
+    let mixed = r1_a_to_b_only();
+    let mixed: Vec<(&str, &str)> = mixed
+        .iter()
+        .map(|(n, p)| (n.as_str(), p.as_str()))
+        .collect();
+    let r1ab = rates_by_probe(&fit, &layout, &pick.plan, &mixed);
+    let (mpab, mtab) = report("covering r1 a to b only", &r1ab);
+    // The swap took: five prices, not one.
+    assert!(r2.iter().any(|r| (r.1 / r2[0].1 - 1.0).abs() > 1e-6));
+    // Recorded in the rehearsal 2 README ("235B link feasibility on fitted rates", cost model 6
+    // with the offload copy per micro-batch): rehearsal 2's links move the fitted prediction's pp by
+    // up to 43%, rehearsal 1's by up to 24%, both far over the gate's 0.08; tg moves under 4%.
+    assert!(
+        (r2[0].1 - 81.4).abs() < 0.5 && (r2[0].2 - 5.417).abs() < 0.01,
+        "{:?}",
+        r2[0]
+    );
+    assert!(
+        (mp - 0.428).abs() < 0.01 && (mt - 0.0165).abs() < 0.002,
+        "{mp} {mt}"
+    );
+    assert!(
+        (r1[0].1 - 196.0).abs() < 1.0 && (r1[0].2 - 4.650).abs() < 0.01,
+        "{:?}",
+        r1[0]
+    );
+    assert!(
+        (mp1 - 0.2433).abs() < 0.01 && (mt1 - 0.0345).abs() < 0.003,
+        "{mp1} {mt1}"
+    );
+    assert!(mp > 0.08, "the fitted gate would abort rehearsal 2's link");
+    // Rehearsal 1 as probed moves 24% only because the explicit buffers cut b to a; with a to b
+    // alone (a 4.6% spread of the 64 MiB point) the move is MPAB.
+    assert!(mp1 > 0.2, "{mp1}");
+    assert!(mpab < 0.08 && mtab < 0.08, "{mpab} {mtab}");
+}
+
+// hardware: none
+#[test]
+fn the_synthetic_235b_pick_priced_on_fitted_rates_on_each_rehearsal_probe() {
+    let base = discovered(true);
+    let layout = fixtures::moe_235b();
+    let start = with_probe(&base, PROBES[0].1);
+    let (cands, _) = enumerate_cluster(&start, &layout, &Hints::default(), Phase(6));
+    let fit = with_fitted(&base);
+    let r2 = rates_by_probe(&fit, &layout, &cands[0].plan, &PROBES);
+    let (mp, _) = report("synthetic r2", &r2);
+    let r1 = rates_by_probe(&fit, &layout, &cands[0].plan, &R1_PROBES);
+    let (mp1, _) = report("synthetic r1", &r1);
+    // The synthetic layout's pick (c00, a 0..40, b 40..94) moves as the covering pick does.
+    assert!(
+        (mp - 0.428).abs() < 0.01 && (mp1 - 0.2434).abs() < 0.01,
+        "{mp} {mp1}"
+    );
+}
+
+// hardware: none
+#[test]
+fn the_covering_pick_is_one_batch_of_2048_since_each_micro_batch_pays_the_offload_copy() {
+    // Before the copy was charged per micro-batch the pick was ubatch 2048 with four micro-batches
+    // (pp 59.5 on priors); with the copy and the weight reads once per 512-token batch it is one
+    // batch of 2048 (pp 56.3), the regime cost model 6 was confirmed on. The anchors follow the pick
+    // (`plans/anchor-step.txt` is the micro-batch of its first step).
+    let (pick, _) = covering_pick();
+    assert_eq!(pick.plan.knobs.ubatch, Some(2048));
+    assert_eq!(pick.plan.knobs.prefill_micro_batches, 1);
+}
+
+// hardware: none
+#[test]
+fn a_covering_plan_with_four_micro_batches_pays_the_offload_copy_in_each() {
+    // ADR 0092 section 5 and the pipeline: a covering segment copies its RAM-resident weights to the
+    // GPU once per batch, so four micro-batches of 512 tokens copy four times what one ubatch of
+    // 2048 does.
+    let (pick, layout) = covering_pick();
+    // The same plan with four micro-batches (what the pick was before the copy was charged per
+    // micro-batch): the planner's own pick is the one batch of 2048, see the next test.
+    let mut plan4 = pick.plan.clone();
+    plan4.knobs.prefill_micro_batches = 4;
+    let fit = with_fitted(&discovered_at(true, MEASURED_RAM));
+    let f = tetraeder_planner::cluster::cluster_features(&fit, &layout, &plan4).unwrap();
+    assert_eq!(f.prefill_micro_batches, 4);
+    let copy_s = |seg: usize, ubatch: u32| -> f64 {
+        let mut run = f.segments[seg].run.clone();
+        run.ubatch = ubatch;
+        let g = fit.node_graph(f.segments[seg].node.as_deref());
+        tetraeder_costmodel::predict::predict(&g, &run, 2048, 1)
+            .unwrap()
+            .pp_breakdown
+            .iter()
+            .filter(|e| e.0.starts_with("offload_copy:"))
+            .map(|e| e.1)
+            .sum()
+    };
+    let mut free = fit.clone();
+    free.collectives.clear();
+    for l in &mut free.links {
+        if l.kind == LinkKind::Network {
+            l.alpha_s.value = 0.0;
+            l.beta_bytes_per_s.value = f64::INFINITY;
+        }
+    }
+    let t = tetraeder_costmodel::cluster::predict_cluster(&free, &f, 2048, 8).unwrap();
+    let mut copying = 0;
+    for seg in 0..f.segments.len() {
+        let (one, four) = (copy_s(seg, 2048), copy_s(seg, 512));
+        println!("micro_batch_copy seg={seg} one_ubatch_s={one:.3} four_micro_batches_s={four:.3}");
+        if one.abs() < 1e-9 {
+            continue; // the head segment on the leader holds no RAM experts
+        }
+        copying += 1;
+        assert!(one > 0.1, "segment {seg} copies its RAM experts: {one}");
+        assert!((four / one - 4.0).abs() < 1e-6, "{four} vs 4 x {one}");
+        // With free links the prompt takes at least the copies of its slowest segment's four batches.
+        assert!(
+            2048.0 / t.pp_tps >= four * 0.999,
+            "{} vs {four}",
+            2048.0 / t.pp_tps
+        );
+    }
+    assert_eq!(copying, 2, "both nodes' segments copy");
 }

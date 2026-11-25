@@ -48,7 +48,7 @@ def text(r):
 def session_s(tmp_path, scenario="", second_scenario=None):
     """The two invocations of the driver; returns (first result, second result or None, results dir)."""
     try:
-        r1, out = run_s(tmp_path, "gates setup budget plan linkgate fetch calib predict", scenario)
+        r1, out = run_s(tmp_path, "gates setup dryrun budget plan linkgate fetch calib predict", scenario)
         if r1.returncode != 0 or not (out / "predictions" / "FROZEN.sha256").exists():
             return r1, None, out
         r2, out = run_s(tmp_path, "judged aalast linkend summary", second_scenario if second_scenario is not None else scenario,
@@ -106,7 +106,7 @@ def test_case_s_no_plan_on_both_nodes_stops_at_the_pick(tmp_path):
 @needs_posix
 def test_case_s_refuses_to_judge_on_a_frozen_hash_that_does_not_match_or_a_changed_file(tmp_path):
     try:
-        r1, out = run_s(tmp_path, "gates setup budget plan linkgate fetch calib predict")
+        r1, out = run_s(tmp_path, "gates setup dryrun budget plan linkgate fetch calib predict")
         assert r1.returncode == 0, text(r1)[-2500:]
         r2, _ = run_s(tmp_path, "judged", FROZEN_SHA="0" * 64)
         assert r2.returncode != 0 and "is not the frozen hash" in text(r2)
@@ -243,3 +243,77 @@ def test_case_s_no_covering_plan_aborts_at_the_plan_before_the_gate_and_the_down
     assert "STAGE linkgate" not in t and "STAGE fetch" not in t and "STAGE calib" not in t
     assert not (out / "plans" / "judged-plan.toml").exists() and not (out / "link" / "gate.json").exists()
     assert (out / "env" / "a" / "env.json").exists()  # the budget was measured: it is what the plan was refused against
+
+
+# ---- ADR 0091 History 2026-11-26 ----------------------------------------------------------------------------------------------
+
+
+@needs_posix
+def test_case_s_a_download_without_a_dry_run_is_refused_before_anything_is_fetched(tmp_path):
+    try:
+        r1, out = run_s(tmp_path, "gates setup budget plan linkgate fetch")  # no dryrun stage
+        assert r1.returncode != 0 and "no dry run passed on both boxes" in text(r1), text(r1)[-1500:]
+        assert not (out / "dryrun.json").exists() and not (out / "plans" / "repick.json").exists()
+        assert "fetch done" not in text(r1)
+    finally:
+        kill_all(tmp_path)
+
+
+@needs_posix
+def test_case_s_the_gate_prices_on_the_fitted_rates_and_the_anchors_run_the_picks_micro_batch_and_the_budget_is_measured_again(tmp_path):
+    r1, r2, out = session_s(tmp_path)
+    assert r2 is not None and r2.returncode == 0, text(r1)[-1500:] + (text(r2)[-1500:] if r2 else "")
+    v = verdict_s(out)
+    assert v["verdict"] == "pass" and failed_rules(v) == [], v["status"]
+    # the link gate: the committed fit is the one that was priced, on both nodes, for both probes
+    assert (out / "link" / "gate" / "fitted.toml").read_bytes() == (ROOT / "bench/results/segment-confirm-20261125b/predictions/fitted.toml").read_bytes()
+    for k in ("gate1", "gate2"):
+        hw = json.loads((out / "link" / "gate" / f"hw-{k}.json").read_text())
+        rates = {d["id"]: d["compute"]["flops_per_s"] for d in hw["devices"] if d.get("compute")}
+        assert rates["a/gpu0"] == rates["b/gpu0"] == 37191779652309.76, rates
+    # the anchors ran the pick's micro-batch: 2048 x 4 micro-batches over a 2048-token prompt is four batches of 512
+    assert (out / "plans" / "anchor-step.txt").read_text().split() == ["512"]
+    assert json.loads((out / "calib" / "a" / "anchors" / "a1-r1.json").read_text())["exit_ubatch"] == 512
+    # the memory: the plan's reading kept, the one after the install used, the pick made again and the same
+    s = json.loads((out / "session.json").read_text())
+    assert s["budget"]["a"] == {"plan": 59_450_000_000, "installed": 59_430_000_000}
+    assert json.loads((out / "env" / "b" / "env-plan.json").read_text())["ram_budget"]["ram_budget_bytes"] == 59_450_000_000
+    assert json.loads((out / "plans" / "repick.json").read_text())["same"] is True
+    assert json.loads((out / "dryrun.json").read_text())["passed"] is True
+
+
+@needs_posix
+def test_case_s_a_pick_that_no_longer_fits_the_budget_measured_after_the_install_aborts_before_the_freeze(tmp_path):
+    r1, r2, out = session_s(tmp_path, "rebudget_thin")
+    t = text(r1)
+    assert r2 is None and r1.returncode != 0 and "the pick no longer fits" in t, t[-1500:]
+    assert (out / "env" / "a" / "env-plan.json").exists() and not (out / "predictions" / "FROZEN.sha256").exists()
+    assert not (out / "calib" / "a" / "pred.json").exists() and "STAGE calib" not in t
+
+
+@needs_posix
+def test_case_s_another_pick_on_the_new_budget_aborts_before_the_freeze(tmp_path):
+    r1, r2, out = session_s(tmp_path, "rebudget_other_pick")
+    t = text(r1)
+    assert r2 is None and r1.returncode != 0 and "is not the judged plan" in t, t[-1500:]
+    assert json.loads((out / "plans" / "repick.json").read_text())["same"] is False and not (out / "predictions" / "FROZEN.sha256").exists()
+
+
+@needs_posix
+def test_case_s_anchors_that_ran_the_whole_prompt_in_one_batch_freeze_nothing(tmp_path):
+    r1, r2, out = session_s(tmp_path, "anchors_whole_prompt")
+    assert r2 is None and r1.returncode != 0 and "nothing frozen" in text(r1), text(r1)[-1500:]
+    assert "anchors_step_a" in text(r1) and not (out / "predictions" / "FROZEN.sha256").exists()
+
+
+@needs_posix
+@pytest.mark.parametrize("scenario,clean", [("vram_peak_ok", True), ("vram_peak_over", False)])
+def test_case_s_on_a_card_over_24_gib_the_peak_after_the_warm_request_must_stay_under_24576_mib(tmp_path, scenario, clean):
+    r1, r2, out = session_s(tmp_path, scenario)
+    v = verdict_s(out)
+    assert all(r["clean"] for r in v["rounds"]) == clean, v["status"]
+    if clean:
+        assert v["verdict"] == "pass" and failed_rules(v) == []
+    else:
+        assert v["verdict"] == "no verdict" and "rounds_clean" in failed_rules(v)
+        assert "peak GPU memory" in v["rounds"][0]["unclean_reasons"][0]

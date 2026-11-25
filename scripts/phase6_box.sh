@@ -22,6 +22,7 @@
 #   trigger               start the Case F fault trigger (scripts/phase6_trigger.py, own pid file) on TRIGGER_PORT (7001); token in
 #                         $P6/trigger-token.txt; node b only
 #   endpoint [PORT]       this box's public address and the mapped port (default 7000, the trigger's 7001)
+#   gpumem start|stop     sample the GPU memory in use over a judged round; `stop` prints GPUMEM_PEAK <MiB> (scripts/phase6_exit_s.sh)
 #   judged-round LABEL SHA  one judged Case S round (`tetraeder cluster judged-round`, node a, the head) into judged/LABEL; ends with
 #                         a `ROUND_DONE rc=N` line in logs/launch-judged-LABEL.log (scripts/phase6_exit_s.sh)
 # Env: THREADS (CPU quota, default cpu_quota.sh), PAR (parallel, 4), CTX (4096), WORKER_EXTRA (more worker flags of `node`, e.g. --miss cpu), P6, HEAD_HOST and HEAD_PORT (the head, 0.0.0.0:8080), TETRAEDER_BIN (the binary to run; the
@@ -236,6 +237,24 @@ case "$stage" in
     mkdir -p "$P6/judged/$label"
     "$bin" cluster judged-round --cluster "$P6/cluster.toml" --key "$P6/keys/key.pem" --cert "$P6/keys/cert.pem"       --plan "$P6/judged-plan.toml" --model-sha256 "$sha_v" --hidden "${HIDDEN:-$root/runs/sc/hidden.bin}"       --prompt-tokens "${PROMPT_TOKENS:-2048}" --gen "${GEN_TOKENS:-128}" --warm "${WARM:-1}" --out "$P6/judged/$label"
     echo "ROUND_DONE rc=$?"
+    ;;
+  gpumem)
+    # the GPU memory in use, twice a second, over one judged round: `gpumem start`, then `gpumem stop` prints `GPUMEM_PEAK <MiB>` (the
+    # summary's peak rule for a card over 24 GiB, scripts/phase6_exit_s_summary.py vram_peak)
+    case "${1:?start|stop}" in
+      start)
+        rm -f "$P6/gpumem.txt"
+        setsid nohup nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits -lms 500 > "$P6/gpumem.txt" 2> /dev/null 8>&- &
+        echo $! > "$P6/pids/gpumem"
+        echo "gpumem started"
+        ;;
+      stop)
+        [ -s "$P6/pids/gpumem" ] && kill "$(cat "$P6/pids/gpumem")" 2> /dev/null
+        rm -f "$P6/pids/gpumem"
+        awk '$1 + 0 > m { m = $1 + 0 } END { print "GPUMEM_PEAK " m + 0 }' "$P6/gpumem.txt" 2> /dev/null || echo "GPUMEM_PEAK 0"
+        ;;
+      *) echo "usage: phase6_box.sh gpumem start|stop" >&2; exit 2 ;;
+    esac
     ;;
   worker-kill)
     pid=$(cat "$P6/pids/node" 2> /dev/null) || { echo "no node pid"; exit 1; }

@@ -13,9 +13,13 @@
 //!          own previous element (GPipe, the schedule of ADR 0077, hops serialized per link)
 //! ```
 //!
-//! A segment's time for a chunk is the difference of its whole-prompt prefill time at the
-//! chunk's end and start, so the chunks of one segment add up to its own prefill time. With one
-//! micro-batch, or with links that cost nothing, the result is the sum of the segment times.
+//! With one micro-batch a segment's time for the step is the difference of its whole-prompt
+//! prefill time at the step's end and start, so the steps add up to its own prefill time; with
+//! links that cost nothing the result is then the sum of the segment times. With several
+//! micro-batches each chunk is a batch of its own: its time is the difference of the prefill
+//! times of the segment at ubatch = chunk size, so the per-batch terms (the RAM-to-GPU offload
+//! copy, the weight reads, the launches) are paid once per chunk and the chunks add up to more
+//! than the segment's whole-prompt time (ADR 0092 section 5).
 //! One segment predicts exactly as [`predict`] does (ADR 0091, C7).
 
 use crate::predict::{PredictError, Prediction, RunFeatures, predict};
@@ -141,25 +145,42 @@ fn path(f: &ClusterFeatures) -> Vec<Elem> {
     out
 }
 
-/// Seconds the segment needs to prefill `tokens` prompt tokens, from its own prediction.
+/// Seconds a segment needs to prefill prompt tokens, from its own prediction.
 struct PrefillTimes<'a> {
     graphs: &'a [HardwareGraph],
     f: &'a ClusterFeatures,
-    memo: BTreeMap<(usize, u32), f64>,
+    memo: BTreeMap<(usize, u32, u32), f64>,
 }
 
 impl PrefillTimes<'_> {
-    fn upto(&mut self, seg: usize, tokens: u32) -> Result<f64, PredictError> {
+    /// Seconds segment `seg` needs for `tokens` prompt tokens in ubatches of `ubatch`.
+    fn upto(&mut self, seg: usize, tokens: u32, ubatch: u32) -> Result<f64, PredictError> {
         if tokens == 0 {
             return Ok(0.0);
         }
-        if let Some(t) = self.memo.get(&(seg, tokens)) {
+        if let Some(t) = self.memo.get(&(seg, tokens, ubatch)) {
             return Ok(*t);
         }
-        let p = predict(&self.graphs[seg], &self.f.segments[seg].run, tokens, 1)?;
+        let mut run = self.f.segments[seg].run.clone();
+        run.ubatch = ubatch;
+        let p = predict(&self.graphs[seg], &run, tokens, 1)?;
         let t: f64 = p.pp_breakdown.iter().map(|e| e.1).sum();
-        self.memo.insert((seg, tokens), t);
+        self.memo.insert((seg, tokens, ubatch), t);
         Ok(t)
+    }
+
+    /// Seconds the segment needs for the chunk `[at, at + m)` of a pipelined step. A chunk is a
+    /// batch of its own (ADR 0077): it pays what a ubatch pays once, the offload copy of the
+    /// RAM-resident weights included (ADR 0092 section 5), so the chunks are priced as ubatches
+    /// of `m` tokens. Without micro-batches the chunk is the step and the segment's own ubatch
+    /// applies.
+    fn chunk(&mut self, seg: usize, at: u32, m: u32, micro: u32) -> Result<f64, PredictError> {
+        let ub = if micro > 1 {
+            m
+        } else {
+            self.f.segments[seg].run.ubatch
+        };
+        Ok(self.upto(seg, at + m, ub)? - self.upto(seg, at, ub)?)
     }
 }
 
@@ -241,10 +262,7 @@ pub fn predict_cluster(
             let mut ready = 0.0f64;
             for e in &elems {
                 let (name, dur) = match e {
-                    Elem::Seg(i) => (
-                        format!("seg {i}"),
-                        times.upto(*i, at + m)? - times.upto(*i, at)?,
-                    ),
+                    Elem::Seg(i) => (format!("seg {i}"), times.chunk(*i, at, m, micro)?),
                     Elem::Hop { from, to, rows } => {
                         // The logits row leaves once per step, with its last chunk.
                         let bytes = match rows {

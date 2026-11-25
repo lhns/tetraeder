@@ -5,12 +5,14 @@
 # (its stages, with its gates), the verdict is scripts/phase6_exit_s_summary.py. No Rust, no cargo locally.
 #
 # Two invocations, with a commit between them (the frozen prediction goes to git before any judged run):
-#   STAGES="gates setup budget plan linkgate fetch calib predict" bash scripts/phase6_exit_s.sh   ... commit predictions/, link/, plans/, calib/
+#   STAGES="gates setup dryrun budget plan linkgate fetch calib predict" bash scripts/phase6_exit_s.sh   ... commit predictions/, link/, plans/, calib/
 #   FROZEN_SHA=<FROZEN.sha256> STAGES="judged aalast linkend summary" bash scripts/phase6_exit_s.sh
 # Stages:
 #   gates     both boxes, before any download: power, idle, one NUMA node, co-tenant by engine_sample.py. A miss ends the session
 #   setup     build on both boxes, then certificates (they need the binary), cluster.toml after create, the node daemons. No
 #             download yet (`create` went through scripts/sc_offers.sh: real --download-gb 150, disk_gb 230, --ports 7000)
+#   dryrun    MANDATORY before `fetch` (the driver refuses the download without it, on both boxes): the whole of the flow and one judged round on a
+#             tiny sharded MoE with the real binaries, on the boxes themselves, before the balloon is held; writes dryrun.json (see below)
 #   budget    per node, sc_box.sh `env balloon`: the RAM budget under EMULATE_RAM_GB is measured before anything is profiled (ADR 0092
 #             section 4). No model is needed: the disk curve and the model's layout come after the fetch, in calib
 #   plan      the layout is the committed one (GATE_LAYOUT, default bench/results/segment-confirm-20261125b/layout.json), a link probe
@@ -19,22 +21,28 @@
 #             both nodes and whose every segment is covering (VRAM plus RAM slots hold all experts of its layers, within the measured
 #             budgets and 24 GiB). A plan on one node or a non-covering plan is never a candidate (ADR 0091 History 2026-11-25). No such
 #             candidate, or a pick whose stages do not partition the layers, aborts here, before any download. Each node's V and R are the
-#             pick's (plans/slots.txt): the anchors run them, the workers run them, the summary checks both
+#             pick's (plans/slots.txt): the anchors run them, the workers run them, the summary checks both. The anchors also run the pick's
+#             micro-batch (plans/anchor-step.txt: ubatch x micro-batches of the judged plan cut as the pipeline cuts a step), not the whole
+#             prompt as one batch (ADR 0091 History 2026-11-26); the summary rule anchors_step_<node> checks it from the anchors' own files
 #   linkgate  the link gate BEFORE the download (advisor, delegated by the owner, 2026-11-25): two full probes (frames to 64 MiB, no
 #             --max-bytes) at least 10 minutes apart (LINK_GATE_WAIT_S, never below 600 on a box); the judged pick itself
-#             (plans/judged-plan.toml) priced on the plan's graph with each probe's link curves swapped in and nothing else changed.
+#             (plans/judged-plan.toml) priced on the plan's graph with both nodes' compute rates taken from the committed fitted graph of
+#             segment-confirm-20261125b (GATE_FITTED, not discovered priors; 2026-11-26) and each probe's link curves swapped in.
 #             Pp or tg moving by more than 0.08, or probes less than 600 s apart, aborts the pair: destroy both boxes, nothing was
 #             downloaded. Files link/probe-gate{1,2}.json, link/gate-times.json, link/gate/
-#   fetch     the 142 GB model on both boxes (REQUIRE_ONE_NUMA=1); refuses unless the link gate passed. Then `tetraeder cluster model-id
-#             --install` on each box (the id of the five shards; detached, it hashes them), the two ids compared, and the model's own
-#             layout compared with the committed one the plan was made on (a difference aborts: the pick was for another model)
-#   calib     the disk curve (`sc_box.sh disk`: layout of the model, NVMe curve, graph seeded with the measured RAM budget), the start
+#   fetch     refuses unless the dry run and the link gate passed. The balloon is released on both boxes, the 142 GB model downloads without
+#             it (REQUIRE_ONE_NUMA=1), then `tetraeder cluster model-id --install` on each box (the id of the five shards; detached, it
+#             hashes them), the two ids compared; the balloon goes back, each node's RAM budget is measured again (env/<n>/env.json; the
+#             plan's reading stays in env-plan.json), the covering pick is made again on those budgets and must be the judged plan, else
+#             the session aborts before the freeze (plans/repick.json). Calibration then runs on the new budget (ADR 0091 History 2026-11-26)
+#   calib     the disk curve (`sc_box.sh disk`: layout of the model, NVMe curve, graph seeded with the budget measured after the install; the
+#             model's own layout compared with the committed one the plan was made on, a difference aborts), the start
 #             link probe (link/probe-start.json, swapped into the plan's graph as link/hw.json), the whole-model trace on the leader
 #             (routing trace, and the hidden rows entering the cut), the trace and the rows to node b, anchors of each node's own segment
 #             truncated to a quarter and a half (real hidden rows; layer 0 takes tokens), two rounds, with the pick's slots, the fit
 #             (band limit 0.10, refused above)
-#   dryrun    NOT part of a session's flow: the whole of the above and the judged round on a tiny sharded MoE (tests/fixtures), with the
-#             real binaries, before the download, on the boxes themselves (RESULTS_NAME of its own, its own P6 work dir); see below
+#   (dryrun)  the whole of the above and the judged round on a tiny sharded MoE (tests/fixtures), with the real binaries, before the download, on
+#             the boxes themselves (RESULTS_NAME of its own, its own P6 work dir); see below. Its pass is dryrun.json in this session's results
 #   predict   the fitted node graphs merged into the cluster graph (`tetraeder cluster merge`, on node a), `tetraeder-plan predict --cluster --judged` (routing trace only),
 #             SHA256SUMS and FROZEN.sha256 of everything it used; refuses on any failed pre-freeze rule. With SECOND_PREDICT_CMD (runs
 #             on node a, writes $PRED_OUT) a report-only prediction priced from a second prompt's routing trace, recorded before the
@@ -57,7 +65,7 @@
 # `after:` nvidia-smi lines of sc_box.sh run_one) and balloon_ok and cotenant_ok in each seg file. REFERENCE_CMD (optional, node a, env
 # ROUND_FILE) writes the report-only single-node round.
 #
-# Env: LINK_GATE_WAIT_S (600), GATE_LAYOUT, RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
+# Env: LINK_GATE_WAIT_S (600), GATE_LAYOUT, GATE_FITTED (the node fit the link gate prices on), RESULTS_NAME (required), ID_A, ID_B, T_CREATED_A, T_CREATED_B, STAGES, FROZEN_SHA, REFERENCE_CMD, RESULTS_ROOT,
 # A1_LAYERS and A2_LAYERS (11 and 23 layers after a span's first), MAX_ROUNDS (8), EMULATE_RAM_GB (64), SPANS (dry runs only: "a 0..47,b 47..94"
 # instead of the pick's). The slots of the anchors and of the workers are the pick's own, per node (plans/slots.txt): there is no global V and R.
 # TINY=1: the tiny sharded MoE of tests/fixtures (8 layers cut 4 and 4, a pinned plan, 4 + 8 slots over 8 experts) instead of the 235B, with the real
@@ -79,7 +87,7 @@ say() { echo "[$(date +%T)] $*"; }
 die() { say "FATAL: $*"; exit 1; }
 name="${RESULTS_NAME:?set RESULTS_NAME}"
 out="${RESULTS_ROOT:-$repo/bench/results}/$name"
-stages="${STAGES:-gates setup budget plan linkgate fetch calib predict}"
+stages="${STAGES:-gates setup dryrun budget plan linkgate fetch calib predict}"
 spans="${SPANS:-}" # the pick's, from plans/spans.txt, once the plan stage has run
 a1_layers="${A1_LAYERS:-11}" a2_layers="${A2_LAYERS:-23}"
 sc_rel="../tetraeder/runs/sc" # sc_box.sh's run dir, relative to a box's P6 dir
@@ -143,7 +151,9 @@ scbox() { # scbox NODE TAG "STAGES"
   P=$(p6dir "$n")
   if [ "$lb_fake" = 1 ]; then
     [ -n "$spans" ] && { s=$(first_of "$n") e=$(end_of "$n"); }
-    (cd "$repo" && python3 scripts/phase6_loopback.py sc-box --node "$n" --out "$lb/$n/$(resrel "$n")" --stages "$st" --span "${s:-0}..${e:-94}") | tail -n 1
+    local ubs=2048
+    [ -s "$out/plans/anchor-step.txt" ] && ubs=$(tr -d '\r' < "$out/plans/anchor-step.txt")
+    (cd "$repo" && python3 scripts/phase6_loopback.py sc-box --node "$n" --out "$lb/$n/$(resrel "$n")" --stages "$st" --span "${s:-0}..${e:-94}" --ubatch "$ubs") | tail -n 1
     return 0
   fi
   w="RESULTS_NAME=$name-n$n EMULATE_RAM_GB=${EMULATE_RAM_GB:-64} SC_LOG=$P/logs/sc_box.log SC_RUN_TAG=$name-$n-$tag"
@@ -153,6 +163,8 @@ scbox() { # scbox NODE TAG "STAGES"
     read -r v r <<< "$(slots_of "$n")"
     [ -n "$v" ] && [ -n "$r" ] || die "no slots of node $n in plans/slots.txt: the plan stage has not run"
     w="$w SPLIT=$s END=$e A1_END=$a1 A2_END=$a2 HIDDEN_AT=$cut V=$v R=$r"
+    # the anchors and their fit run the batch the pick runs: its micro-batch, not the whole prompt in one (ADR 0091 History 2026-11-26)
+    case " $st " in *" anchors "*) w="$w UBATCH=$(tr -d '\r' < "$out/plans/anchor-step.txt")" ;; esac
   fi
   if [ "$TINY" = 1 ]; then
     w="$w MODEL=$(tiny_first "$n") PROMPT_FILE= UBATCH=16 PREFILL=64 DECODE=16 DUMP_V=4 DUMP_R=4 DISK_CHUNK=16384 DISK_SECONDS=1 FIT_BAND_MAX=${FIT_BAND_MAX:-1000}"
@@ -246,17 +258,25 @@ st_linkgate() {
   [ "$lb_fake" = 1 ] && [ ! -x "$lb/tetraeder-plan" ] && loopback_tools
   mkdir -p "$out/link/gate"
   rm -f "$out/link/gate-times.json"
+  # both nodes' compute rates are the committed fit of the confirmed segment session, not discovered priors (ADR 0091 History 2026-11-26):
+  # a prior prices a 2048-token prompt at 38 s where the fitted rate gives 5 to 10 s, so link swings weigh 4 to 8 times more
+  local fit="${GATE_FITTED:-$repo/bench/results/segment-confirm-20261125b/predictions/fitted.toml}"
+  [ -s "$fit" ] || die "no fitted graph for the link gate: $fit"
+  cp "$fit" "$out/link/gate/fitted.toml"
+  put a "$fit" fitted-gate.toml
   say "link gate: the first full probe"
   probe_link gate1 || die "the first full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
   gate_time gate1
-  # the plan's graph with only the link curves swapped: what differs between the two prices is the link
-  bx a 300 "$(tet) cluster merge $P/hw-plan.json --swap-link $P/probe-gate1.json -o $P/hw-gate1.json" | tail -n 1
+  # the plan's graph with the fitted rates of both nodes and only the link curves swapped: what differs between the two prices is the link
+  bx a 300 "$(tet) cluster merge $P/hw-plan.json --node a=$P/fitted-gate.toml --node b=$P/fitted-gate.toml --swap-link $P/probe-gate1.json -o $P/hw-gate1.json" | tail -n 1
+  get a hw-gate1.json "$out/link/gate/hw-gate1.json"
   gate_price hw-gate1.json predict-gate1.json
   say "link gate: waiting $gate_wait s for the second probe"
   sleep "$gate_wait"
   probe_link gate2 || die "the second full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
   gate_time gate2
-  bx a 300 "$(tet) cluster merge $P/hw-plan.json --swap-link $P/probe-gate2.json -o $P/hw-gate2.json" | tail -n 1
+  bx a 300 "$(tet) cluster merge $P/hw-plan.json --node a=$P/fitted-gate.toml --node b=$P/fitted-gate.toml --swap-link $P/probe-gate2.json -o $P/hw-gate2.json" | tail -n 1
+  get a hw-gate2.json "$out/link/gate/hw-gate2.json"
   gate_price hw-gate2.json predict-gate2.json
   summ gate "$out" || die "the link gate failed: destroy both boxes, nothing was downloaded (the 142 GB model comes only after this gate)"
   say "linkgate done: the pair passes, the download may start"
@@ -271,6 +291,71 @@ tiny_model() { # tiny_model NODE: prints the id
   case "$id" in *"P6_MODELID_DONE rc=0 id="*) echo "${id##*id=}" ;; *) die "model-id of the tiny model on node $n: $id" ;; esac
 }
 
+# the download needs the dry run (on both boxes) and the link gate; the dry run itself (TINY) downloads nothing
+require_dryrun() {
+  summ dryrun "$out" || die "no dry run passed on both boxes (dryrun.json): run the dryrun stage before the 142 GB download"
+}
+
+# the balloon is released for the download (the page cache of 142 GB and the downloader's memory would fight it) and goes back after the model
+# install; the RAM budget is measured again then, and the covering pick is made again on it (ADR 0091 History 2026-11-26)
+balloon_release() {
+  local n
+  [ "$LOOPBACK" = 1 ] && return 0 # no balloon on this machine
+  say "balloon released on both boxes for the download"
+  for n in a b; do bx "$n" 60 "EMULATE_RAM_GB=${EMULATE_RAM_GB:-64} bash scripts/sc_balloon.sh stop" | tail -n 1; done
+}
+
+rebudget() {
+  local n P ra rb f rc
+  P=$(p6dir a)
+  say "balloon back on both boxes, RAM budget measured again after the install"
+  # the plan's reading is kept once: a rerun of fetch must not overwrite it with a later one
+  for n in a b; do [ -e "$out/env/$n/env-plan.json" ] || cp "$out/env/$n/env.json" "$out/env/$n/env-plan.json"; done
+  scbox a r1 "balloon" > /dev/null
+  scbox b r1 "balloon" > /dev/null
+  scbox_wait a r1 "balloon"
+  scbox_wait b r1 "balloon"
+  for n in a b; do get "$n" "$(resrel "$n")/env.json" "$out/env/$n/env.json"; done
+  ra=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/a/env.json")
+  rb=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/b/env.json")
+  python3 -I - "$out" "$ra" "$rb" << 'EOF'
+import json, sys
+out, ra, rb = sys.argv[1:4]
+p = out + "/session.json"
+d = json.load(open(p))
+d["budget"] = {n: {"plan": json.load(open(f"{out}/env/{n}/env-plan.json"))["ram_budget"]["ram_budget_bytes"], "installed": int(v)} for n, v in (("a", ra), ("b", rb))}
+json.dump(d, open(p, "w"), indent=2)
+EOF
+  say "RAM budgets: a $ra B, b $rb B (the plan was made on $(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/a/env-plan.json") and $(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/b/env-plan.json"))"
+  # the plan's graph with the new budgets (the first one stays as hw-plan-first.json), the covering pick again: it must be the judged plan
+  bx a 300 "cp -n $P/hw-plan.json $P/hw-plan-first.json; $(tet) cluster merge $P/hw-plan-first.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 1
+  get a hw-plan.json "$out/plans/hw-plan.json"
+  get a hw-plan-first.json "$out/plans/hw-plan-first.json"
+  rc=$(bx a 300 "rm -rf $P/candidates2; $(tplan) candidates --cluster --covering --hw $P/hw-plan.json --layout $P/layout.json --plans-dir $P/candidates2 --out $P/candidates2.json --prompt 2048; echo CAND_RC=\$?" | tail -n 4)
+  echo "$rc"
+  case "$rc" in *CAND_RC=0*) ;; *) die "no covering plan on the budgets measured after the install: the pick no longer fits, nothing is frozen" ;; esac
+  mkdir -p "$out/plans/repick"
+  get a candidates2.json "$out/plans/repick/candidates.json"
+  mkdir -p "$out/plans/repick/candidates"
+  for f in $(python3 -I -c 'import json, sys; print(" ".join(c["plan"] for c in json.load(open(sys.argv[1]))["candidates"] if c.get("plan")))' "$out/plans/repick/candidates.json"); do
+    get a "candidates2/$f" "$out/plans/repick/candidates/$f"
+  done
+  summ pick "$out/plans/repick/candidates.json" "$out/plans/repick/candidates" "$out/plans/repick/pick.toml" --n-expert "$(n_expert_of)" \
+    || die "no covering plan that computes on both nodes on the budgets measured after the install: nothing is frozen"
+  python3 -I - "$out" << 'EOF' || die "the pick made again on the new budgets is not the judged plan: the link gate priced another plan, start from the plan stage; nothing is frozen"
+import glob, hashlib, json, sys
+out = sys.argv[1]
+sha = lambda f: hashlib.sha256(open(f, "rb").read()).hexdigest()
+a, b = sha(f"{out}/plans/judged-plan.toml"), sha(f"{out}/plans/repick/pick.toml")
+# "no longer fits" (the judged plan is not among the covering candidates of the new budgets) against "fits but is no longer first"
+still = any(sha(f) == a for f in glob.glob(f"{out}/plans/repick/candidates/*.toml"))
+json.dump({"plan_sha256": b, "judged_sha256": a, "same": a == b, "judged_plan_still_a_candidate": still}, open(f"{out}/plans/repick.json", "w"), indent=2)
+print("the judged plan is still a covering candidate" if still else "the judged plan is no longer a covering candidate on the new budgets")
+sys.exit(0 if a == b else 1)
+EOF
+  say "the pick is still the judged plan on the new budgets"
+}
+
 st_fetch() {
   local b ids=()
   if [ "$TINY" = 1 ]; then
@@ -282,8 +367,14 @@ st_fetch() {
     say "fetch done: tiny model id ${ids[0]}"
     return 0
   fi
-  [ "$lb_fake" = 1 ] && { say "loopback: no download"; return 0; }
+  require_dryrun
+  if [ "$lb_fake" = 1 ]; then
+    say "loopback: no download"
+    rebudget
+    return 0
+  fi
   summ gate "$out" > /dev/null || die "the link gate has not passed (link/gate.json): no download"
+  balloon_release
   say "the 142 GB model on both boxes (REQUIRE_ONE_NUMA=1)"
   for b in a b; do bx "$b" 120 "bash scripts/phase6_box.sh launch fetch-235b env REQUIRE_ONE_NUMA=1 bash scripts/fetch_exit_model.sh" | tail -n 1; done
   for b in a b; do
@@ -298,6 +389,7 @@ st_fetch() {
   done
   [ "${#ids[0]}" = 64 ] && [ "${ids[0]}" = "${ids[1]}" ] || die "the nodes disagree on the model id: a ${ids[0]}, b ${ids[1]}"
   sess model_sha256 "\"${ids[0]}\""
+  rebudget
   say "fetch done: model id ${ids[0]}"
 }
 
@@ -392,6 +484,9 @@ st_plan() {
   rm -f "$out/plans/spans.raw"
   spans=$(cat "$out/plans/spans.txt")
   put a "$out/plans/judged-plan.toml" judged-plan.toml
+  # the micro-batch of the pick's first prefill step: what the anchors run (the summary recomputes it from the plan and the anchors' files)
+  summ chunk "$out/plans/judged-plan.toml" --prompt 2048 | tr -d '\r' > "$out/plans/anchor-step.txt"
+  [ -s "$out/plans/anchor-step.txt" ] || die "no micro-batch size for the pick: the anchors would fall back to the whole prompt in one batch"
   python3 -I - "$out/session.json" "$spans" "$out/plans/slots.txt" << 'EOF'
 import json, os, sys
 p, spans, slots = sys.argv[1:4]
@@ -401,7 +496,7 @@ d["segments"] = [{"node": n.split()[0], "span": [int(x) for x in n.split()[1].sp
 d["segments"][0]["embed"], d["segments"][-1]["head"] = True, True
 json.dump(d, open(p, "w"), indent=2)
 EOF
-  say "plan done: $spans, slots $(tr '\n' ',' < "$out/plans/slots.txt") (the pick's own: the anchors and the workers run them)"
+  say "plan done: $spans, slots $(tr '\n' ',' < "$out/plans/slots.txt") (the pick's own: the anchors and the workers run them), anchors in batches of $(cat "$out/plans/anchor-step.txt") tokens"
 }
 
 st_calib() {
@@ -530,16 +625,28 @@ gpu_line() { # gpu_line NODE before|after: the nvidia-smi line of sc_box.sh run_
   bx "$1" 60 "nvidia-smi --query-gpu=clocks_event_reasons.active,power.draw,power.limit,power.default_limit --format=csv,noheader 2>&1 | tail -n 1" | tail -n 1 | sed "s/^/$2: /"
 }
 
+# the GPU memory sampler of a box over one round (phase6_box.sh gpumem): the loopback has no GPU
+gpumem() { # gpumem NODE start|stop: `stop` prints the peak in MiB
+  [ "$LOOPBACK" = 1 ] && { [ "$2" = stop ] && echo 0; return 0; }
+  bx "$1" 60 "bash scripts/phase6_box.sh gpumem $2" | grep -o 'GPUMEM_PEAK [0-9]*' | tail -n 1 | cut -d' ' -f2
+  return 0
+}
+
 # the exit code of sc_balloon.sh check on a node: 0 while the balloon holds the emulated RAM
 balloon_rc() { bx "$1" 60 "EMULATE_RAM_GB=${EMULATE_RAM_GB:-64} bash scripts/sc_balloon.sh check > /dev/null 2>&1; echo \$?" | tail -n 1; }
 
 # the flags only a box knows, into a segment file: balloon_ok (sc_balloon.sh check before and after the round) and cotenant_ok (the
 # gates stage's reading; no single engine process exists to sample during a round)
-box_flags() { # box_flags NODE JSON PRE_RC POST_RC
-  python3 -I - "$out/gates/$1/cotenant.json" "$2" "$3" "$4" << 'EOF'
+box_flags() { # box_flags NODE JSON PRE_RC POST_RC PEAK_MIB
+  local mib=0
+  # the card's size: a card over 24 GiB must peak under 24,576 MiB in the timed requests (summary rule, ADR 0091 History 2026-11-26); no GPU: 0
+  [ "$LOOPBACK" = 1 ] || mib=$(bx "$1" 60 "nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1" | tail -n 1 | tr -dc '0-9')
+  python3 -I - "$out/gates/$1/cotenant.json" "$2" "$3" "$4" "${mib:-0}" "${5:-}" << 'EOF'
 import json, sys
-gate, path, pre, post = sys.argv[1:5]
+gate, path, pre, post, mib, peak = sys.argv[1:7]
 d = json.load(open(path, encoding="utf-8"))
+d["gpu_mem_total_mib"] = int(mib)
+d["gpu_mem_peak_mib"] = float(peak) if peak else None  # the most GPU memory in use over the round, the warm request included
 ok = pre == "0" and post == "0"
 d["balloon_ok"] = ok
 if not ok:
@@ -563,20 +670,22 @@ run_round() { # run_round LABEL
     bx a 300 "$(tet) cluster judged-round --cluster $P/cluster.toml --key $P/keys/key.pem --cert $P/keys/cert.pem --plan $P/judged-plan.toml --out $P/judged/$label" | tail -n 1
     for k in cluster.json seg-a.json seg-a.gpu.txt seg-b.json seg-b.gpu.txt; do get a "judged/$label/$k" "$d/$k"; done
   else
-    local sha pre_a pre_b done_line envs="PROMPT_TOKENS=${PROMPT_TOKENS:-2048} GEN_TOKENS=${GEN_TOKENS:-128}"
+    local sha pre_a pre_b pk_a pk_b done_line envs="PROMPT_TOKENS=${PROMPT_TOKENS:-2048} GEN_TOKENS=${GEN_TOKENS:-128}"
     [ "$TINY" = 1 ] && envs="PROMPT_TOKENS=64 GEN_TOKENS=16"
     [ "$LOOPBACK" = 1 ] && envs="$envs HIDDEN=$P/sc/hidden.bin"
     sha=$(bx a 60 "cat $P/model.sha256" | tail -n 1)
     [ -n "$sha" ] || die "no model.sha256 on node a"
     for n in a b; do gpu_line "$n" before > "$d/seg-$n.gpu.txt"; done
     pre_a=$(balloon_rc a) pre_b=$(balloon_rc b)
+    for n in a b; do gpumem "$n" start > /dev/null; done
     t0=$(bx a 60 "bash scripts/phase6_box.sh launch judged-$name-$label env $envs bash scripts/phase6_box.sh judged-round $label $sha" | head -n 1)
     done_line=$(wait_line a "logs/launch-judged-$name-$label.log" 'ROUND_DONE' 14400) || die "judged round $label did not finish on node a"
+    pk_a=$(gpumem a stop) pk_b=$(gpumem b stop)
     case "$done_line" in *"rc=0"*) ;; *) die "judged round $label failed on node a: $done_line (logs/launch-judged-$name-$label.log)" ;; esac
     for n in a b; do gpu_line "$n" after >> "$d/seg-$n.gpu.txt"; done
     for k in cluster.json seg-a.json seg-b.json; do get a "judged/$label/$k" "$d/$k"; done
-    box_flags a "$d/seg-a.json" "$pre_a" "$(balloon_rc a)"
-    box_flags b "$d/seg-b.json" "$pre_b" "$(balloon_rc b)"
+    box_flags a "$d/seg-a.json" "$pre_a" "$(balloon_rc a)" "$pk_a"
+    box_flags b "$d/seg-b.json" "$pre_b" "$(balloon_rc b)" "$pk_b"
   fi
   python3 -I -c 'import json, sys; json.dump({"t_start": float(sys.argv[1]), "frozen_sha256": sys.argv[2]}, open(sys.argv[3], "w"))' "$t0" "${FROZEN_SHA:-}" "$d/meta.json"
   if [ -n "${REFERENCE_CMD:-}" ] && [ "$label" != last ]; then
@@ -651,10 +760,25 @@ st_summary() {
 # CUDA), its own results name, no balloon (the tiny model needs none; run it before the `budget` stage so the balloon is not held yet)
 st_dryrun() {
   [ "$TINY" = 1 ] && die "dryrun inside a dry run"
-  local rn="${DRYRUN_NAME:-$name-dryrun}"
-  say "dry run on the tiny sharded MoE, real binaries on both boxes: results $rn"
-  env TINY=1 EMULATE_RAM_GB=0 RESULTS_NAME="$rn" STAGES="${DRYRUN_STAGES:-budget plan fetch calib merge judged}" bash "$repo/scripts/phase6_exit_s.sh" \
-    || die "the dry run failed: fix it before the 142 GB download"
+  local rn="${DRYRUN_NAME:-$name-dryrun}" rr="${RESULTS_ROOT:-$repo/bench/results}"
+  rm -f "$out/dryrun.json"
+  if [ "$lb_fake" = 1 ]; then
+    say "loopback (stand-in tools): the dry run is the stand-in, no nested session"
+  else
+    say "dry run on the tiny sharded MoE, real binaries on both boxes: results $rn"
+    env TINY=1 EMULATE_RAM_GB=0 RESULTS_NAME="$rn" STAGES="${DRYRUN_STAGES:-budget plan fetch calib merge judged}" bash "$repo/scripts/phase6_exit_s.sh" \
+      || die "the dry run failed: fix it before the 142 GB download"
+  fi
+  # the pass is a file: the judged round of the dry run left one segment file per node (the stage's own `summ round` made it clean). The
+  # download stage refuses without it, on both boxes of this session
+  python3 -I - "$out/dryrun.json" "$rr/$rn" "$rn" "${ID_A:-loopback}" "${ID_B:-loopback}" "$lb_fake" << 'EOF' || die "the dry run left no judged round of both nodes: no download"
+import json, os, sys, time
+dst, res, rn, ida, idb, fake = sys.argv[1:7]
+nodes = [n for n in ("a", "b") if fake == "1" or os.path.exists(f"{res}/judged/r1/seg-{n}.json")]
+ok = nodes == ["a", "b"]
+json.dump({"passed": ok, "name": rn, "nodes": nodes, "boxes": {"a": ida, "b": idb}, "t": time.time(), "stand_in": fake == "1"}, open(dst, "w"), indent=2)
+sys.exit(0 if ok else 1)
+EOF
   say "dryrun passed ($rn)"
 }
 
