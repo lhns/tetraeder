@@ -156,6 +156,7 @@ def test_case_s_a_wrong_prompt_runs_eight_rounds_and_gives_no_verdict(tmp_path):
     assert v["verdict"] == "no verdict" and "rounds_clean" in failed_rules(v) and "prompt_hash" in failed_rules(v)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="bash -n runs on Linux; the Windows runner has only the WSL stub")
 def test_case_s_scripts_parse_and_name_the_missing_judged_round_command():
     for f in ("phase6_exit_s.sh", "phase6_exit_lib.sh", "sc_box.sh"):
         assert subprocess.run(["bash", "-n", str(SCRIPTS / f)]).returncode == 0

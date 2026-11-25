@@ -85,6 +85,7 @@ def test_note_records_a_manual_action(tmp_path):
     assert line["what"] == "restarted the head" and line["t"] > 1e9
 
 
+@pytest.mark.skipif(os.name == "nt", reason="bash -n runs on Linux; the Windows runner has only the WSL stub")
 def test_the_driver_scripts_parse_and_reference_existing_files():
     for f in ("phase6_exit_f.sh", "phase6_box.sh", "phase6_fault.sh"):
         assert subprocess.run(["bash", "-n", str(SCRIPTS / f)]).returncode == 0
