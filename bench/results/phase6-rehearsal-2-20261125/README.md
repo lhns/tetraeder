@@ -1,6 +1,8 @@
 # Session phase6-rehearsal-2-20261125
 
 - Status: rehearsal 2, no verdict. Case F by `scripts/phase6_exit_f.sh` end to end (nine trials): the script's summary says `fail`, on two items only: the clock offset between the boxes (uncertainty 2.3 to 6.3 s against the 0.5 s rule) and daemon trial 2, whose fault hit no request in flight (the offset error moved the fault). Rejoin holds in all nine trials (5.3 to 9.6 s after the restore, modes 1 and 2 included), the 3 s error bound holds in every trial that had a request in flight (largest delay 2.08 s). Prefix fetch through real processes: not demonstrated (a fetch is only attempted with `--cluster-hw`, and then failed for want of a prefix listener, fixed by a flag and then no fetch seen). Planned drain without a plan: holds. The 30B split over the link: frozen prediction against three cold measurements, pp off by -55 to -64%, tg within -6 to +3%; the Case S link rule does not hold on this link (the start probe is not comparable with later ones in the large frames).
+
+Note (advisor, 2026-11-25): the 30B split errors here do not test cost model 6: the link probe was truncated at 4 MiB and extrapolated, routing was uniform, and no anchors were fitted. They are wiring and link evidence only.
 - Rule: ADR 0091 (Accepted). Case F pass rules as `phase6_exit_f_summary.py` applies them; ADR 0091 answer 10 (link rule) applied to a frozen 30B split prediction, report only.
 - Code: branch `bench-phase6-rehearsal-2` on main 5125fe15 (no Rust change). Driver fixes on the branch, below.
 - Boxes (one RTX 3090 each, power gate at default, idle gate ok, one NUMA node, co-tenant gate ok, `cuda: ok`):

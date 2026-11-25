@@ -353,6 +353,7 @@ flowchart TB
 | Judged round across two nodes | ○ next | A Rust command that runs one judged Case S round across the two nodes (pp2048 then tg128 with the warm request, no prefix reuse, per-segment counters, the plan's own slot counts) and writes the JSON phase6_exit_s.sh reads through JUDGED_ROUND_CMD; the node graph merge also moves from the Python overlay into a Rust reader checked in CI. |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
+| KV cache on another machine | ○ next | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
 | Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
@@ -387,6 +388,7 @@ flowchart TB
 
 **cluster**
 
+- `cluster-remote-kv`: KV cache on another machine
 - `cluster-prefix-fetch-not-observed`: Prefix fetch between real processes not demonstrated
 - `cluster-head-led-plan-ignores-segments`: A plan led by the head runs the whole model in process
 - `cluster-second-cold-request-empty`: Second cold request through a split plan returns an empty stream
@@ -430,7 +432,7 @@ Generated on 2026-11-25.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 144 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 143 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -840,7 +842,6 @@ Generated on 2026-11-25.
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
 - `cluster-owner-routing-input`: Routing trace as prediction input (✔ done · n/a). The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
-- `cluster-remote-kv`: KV cache on another machine (✔ done · unrated). A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).
 - `cluster-replicas`: Model replicas behind one router (✔ done · unrated). Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11).
 - `engine-exit-segment-harness`: Exit segment harness (✔ done · unrated). The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and runs warm requests before a timed one that recomputes every token and reports its disk bytes (a covering plan that reads any is flagged unclean).
 - `memory-ram-tier-complement`: Read-free covering expert tiers (✔ fixed). When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
@@ -896,5 +897,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 53 nodes (38 done, 4 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 32 nodes (24 done, 5 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 32 nodes (23 done, 6 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

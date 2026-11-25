@@ -2952,7 +2952,7 @@ nodes:
   title: KV cache on another machine
   track: cluster
   kind: feature
-  state: done
+  state: next
   outcome: unrated
   evidence:
   - docs/adr/0091-phase6-multi-node.md
@@ -2968,7 +2968,7 @@ nodes:
   folded: []
   overview: false
   plain: 'A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).'
-  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Step 5 did it with fake stores; the real scheduler prefix store (cache entry or idle sequence) is now served and installed over the Prefix purpose and a fetched prefix decodes equal to a recomputed one (ADR 0091 History, step 6, cluster-integration). Open before the rehearsal measures a fetch on GPU boxes.'
+  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Step 5 did it with fake stores; the real scheduler prefix store (cache entry or idle sequence) is now served and installed over the Prefix purpose and a fetched prefix decodes equal to a recomputed one (ADR 0091 History, step 6, cluster-integration). Open before the rehearsal measures a fetch on GPU boxes. Reopened 2026-11-25 (advisor) - the prefix fetch was never seen through a real head in either rehearsal and the existing test bypasses the head policy; needs decision logging and a test through the head HTTP endpoint; gates the M3 report, not the box sessions.'
 - id: cluster-replicas
   title: Model replicas behind one router
   track: cluster
