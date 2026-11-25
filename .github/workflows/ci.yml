@@ -158,7 +158,7 @@ jobs:
       # nodes, a pinned head-led plan, the per-node calibration (real exit_regime runs on the CPU, the fit), `cluster merge`, and one real
       # `cluster judged-round` that the summary's round check accepts. The stand-ins are the RAM budget (a made-up cgroup) and the GPU throttle line.
       - name: phase 6 Case S loopback (real binaries)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
         timeout-minutes: 40
         env:
           LOOPBACK: "1"

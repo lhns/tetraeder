@@ -394,7 +394,8 @@ def fake_probe(out: str) -> None:
     gate = "gate" in os.path.basename(out)  # the link gate's two probes before the download count apart from the session's
     n = os.path.join(os.path.dirname(os.path.abspath(out)), ".probe-count-gate" if gate else ".probe-count")
     calls = int(open(n).read()) if os.path.exists(n) else 0
-    open(n, "w").write(str(calls + 1))
+    if os.path.basename(out) != "probe-plan.json":  # the plan stage's probe is not one of the session's (the start probe is the first)
+        open(n, "w").write(str(calls + 1))
     small = 1.15 if (calls >= 1 and scenario("small_drift") and not gate) else 1.0  # raw small-message latency 15% up, bulk unchanged
     big = 1.0
     if calls >= 1 and scenario("link_move") and not gate:
