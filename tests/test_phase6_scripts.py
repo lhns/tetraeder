@@ -42,6 +42,13 @@ def test_late_error_and_later_failure_fail_the_rules():
     assert not r["rules"]["none_after_bound_failed"]
 
 
+def test_cluster_toml_loopback_listens_on_its_own_port():
+    m = load("phase6_cluster_toml")
+    t = m.render("c", "a", {"a": "127.0.0.1:17001", "b": "127.0.0.1:17002"}, "b", 17002, 1000, "127.0.0.1")
+    assert 'addr = "127.0.0.1:17002"' in t and 'listen = "127.0.0.1:17002"' in t and 'addr = "127.0.0.1:17001"' in t
+    assert "node_down_after_ms = 1000" in t
+
+
 def test_cluster_toml_self_entry_is_loopback():
     m = load("phase6_cluster_toml")
     t = m.render("c", "a", {"a": "1.2.3.4:5", "b": "6.7.8.9:10"}, "b", 7000, 2000)

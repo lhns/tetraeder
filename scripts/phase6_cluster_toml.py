@@ -12,12 +12,12 @@ import argparse
 import pathlib
 
 
-def render(cluster, head, nodes, me, listen_port, down_ms):
+def render(cluster, head, nodes, me, listen_port, down_ms, listen_host="0.0.0.0", self_host="127.0.0.1"):
     out = [f'cluster = "{cluster}"', f'head = "{head}"', f"node_down_after_ms = {down_ms}", ""]
     for nid, addr in nodes.items():
         out += ["[[nodes]]", f'id = "{nid}"']
         if nid == me:
-            out += [f'addr = "127.0.0.1:{listen_port}"', f'listen = "0.0.0.0:{listen_port}"']
+            out += [f'addr = "{self_host}:{listen_port}"', f'listen = "{listen_host}:{listen_port}"']
         else:
             out += [f'addr = "{addr}"']
         out += [f'anchor = "{nid}.pem"', ""]
@@ -32,12 +32,16 @@ def main():
     ap.add_argument("--listen-port", type=int, default=7000)
     ap.add_argument("--down-ms", type=int, default=2000)
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--node-listen", action="append", default=[], metavar="ID=PORT",
+                    help="the loopback dry run: every node listens on its own port of 127.0.0.1")
     a = ap.parse_args()
     nodes = dict(n.split("=", 1) for n in a.node)
+    own = {k: int(v) for k, v in (x.split("=", 1) for x in a.node_listen)}
     out = pathlib.Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     for me in nodes:
-        (out / f"cluster-{me}.toml").write_text(render(a.cluster, a.head, nodes, me, a.listen_port, a.down_ms))
+        text = render(a.cluster, a.head, nodes, me, own.get(me, a.listen_port), a.down_ms, "127.0.0.1" if own else "0.0.0.0")
+        (out / f"cluster-{me}.toml").write_text(text)
         print(f"wrote {out / f'cluster-{me}.toml'}")
 
 

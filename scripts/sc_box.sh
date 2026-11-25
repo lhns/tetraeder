@@ -26,6 +26,9 @@
 #   aalast   the A/A last: the judged plan once more as judged/aa-last.json, behind the same gates. It must be the last stage
 #            of the session; scripts/sc_summary.py counts the session clean only with it inside the band
 #   report   stage 6, report only: the segment with fixed-seed input
+# Case S of the Phase 6 exit (scripts/phase6_exit_s.sh) runs these stages per node with the node's own span: SPLIT=0 is a segment from
+# layer 0 (it takes tokens: no hidden rows in, `--embed` for the planner, no anchors-real gate; the exit summary checks the prompt hash
+# instead) and HIDDEN_AT is the layer whose rows the trace run dumps for the other node (default SPLIT).
 # Env: RESULTS_NAME, STAGES, FROZEN_SHA, FIT_BAND_MAX, COTENANT_S, ROUNDS, ANCHOR_ROUNDS, THREADS, EMULATE_RAM_GB (64; 0 = no balloon),
 # MODEL (the first shard), PROMPT_FILE (default bench/prompts/exit_prompt.txt; empty = pseudo-random ids), SPLIT, END, A1_END,
 # A2_END, V, R, DUMP_V, DUMP_R, UBATCH, PREFILL, DECODE. Defaults are the 235B segment; the rehearsal on the synthetic model
@@ -56,7 +59,7 @@ threads=$(bash scripts/clamp_threads.sh "${THREADS:-$quota}")
 model="${MODEL:-$root/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf}"
 shard="${DISK_FILE:-$root/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf}"
 [ -e "$shard" ] || shard="$model"
-split="${SPLIT:-47}" end="${END:-94}" a1="${A1_END:-58}" a2="${A2_END:-70}"
+split="${SPLIT:-47}" hidden_at="${HIDDEN_AT:-${SPLIT:-47}}" end="${END:-94}" a1="${A1_END:-58}" a2="${A2_END:-70}"
 vs="${V:-32}" rs="${R:-96}" dv="${DUMP_V:-16}" dr="${DUMP_R:-28}"
 ub="${UBATCH:-2048}" pre="${PREFILL:-2048}" dec="${DECODE:-128}"
 rounds="${ROUNDS:-3}" arounds="${ANCHOR_ROUNDS:-2}"
@@ -196,7 +199,7 @@ st_trace() {
   [ -s "$out/trace/whole-model.json" ] && { say "trace exists"; return 0; }
   rm -f "$hidden" "$trace"
   run_one trace-whole "$out/trace/whole-model.json" "TETRAEDER_EXIT_SLOTS=$dv" "TETRAEDER_EXIT_RAM_SLOTS=$dr" \
-    "TETRAEDER_EXIT_HIDDEN_OUT=$split,$hidden" "TETRAEDER_EXIT_ROUTING_OUT=$trace"
+    "TETRAEDER_EXIT_HIDDEN_OUT=$hidden_at,$hidden" "TETRAEDER_EXIT_ROUTING_OUT=$trace"
   [ -s "$hidden" ] && [ -s "$trace" ] || die "the trace run left no trace or hidden rows"
   python3 -I - "$trace" "$hidden" "$out/trace" << 'EOF'
 import hashlib, os, sys
@@ -212,13 +215,16 @@ EOF
 }
 
 st_anchors() {
-  [ -s "$hidden" ] || die "no hidden rows: run the trace stage first"
-  local r
+  local r hin=()
+  if [ "$split" != 0 ]; then
+    [ -s "$hidden" ] || die "no hidden rows: run the trace stage first"
+    hin=("TETRAEDER_EXIT_HIDDEN_IN=$hidden") # a span from layer 0 takes tokens
+  fi
   for r in $(seq 1 "$arounds"); do
     # shellcheck disable=SC2046
-    run_one "a1-r$r" "$out/anchors/a1-r$r.json" $(seg_env "$a1") "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
+    run_one "a1-r$r" "$out/anchors/a1-r$r.json" $(seg_env "$a1") "${hin[@]}"
     # shellcheck disable=SC2046
-    run_one "a2-r$r" "$out/anchors/a2-r$r.json" $(seg_env "$a2") "TETRAEDER_EXIT_HIDDEN_IN=$hidden"
+    run_one "a2-r$r" "$out/anchors/a2-r$r.json" $(seg_env "$a2") "${hin[@]}"
   done
   say "anchors done"
 }
@@ -235,11 +241,16 @@ st_predict() {
   tsha=$(awk '{print $1}' "$out/trace/routing.sha256")
   rm -f "$p/SHA256SUMS" "$p/FROZEN.sha256" # a refused freeze leaves no frozen prediction behind
   # ADR 0091 answer 7: anchors on real hidden rows, and no freeze on a fit band over the limit
-  python3 -I scripts/sc_gates.py anchors-real "$out"/anchors/a*-r*.json || die "anchors are not on real hidden rows: nothing frozen"
+  local embed=""
+  if [ "$split" = 0 ]; then
+    embed="--embed"
+  else
+    python3 -I scripts/sc_gates.py anchors-real "$out"/anchors/a*-r*.json || die "anchors are not on real hidden rows: nothing frozen"
+  fi
   "$bench" replay --trace "$trace" --vram "$vs" --ram "$rs" --policies lru --vram-policy static --layers "$split..$end" --warm 1 \
     --out "$p/replay.json" || die "replay"
-  # shellcheck disable=SC2046
-  "$plan" segment-predict --hw "$p/hw.toml" --layout "$out/layout.json" --layers "$split..$end" --pin "$vs,$rs" --ubatch "$ub" \
+  # shellcheck disable=SC2046,SC2086
+  "$plan" segment-predict $embed --hw "$p/hw.toml" --layout "$out/layout.json" --layers "$split..$end" --pin "$vs,$rs" --ubatch "$ub" \
     --prompt "$pre" --gen "$dec" $(anchor_args "$out/anchors" "") --tier-replay "$p/replay.json" --trace-sha256 "$tsha" \
     --max-band "${FIT_BAND_MAX:-0.10}" --out "$p/pred.json" --hw-out "$p/fitted.toml" || die "segment-predict (a fit band over the limit refuses the freeze)"
   # the environment the planner wrote must be the one the anchors ran (apart from the span's end and the warm count)
