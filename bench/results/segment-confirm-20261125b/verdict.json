@@ -1,0 +1,317 @@
+{
+  "prediction": {
+    "pp_tps": 445.0756254827007,
+    "tg_tps": 17.425524934491825,
+    "routing": "trace",
+    "routing_trace": {
+      "sha256": "6f9c06f58df869662cc85663a7bcb26b119059b015a39c29cb0010001dadaa50",
+      "fnv1a64": "5d506f6d6fb61476",
+      "replay_version": 2,
+      "scope": {
+        "layers": [
+          47,
+          94
+        ],
+        "warm": 1
+      }
+    },
+    "hw_sha256": "a34ef05eef0ce371c398e4dd6973ef7427cb1c7b56712ead41c3cd08c05b414b",
+    "uncalibrated_pp_tps": 516.4045516612961,
+    "uncalibrated_tg_tps": 12.941887170601417,
+    "band": 0.05
+  },
+  "frozen_sha256": "059669ea1641a3bba612bf9272444b728928eca3d238defde9bfa0b6a288280a",
+  "rounds": [
+    {
+      "file": "judged/r1.json",
+      "pp": 450.89985575629953,
+      "tg": 16.979692633041505,
+      "e_pp": -0.012916904273189034,
+      "e_tg": 0.026256794577232512,
+      "clean": false,
+      "unclean_reasons": [
+        "co-tenant: 5.0 cores busy outside the container (limit 4.8 of 32 physical)"
+      ],
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.39544547872340424,
+      "full_hit_rate_mean": 0.004820478723404255,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r2.json",
+      "pp": 429.922639199693,
+      "tg": 17.29415593306151,
+      "e_pp": 0.035245844022578465,
+      "e_tg": 0.0075961499328900395,
+      "clean": false,
+      "unclean_reasons": [
+        "co-tenant: 6.1 cores busy outside the container (limit 4.8 of 32 physical)"
+      ],
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.39544547872340424,
+      "full_hit_rate_mean": 0.004820478723404255,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r3.json",
+      "pp": 453.69799550749315,
+      "tg": 17.760853980511442,
+      "e_pp": -0.019004646505320633,
+      "e_tg": -0.018880232132281738,
+      "clean": true,
+      "unclean_reasons": [],
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.39544547872340424,
+      "full_hit_rate_mean": 0.004820478723404255,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r4.json",
+      "pp": 377.957930506706,
+      "tg": 16.3084159580934,
+      "e_pp": 0.1775798033553997,
+      "e_tg": 0.06849892590849938,
+      "clean": true,
+      "unclean_reasons": [],
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.39544547872340424,
+      "full_hit_rate_mean": 0.004820478723404255,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "judged/r5.json",
+      "pp": 452.4621523363007,
+      "tg": 18.732879289863895,
+      "e_pp": -0.01632518170958497,
+      "e_tg": -0.0697892905379186,
+      "clean": true,
+      "unclean_reasons": [],
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.39544547872340424,
+      "full_hit_rate_mean": 0.004820478723404255,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "median": {
+    "pp": 452.4621523363007,
+    "tg": 17.760853980511442,
+    "vram_pair_share": 0.39544547872340424,
+    "full_hit_rate_mean": 0.004820478723404255,
+    "ram_hit_rate_mean": 1.0
+  },
+  "e_pp": -0.01632518170958497,
+  "e_tg": -0.018880232132281738,
+  "gate": {
+    "vram_share": {
+      "replay": 0.39288979388297873,
+      "measured": 0.39544547872340424,
+      "line": 0.02,
+      "diff": 0.0025556848404255095,
+      "ok": true
+    },
+    "full_hit_share": {
+      "replay": 0.004654255319148936,
+      "measured": 0.004820478723404255,
+      "line": 0.02,
+      "diff": 0.0001662234042553194,
+      "ok": true
+    },
+    "ram_hit_rate": {
+      "replay": 1.0,
+      "measured": 1.0,
+      "line": 0.005,
+      "diff": 0.0,
+      "ok": true
+    }
+  },
+  "gate_held": true,
+  "aa_early": {
+    "t_first": 12.080445297999999,
+    "t_second": 12.164991878999999,
+    "diff": 0.006998631169166991,
+    "band": 0.08,
+    "ok": true,
+    "first": "judged/r1.json",
+    "second": "judged/r2.json"
+  },
+  "aa": {
+    "t_first": 12.080445297999999,
+    "t_second": 12.060118102,
+    "diff": -0.0016826528740098157,
+    "band": 0.08,
+    "ok": true,
+    "first": "judged/r1.json",
+    "second": "judged/aa-last.json"
+  },
+  "t_rounds": [
+    12.080445297999999,
+    12.164991878999999,
+    11.720876645,
+    13.267300799,
+    11.359251264000001
+  ],
+  "rules": [
+    {
+      "name": "rounds_clean",
+      "ok": true,
+      "detail": "3 clean rounds of 5 (need 3)"
+    },
+    {
+      "name": "routing_gate",
+      "ok": true,
+      "detail": "vram_share +0.0026 against 0.02; full_hit_share +0.0002 against 0.02; ram_hit_rate +0.0000 against 0.005"
+    },
+    {
+      "name": "aa_early",
+      "ok": true,
+      "detail": "T 12.08 -> 12.16 s, +0.007 against 0.08"
+    },
+    {
+      "name": "aa",
+      "ok": true,
+      "detail": "T 12.08 -> 12.06 s, -0.002 against 0.08"
+    },
+    {
+      "name": "one_numa_node",
+      "ok": true,
+      "detail": "lscpu shows one NUMA node"
+    },
+    {
+      "name": "cotenant_ssh",
+      "ok": true,
+      "detail": "under the limit, read by engine_sample.py"
+    },
+    {
+      "name": "freeze",
+      "ok": true,
+      "detail": "FROZEN.sha256 and every frozen file match"
+    },
+    {
+      "name": "fit_band",
+      "ok": true,
+      "detail": "0.050 within 0.1"
+    },
+    {
+      "name": "anchors_real_hidden",
+      "ok": true,
+      "detail": "every anchor ran on the dumped hidden rows"
+    }
+  ],
+  "clean": true,
+  "verdict": "pass",
+  "status": "pass: e_pp -0.016, e_tg -0.019 against 0.15",
+  "anchors": {
+    "fit": [
+      {
+        "id": "a1",
+        "span": [
+          47,
+          58
+        ],
+        "rounds": 2,
+        "pp_tok_s": 1946.7325291749926,
+        "tg_tok_s": 73.66610457433896,
+        "pair_share": 0.3387784090909091,
+        "full_hit_rate": 0.002130681818181818,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      },
+      {
+        "id": "a2",
+        "span": [
+          47,
+          70
+        ],
+        "rounds": 2,
+        "pp_tok_s": 931.6204045031191,
+        "tg_tok_s": 35.25332536730855,
+        "pair_share": 0.3879500679347826,
+        "full_hit_rate": 0.005095108695652174,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      }
+    ],
+    "residuals": [
+      [
+        "a1:pp",
+        0.001846414409758186
+      ],
+      [
+        "a1:tg",
+        -0.024404413609885763
+      ],
+      [
+        "a2:pp",
+        -0.0015930939726523951
+      ],
+      [
+        "a2:tg",
+        0.024415681840940222
+      ]
+    ]
+  },
+  "whole_model_run": {
+    "pp_tok_s": 46.42006573156196,
+    "tg_tok_s": 2.0222371050236516,
+    "peak_rss_bytes": 32775135232
+  },
+  "fixed_seed_segment": [],
+  "extra_rounds": [],
+  "anchor_repeat": [],
+  "anchor_rounds": [
+    {
+      "file": "anchors/a1-r1.json",
+      "pp": 1953.3125193132819,
+      "tg": 74.01920408357287,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.3387784090909091,
+      "full_hit_rate_mean": 0.002130681818181818,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a1-r2.json",
+      "pp": 1940.1525390367028,
+      "tg": 73.31300506510503,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.3387784090909091,
+      "full_hit_rate_mean": 0.002130681818181818,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a2-r1.json",
+      "pp": 922.108399071494,
+      "tg": 35.305190006882405,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.3879500679347826,
+      "full_hit_rate_mean": 0.005095108695652174,
+      "ram_hit_rate_mean": 1.0
+    },
+    {
+      "file": "anchors/a2-r2.json",
+      "pp": 941.1324099347439,
+      "tg": 35.201460727734684,
+      "bytes": 0,
+      "numa_top_prefill": 1.0,
+      "numa_top_decode": 1.0,
+      "vram_pair_share": 0.3879500679347826,
+      "full_hit_rate_mean": 0.005095108695652174,
+      "ram_hit_rate_mean": 1.0
+    }
+  ],
+  "gpu_reason_samples": {
+    "0x0000000000000001": 60,
+    "0x0000000000000004": 97,
+    "0x0000000000000000": 684
+  }
+}

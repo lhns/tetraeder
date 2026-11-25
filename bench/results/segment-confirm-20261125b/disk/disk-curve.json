@@ -1,0 +1,110 @@
+{
+  "tool": "tetraeder-bench disk-curve",
+  "adr": "0056",
+  "file": "/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf",
+  "chunk_bytes": 1048576,
+  "seconds": 4.0,
+  "load_threads": 0,
+  "buffered": false,
+  "provenance": {
+    "host_id": "f63869faef5c",
+    "hostname": "f63869faef5c",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 7542 32-Core Processor",
+    "cpus": 15,
+    "cpu_quota": 15.36,
+    "ram_gb": 503.6,
+    "gpus": [
+      {
+        "name": "NVIDIA RTX A6000",
+        "driver": "610.57.04",
+        "memory_mb": 49140.0,
+        "clocks_sm_mhz": 210.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_max_sm_mhz": 2100.0,
+        "throttle_reasons": "0x0000000000000004",
+        "power_w": 25.29,
+        "temperature_c": 22.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": null,
+    "cuda_env": "ok",
+    "started_utc": "2026-11-25T01:12:26Z",
+    "cpu_backend": null
+  },
+  "points": [
+    {
+      "depth": 1,
+      "chunks": 11144,
+      "bytes_per_s": 2921280341.376437,
+      "p50_ms": 0.325087,
+      "p99_ms": 0.491146
+    },
+    {
+      "depth": 2,
+      "chunks": 20096,
+      "bytes_per_s": 5267641391.613786,
+      "p50_ms": 0.35118699999999997,
+      "p99_ms": 0.636425
+    },
+    {
+      "depth": 4,
+      "chunks": 25245,
+      "bytes_per_s": 6617819398.41301,
+      "p50_ms": 0.6103149999999999,
+      "p99_ms": 1.044622
+    },
+    {
+      "depth": 8,
+      "chunks": 27456,
+      "bytes_per_s": 7196970133.574637,
+      "p50_ms": 1.158421,
+      "p99_ms": 1.7821060000000002
+    },
+    {
+      "depth": 16,
+      "chunks": 27739,
+      "bytes_per_s": 7271287485.793945,
+      "p50_ms": 2.3465320000000003,
+      "p99_ms": 3.601493
+    },
+    {
+      "depth": 32,
+      "chunks": 27945,
+      "bytes_per_s": 7325397865.387954,
+      "p50_ms": 4.836463,
+      "p99_ms": 7.386233
+    }
+  ],
+  "queue_chunk_bytes": 1048576,
+  "copy_bytes_per_s": 12810093402.069845,
+  "queue_curve": [
+    {
+      "depth": 1,
+      "bytes_per_s": 2921280341.376437
+    },
+    {
+      "depth": 2,
+      "bytes_per_s": 5267641391.613786
+    },
+    {
+      "depth": 4,
+      "bytes_per_s": 6617819398.41301
+    },
+    {
+      "depth": 8,
+      "bytes_per_s": 7196970133.574637
+    },
+    {
+      "depth": 16,
+      "bytes_per_s": 7271287485.793945
+    },
+    {
+      "depth": 32,
+      "bytes_per_s": 7325397865.387954
+    }
+  ]
+}
