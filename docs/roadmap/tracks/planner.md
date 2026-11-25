@@ -28,6 +28,7 @@ flowchart TB
     planner_costmodel_stream_terms["✔ Cost model 6 for<br/>streamed MoE"]
     planner_costmodel_v6_rest["✔ Cost model 6<br/>remaining parts"]
     planner_cost_model_v5_host2[/"○ Cost model 5 second<br/>host"/]
+    planner_footprint_validator_gap>"⚠ Planner footprint<br/>against the validator"]
     planner_live_replan["⛔ Replan without<br/>draining"]
     planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
     planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
@@ -58,16 +59,16 @@ flowchart TB
     planner_node_predict_check ~~~ planner_costmodel_stream_terms
     planner_costmodel_stream_terms ~~~ planner_costmodel_v6_rest
     planner_costmodel_stream_terms ~~~ planner_cost_model_v5_host2
-    planner_costmodel_stream_terms ~~~ planner_live_replan
-    planner_costmodel_v6_rest ~~~ planner_advisor_auto
-    planner_cost_model_v5_host2 ~~~ planner_split_layouts
+    planner_costmodel_stream_terms ~~~ planner_footprint_validator_gap
+    planner_costmodel_v6_rest ~~~ planner_live_replan
+    planner_cost_model_v5_host2 ~~~ planner_advisor_auto
+    planner_footprint_validator_gap ~~~ planner_split_layouts
     planner_live_replan ~~~ planner_low_bit_formats
     planner_advisor_auto ~~~ planner_ep_split
     planner_split_layouts ~~~ planner_ram_slots_zero
     planner_low_bit_formats ~~~ planner_slot_campaign
     planner_ep_split ~~~ planner_replan_part_b
     planner_ram_slots_zero ~~~ planner_replan_part_b
-    planner_slot_campaign ~~~ planner_replan_part_b
     planner_plan_ir --> planner_quality
     planner_plan_ir --> planner_core
     planner_core --> planner_exit
@@ -105,6 +106,7 @@ flowchart TB
     class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5,planner_ep_prefill_recheck,planner_costmodel_stream_terms succ
     class planner_core vsucc
     class planner_cost_model_v5_host2,planner_ep_split next
+    class planner_footprint_validator_gap finding
     class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
     class planner_low_bit_formats,planner_ram_slots_zero,planner_slot_campaign,planner_replan_part_b parked
 ```
@@ -129,6 +131,7 @@ flowchart TB
 | `planner-cost-v4` | Price routed expert traffic | feature | none | done | successful | 2026-11-19 | 2026-11-19 | planner-cost-v3 |  | multi-defect-capture | +0.09 | docs/adr/0080-routed-slot-activation-traffic.md |
 | `planner-cost-model-v5` | Price decode at measured clocks | feature | local | done | successful | 2026-11-20 | 2026-11-21 | planner-cost-v4 |  |  |  | bench/results/s3c-20261119/costmodel-v5/README.md; bench/results/s3g-20261121/README.md; bench/results/v4a-20261121/README.md |
 | `planner-cost-model-v5-host2` | Cost model 5 second host | experiment | box-later | next | unrated |  |  | bench-m2-report |  |  |  |  |
+| `planner-footprint-validator-gap` | Planner footprint against the validator | defect | ci | next | unrated |  |  | cluster-planner-hardening |  |  |  |  |
 | `planner-live-replan` | Replan without draining | feature | local | blocked | unrated |  |  | multi-live-reshard |  |  |  |  |
 | `planner-advisor-auto` | Advisor applies safe changes itself | feature | local | blocked | unrated |  |  | bench-m3-report |  |  |  |  |
 | `planner-split-layouts` | Separate prefill and decode layouts | feature | local | blocked | unrated |  |  | bench-m3-report |  |  |  |  |
@@ -162,6 +165,7 @@ flowchart TB
 | `planner-cost-v4` | Price routed expert traffic | Cost model 4 (ADR 0080, routed-slot activation bytes) brings M4 ep-4 pp to +0.09. | +0.09 | Version 4 prices the activation bytes that expert parallel moves per routed expert, which brought the four-GPU expert-parallel prefill prediction close. |  |  |  |  |  |
 | `planner-cost-model-v5` | Price decode at measured clocks | passes with k applied to the 30B: 1800 against 1695, -0.024 |  | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. | Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. s3g-20261121 (first box run, host 20210 not clock-limited: busy 1800, low 1695): layer anchor held-out tg +0.019, 30B layer-4 e_tg +0.045, tp2-pp2 decode tail 1800 MHz; offline with the 30B busy clock the held-out is -0.021 and e_tg -0.001. Box check (item 5) passed on v4a-20261121 with k = 1.062 applied to the 30B (held-out -0.024, 30B layer-4 tg 1.007 measured over predicted). Layer anchor stays behind LAYER_ANCHOR=1 on 2 GPUs. |  |  |  |  |
 | `planner-cost-model-v5-host2` | Cost model 5 second host |  |  | Cost model 5 (clock-aware decode) is fitted and confirmed only on host 20210; check its predictions on a second 4-GPU host when one is usable. |  |  |  |  |  |
+| `planner-footprint-validator-gap` | Planner footprint against the validator |  |  | A 7-node plan on 24 GB cards passes the planner's footprint but fails the validator with MemoryExceeded; find which accounting differs and make them agree, with a property test over the cluster fixtures (found by planner-costmodel-v6-rest; does not affect the two-node exit). |  |  |  |  |  |
 | `planner-live-replan` | Replan without draining |  |  | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). | Done when: a replan under load switches with zero failed requests and respects the switch limit. Phase 7, blocked behind the M3 report. |  |  |  |  |
 | `planner-advisor-auto` | Advisor applies safe changes itself |  |  | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). | Done when: an injected regression is rolled back, and advisor accuracy (predicted against achieved gain) is a metric. Risk (plan.md): advisor harm. Phase 7, blocked behind the M3 report. |  |  |  |  |
 | `planner-split-layouts` | Separate prefill and decode layouts |  |  | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). | Done when: the planner picks split layouts where they win, and parity holds across the switch. Phase 7, blocked behind the M3 report. |  |  |  |  |
