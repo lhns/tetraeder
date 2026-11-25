@@ -62,58 +62,9 @@ conc="${CONC:-8}" cap="${CAP:-4}"
 bound=$(awk -v d="$down_ms" 'BEGIN { printf "%.3f", d / 1000 + 1 }') # node_down_after + 1 s (3 s on the real boxes)
 mkdir -p "$out"/{gates,certs,trials,cluster}
 
-# ---- the two ways to reach a box ----------------------------------------------------------------------------------------
-p6dir() { if [ "$LOOPBACK" = 1 ]; then echo "$lb/$1"; else echo /root/p6; fi; }
-box_id() { if [ "$1" = a ]; then echo "${ID_A:?set ID_A}"; else echo "${ID_B:?set ID_B}"; fi; }
-bx() { # bx BOX TIMEOUT CMD...: CMD runs in the box's repo with its P6 work dir
-  local box=$1 t=$2
-  shift 2
-  if [ "$LOOPBACK" = 1 ]; then
-    mkdir -p "$lb/$box"
-    (cd "$repo" && P6="$lb/$box" P6_LOOPBACK=1 P6_LB_PORT="$([ "$box" = a ] && echo "$port_a" || echo "$port_b")" HEAD_HOST=127.0.0.1 HEAD_PORT="$head_port" \
-      TETRAEDER_BIN="$lb/tetraeder" POLL_S="$poll_s" bash -c "$*")
-  else
-    uv run taxameter ssh --id "$(box_id "$box")" --timeout "$t" -- "cd /root/tetraeder && P6=/root/p6 $*"
-  fi
-}
-put() { # put BOX LOCAL_FILE REL_PATH_UNDER_P6
-  local box=$1 f=$2 rel=$3
-  if [ "$LOOPBACK" = 1 ]; then
-    mkdir -p "$(dirname "$lb/$box/$rel")" && cp "$f" "$lb/$box/$rel"
-  else
-    uv run taxameter put --id "$(box_id "$box")" "$f" "/root/p6/$rel" > /dev/null
-  fi
-}
-get() { # get BOX REL_PATH_UNDER_P6 LOCAL_FILE: through ssh (base64), so no fetch pack is needed for files of a few MB
-  local box=$1 rel=$2 f=$3
-  mkdir -p "$(dirname "$f")"
-  if [ "$LOOPBACK" = 1 ]; then
-    cp "$lb/$box/$rel" "$f"
-  else
-    bx "$box" 300 "gzip -c /root/p6/$rel | base64 -w0" | base64 -d | gzip -dc > "$f"
-  fi
-}
-wait_line() { # wait_line BOX REL_LOG REGEX SECONDS: waits on the box (ssh loops of 500 s) for REGEX on the log's LAST line
-  local box=$1 rel=$2 re=$3 secs=$4 t0=$SECONDS line
-  while [ $((SECONDS - t0)) -lt "$secs" ]; do
-    line=$(bx "$box" 560 "for i in \$(seq 1 100); do tail -n 1 $(p6dir "$box")/$rel 2> /dev/null | grep -E '$re' && exit 0; sleep $wait_step; done; exit 1") && { echo "$line"; return 0; }
-  done
-  return 1
-}
-epoch_of() { bx "$1" 60 "date +%s.%N" | tail -n 1; }
-sess() { # sess KEY JSON_VALUE: sets session.json[KEY] (dotted keys nest)
-  python3 -I -c '
-import json, os, sys
-p, key, val = sys.argv[1:4]
-d = json.load(open(p)) if os.path.exists(p) else {}
-cur = d
-parts = key.split(".")
-for k in parts[:-1]:
-    cur = cur.setdefault(k, {})
-cur[parts[-1]] = json.loads(val)
-json.dump(d, open(p, "w"), indent=2)
-' "$out/session.json" "$1" "$2"
-}
+# the two ways to reach a box (taxameter ssh, or the loopback), and the session file
+# shellcheck source=scripts/phase6_exit_lib.sh
+. "$repo/scripts/phase6_exit_lib.sh"
 
 # ---- stages -----------------------------------------------------------------------------------------------------------------
 st_gates() {
@@ -134,7 +85,7 @@ st_gates() {
 
 write_tetraeder_shim() { # the loopback binary: the stand-in of scripts/phase6_loopback.py behind the name `tetraeder`
   mkdir -p "$lb"
-  printf '#!/usr/bin/env bash\nexec python3 "%s/scripts/phase6_loopback.py" "$@"\n' "$repo" > "$lb/tetraeder"
+  printf '#!/usr/bin/env bash\nexec python3 "%s/scripts/phase6_loopback.py" "$@"\n' "$(cd "$repo" && { pwd -W 2> /dev/null || pwd; })" > "$lb/tetraeder"
   chmod +x "$lb/tetraeder"
 }
 
@@ -165,7 +116,7 @@ st_setup() {
   sess t_cluster_toml "$(python3 -I -c 'import time; print(time.time())')"
   if [ "$LOOPBACK" = 1 ]; then
     now=$(python3 -I -c 'import time; print(time.time())')
-    sess t_created "{\"a\": $(awk -v n="$now" 'BEGIN { print n - 30 }'), \"b\": $(awk -v n="$now" 'BEGIN { print n - 20 }')}"
+    sess t_created "{\"a\": $(awk -v n="$now" 'BEGIN { printf "%.3f", n - 30 }'), \"b\": $(awk -v n="$now" 'BEGIN { printf "%.3f", n - 20 }')}"
   else
     sess t_created "{\"a\": ${T_CREATED_A:?set T_CREATED_A}, \"b\": ${T_CREATED_B:?set T_CREATED_B}}"
   fi
@@ -204,7 +155,7 @@ st_setup() {
 }
 
 clock_offset() { # prints the offset JSON of box b's clock to box a's (three exchanges, the best one kept)
-  local i t0 a t1 t2 b t3
+  local t0 a t1 t2 b t3
   for _ in 1 2 3; do
     t0=$(python3 -I -c 'import time; print(time.time())')
     a=$(epoch_of a)

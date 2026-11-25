@@ -126,12 +126,14 @@ def main():
     ap.add_argument("--prompt-tokens", type=int, default=512)
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--timeout", type=float, default=120)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", help="one JSON line per request (required unless --calibrate)")
     ap.add_argument("--label", default="load")
     ap.add_argument("--chars-per-token", type=float, default=CHARS_PER_TOKEN)
     ap.add_argument("--calibrate", action="store_true", help="size the prompt through /tokenize, write --meta-out, send nothing")
     ap.add_argument("--meta-out", help="with --calibrate: {chars_per_token, prompt_tokens}")
     a = ap.parse_args()
+    if not a.calibrate and not a.out:
+        ap.error("--out is required")
     u = urllib.parse.urlparse(a.url)
     key = ""
     if a.key_file:

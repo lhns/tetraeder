@@ -296,7 +296,7 @@ def test_the_session_script_wires_the_gates():
         assert needle in s, needle
     # the anchors run on the dumped hidden rows
     anchors = s[s.index("st_anchors()"):s.index("anchor_args()")]
-    assert anchors.count("TETRAEDER_EXIT_HIDDEN_IN=$hidden") == 2
+    assert anchors.count('"${hin[@]}"') == 2 and 'hin=("TETRAEDER_EXIT_HIDDEN_IN=$hidden")' in anchors  # a span from layer 0 takes tokens instead
     # no ad-hoc sampler in the script
     assert "/proc/stat" not in s
 

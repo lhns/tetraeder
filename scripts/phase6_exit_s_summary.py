@@ -6,6 +6,9 @@ rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
     phase6_exit_s_summary.py pick CANDIDATES.json PLANS_DIR OUT.toml     the analytic pick among the spanning plans
     phase6_exit_s_summary.py span PLAN.toml           the plan computes on both nodes, one node per stage
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
+    phase6_exit_s_summary.py spans PLAN.toml          `node first..last` per stage, in order (the driver compares them with the confirmed regime)
+    phase6_exit_s_summary.py precheck RESULTS_DIR calib|freeze           the rules that must hold before calibration is trusted (calib) or
+                                                      before the first judged round (freeze); exit 1 and the reasons otherwise
     phase6_exit_s_summary.py round ROUND_DIR [--frozen-sha S]            is the judged round clean (reasons, exit 1)
     phase6_exit_s_summary.py next-round RESULTS_DIR   exit 0 while another judged round is due, 1 when done (3 clean or 8)
 
@@ -89,6 +92,23 @@ def plan_nodes(plan_toml: str) -> tuple[list[str], list[str]]:
             why.append(f"stage {i} names nodes {ns}")
         nodes += ns
     return sorted(set(nodes)), why + ([] if len(stages) >= 2 else [f"{len(stages)} stage(s): a spanning plan has one per node"])
+
+
+def plan_spans(plan_toml: str) -> list[tuple[str, int, int]]:
+    """(node, first layer, end layer) of every stage, in order."""
+    plan = tomllib.loads(open(plan_toml, encoding="utf-8").read())
+    out = []
+    for r in plan.get("replicas", []):
+        for st in r.get("stages", []):
+            nodes = sorted({d.split("/", 1)[0] for d in st.get("devices", []) if "/" in d})
+            lo, hi = st["layers"]
+            out.append((nodes[0] if nodes else "?", int(lo), int(hi)))
+    return out
+
+
+# what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
+PRE_CALIB = ("gates_", "ram_budget_", "trace_hidden", "anchors_", "fit_band_")
+PRE_FREEZE = PRE_CALIB + ("prediction_judged", "freeze", "span_both_nodes")
 
 
 def check_span(plan_toml: str, nodes: tuple[str, ...] | None = None) -> list[str]:
@@ -444,6 +464,10 @@ def main() -> int:
     r.add_argument("dir")
     r.add_argument("--prompt-hash")
     r.add_argument("--frozen-sha")
+    sub.add_parser("spans").add_argument("plan")
+    pc = sub.add_parser("precheck")
+    pc.add_argument("res")
+    pc.add_argument("stage", choices=["calib", "freeze"])
     nr = sub.add_parser("next-round")
     nr.add_argument("res")
     a = ap.parse_args()
@@ -473,6 +497,18 @@ def main() -> int:
         for w in why:
             print(f"GATE FAILED link: {w}")
         return 1 if why else 0
+    if a.cmd == "spans":
+        for n, lo, hi in plan_spans(a.plan):
+            print(f"{n} {lo}..{hi}")
+        return 0
+    if a.cmd == "precheck":
+        want = PRE_CALIB if a.stage == "calib" else PRE_FREEZE
+        bad = [r for r in summarize(a.res)["rules"] if not r["ok"] and r["name"].startswith(want)]
+        for r in bad:
+            print(f"GATE FAILED {r['name']}: {r['detail']}")
+        if not bad:
+            print(f"precheck {a.stage} ok")
+        return 1 if bad else 0
     if a.cmd == "round":
         why = round_unclean(a.dir, a.prompt_hash, a.frozen_sha)
         for w in why:

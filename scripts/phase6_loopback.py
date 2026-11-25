@@ -3,6 +3,10 @@
 their loopback dry run (LOOPBACK=1) with two "boxes" as two sets of processes. It speaks only what the drivers use:
 
     cluster cert --node ID --out DIR          writes key.pem and cert.pem (text, no cryptography)
+    cluster probe ... -o F, cluster profile ... [--probe P] -o F      a link probe and a merged graph of fixed numbers
+    plan candidates|predict ...               tetraeder-plan: two cluster candidates (one on a single node), a judged prediction
+    sc-box --node N --out DIR --stages ...    scripts/sc_box.sh's calibration stages: the files they leave, from fixed numbers
+    judged-round --out DIR --node N           one judged round of the two-node plan: cluster.json and the segment files
     node --cluster F --key K --cert C --state-dir D ...      the daemon of one node: control port, supervises one replica engine
     serve --cluster F --key K --cert C --replicas R --port P --request-log L ...     the head: gateway, router, two replicas
     engine --port P --node ID                 (internal) the replica engine the daemon starts as its child
@@ -12,6 +16,9 @@ the daemon and its children, SIGSTOP and SIGCONT), the load, the epochs, the tri
 behaviour that Case F judges is modelled after the real head: a node is down after `node_down_after_ms` without an answer, its
 in-flight requests end with one error naming the replica, a request waits for a free replica, and a restored node rejoins on its own.
 Env: LB_LOAD_S (engine load time, 0.5), LB_TOKEN_S (seconds per token, 0.02), LB_MAX_TOKENS (tokens per answer, 40).
+Case S scenarios (LB_SCENARIO, comma list): fit_band_miss (node b's fit band 0.12), link_drift (the end probe 12% slower), single_node
+(no candidate computes on both nodes), aa_early_miss (judged round 2 at half the rate), aa_last_miss, unclean_rounds (rounds 1 and 3
+report a busy co-tenant), seed_anchors (node b's anchors on fixed-seed input), wrong_prompt (round prompt hash differs).
 """
 
 from __future__ import annotations
@@ -329,8 +336,183 @@ def run_head(a: argparse.Namespace) -> None:
     srv.serve_forever()
 
 
+# ---- Case S stand-ins: files of fixed numbers in the layouts the real tools write -------------------------------------------------
+
+PH = "9f8e7d6c5b4a3920"  # the frozen prompt's fnv1a64 of the stand-in
+POINTS = [[4096, 0.032], [16384, 0.046], [65536, 0.054], [262144, 0.055], [1048576, 0.056], [4194304, 0.099], [16777216, 0.324], [67108864, 1.342]]
+PLAN = """[[replicas]]
+[[replicas.stages]]
+layers = [0, 47]
+devices = ["a/gpu0"]
+[[replicas.stages]]
+layers = [47, 94]
+devices = ["b/gpu0"]
+"""
+SINGLE = """[[replicas]]
+[[replicas.stages]]
+layers = [0, 94]
+devices = ["a/gpu0"]
+"""
+
+
+def scenario(name: str) -> bool:
+    return name in os.environ.get("LB_SCENARIO", "").split(",")
+
+
+def wjson(path: str, obj) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=1)
+
+
+def wtext(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
+def sha_bytes(b: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(b).hexdigest()
+
+
+def fake_probe(out: str) -> None:
+    n = os.path.join(os.path.dirname(os.path.abspath(out)), ".probe-count")
+    calls = int(open(n).read()) if os.path.exists(n) else 0
+    open(n, "w").write(str(calls + 1))
+    scale = 1.12 if (calls >= 1 and scenario("link_drift")) else 1.0
+    pts = [[x, y * (scale if x >= 16 * 1024 * 1024 else 1.0)] for x, y in POINTS]
+    wjson(out, {"buffers": "auto", "links": [], "empty_rtt_s": [["a", "b", 0.06], ["b", "a", 0.058]],
+                "curves": [{"op": "copy", "ranks": ["a/cpu0", "b/cpu0"], "comm": "tls", "points": pts},
+                           {"op": "copy", "ranks": ["b/cpu0", "a/cpu0"], "comm": "tls", "points": POINTS}]})
+
+
+def fake_profile(out: str, probe: str | None) -> None:
+    devs, links = [], []
+    for n in "ab":
+        devs += [{"id": f"{n}/cpu0", "kind": "cpu", "tier": "ram", "node": n, "capacity_bytes": 64_000_000_000, "threads": 16},
+                 {"id": f"{n}/gpu0", "kind": "gpu", "tier": "vram", "node": n, "capacity_bytes": 25769803776},
+                 {"id": f"{n}/disk0", "kind": "disk", "tier": "nvme", "node": n, "capacity_bytes": 2_000_000_000_000}]
+        links += [{"id": f"{n}/pcie", "a": f"{n}/gpu0", "b": f"{n}/cpu0", "kind": "pcie", "alpha_s": {"value": 1e-5}, "beta_bytes_per_s": {"value": 1e10}},
+                  {"id": f"{n}/storage", "a": f"{n}/disk0", "b": f"{n}/cpu0", "kind": "storage", "alpha_s": {"value": 1e-4}, "beta_bytes_per_s": {"value": 3e9}}]
+    hw = {"devices": devs, "links": links, "lane_groups": [], "notes": [], "collectives": []}
+    if probe:
+        pr = json.load(open(probe, encoding="utf-8"))
+        hw["collectives"] = pr["curves"]
+    wjson(out, hw)
+
+
+def fake_plan(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("cmd")
+    ap.add_argument("--cluster", nargs="?", const="1")
+    ap.add_argument("--hw")
+    ap.add_argument("--layout")
+    ap.add_argument("--plans-dir")
+    ap.add_argument("--out")
+    ap.add_argument("--tier-replay", action="append", default=[])
+    ap.add_argument("--trace-sha256")
+    ap.add_argument("--prompt-hash")
+    ap.add_argument("--judged", action="store_true")
+    ap.add_argument("--prompt", type=int, default=2048)
+    ap.add_argument("--gen", type=int, default=128)
+    a, _ = ap.parse_known_args(argv)
+    if a.cmd == "layout":
+        wjson(a.out, {"model": "m", "n_layer": 94})
+        return 0
+    if a.cmd == "candidates":
+        os.makedirs(a.plans_dir, exist_ok=True)
+        wtext(os.path.join(a.plans_dir, "m-c1.toml"), SINGLE if scenario("single_node") else PLAN)
+        wtext(os.path.join(a.plans_dir, "m-c2.toml"), SINGLE)
+        wjson(a.out, {"kind": "candidates-cluster", "candidates": [
+            {"id": "c1", "plan": "m-c1.toml", "prediction": {"request_s": 40.0}},
+            {"id": "c2", "plan": "m-c2.toml", "prediction": {"request_s": 20.0}}]})
+        return 0
+    if a.cmd == "predict":
+        if a.judged and (not a.trace_sha256 or not a.tier_replay):
+            print("a judged prediction carries the sha256 of its routing trace and a replay per segment", file=sys.stderr)
+            return 1
+        plan = open(a.cluster, "rb").read()
+        wjson(a.out, {"kind": "predict-cluster", "routing": "trace", "judged": a.judged, "plan_sha256": sha_bytes(plan),
+                      "hw_sha256": sha_bytes(open(a.hw, "rb").read()),
+                      "routing_trace": {"sha256": a.trace_sha256, "prompt_hash": a.prompt_hash},
+                      "workload": {"prompt": a.prompt, "gen": a.gen}, "prediction": {"pp_tps": 300.0, "tg_tps": 5.0, "request_s": 30.0}})
+        return 0
+    return 2
+
+
+def fake_sc_box(a: argparse.Namespace) -> int:
+    n, out = a.node, a.out
+    stages = a.stages.split()
+    first = a.span.startswith("0..")
+    for st in stages:
+        if st == "balloon":
+            wjson(os.path.join(out, "env.json"), {"ram_budget": {"ram_budget_bytes": 59_450_000_000, "memory_max": 64_000_000_000}})
+        elif st == "disk":
+            wjson(os.path.join(out, "layout.json"), {"n_layer": 94})
+            wtext(os.path.join(out, "predictions", "hw.toml"), "# stand-in\n")
+        elif st == "trace":
+            wtext(os.path.join(out, "trace", "routing.sha256"), "t" * 64 + "  routing 1 bytes\n")
+            wtext(os.path.join(out, "trace", "hidden.sha256"), "h" * 64 + "  hidden 1 bytes\n")
+        elif st == "anchors":
+            for r in (1, 2):
+                for k in ("a1", "a2"):
+                    seg = {} if first else {"hidden_in": {"seed": 1} if (scenario("seed_anchors") and n == "b") else {"file": "/root/hidden.bin"}}
+                    wjson(os.path.join(out, "anchors", f"{k}-r{r}.json"), {"runs": [{"prefill_tok_s": 900.0, "decode_tok_s": 40.0, "prompt": {"tokens": 2048, "fnv1a64": PH},
+                                                                                     "segment": seg}]})
+        elif st == "predict":
+            band = 0.12 if (n == "b" and scenario("fit_band_miss")) else 0.05
+            wjson(os.path.join(out, "predictions", "pred.json"), {"routing": "trace", "prediction": {
+                "band": band, "pp_tps": 450.0, "tg_tps": 17.0, "replay_vram_share": 0.39, "replay_full_hit_share": 0.005, "replay_ram_hit_rate": 1.0}})
+            wtext(os.path.join(out, "predictions", "fitted.toml"), '[[devices]]\nid = "gpu0"\nkind = "gpu"\nbandwidth_bytes_per_s = { value = 7.0e11, source = "measured" }\n')
+            wjson(os.path.join(out, "predictions", "replay.json"), {"replay_version": 2, "span": a.span})
+    print(f"SC_BOX_DONE rc=0 stages='{a.stages}'")
+    return 0
+
+
+def fake_judged_round(a: argparse.Namespace) -> int:
+    """One judged round: the head's rates and each segment's file, from fixed numbers (the scenarios break rounds on purpose)."""
+    k = int(a.round) if a.round.isdigit() else 0
+    pp, tg = 295.0, 5.1
+    if scenario("aa_early_miss") and k == 2:
+        pp = 150.0
+    if scenario("aa_last_miss") and a.round == "last":
+        pp = 150.0
+    bad = scenario("unclean_rounds") and k in (1, 3)
+    wjson(os.path.join(a.out, "cluster.json"), {"runs": [{"prefill_tok_s": pp, "decode_tok_s": tg, "prompt": {"tokens": 2048, "fnv1a64": "0badf00d" if scenario("wrong_prompt") else PH}}]})
+    for n in a.nodes.split(","):
+        wjson(os.path.join(a.out, f"seg-{n}.json"), {"runs": [{"prefill_tok_s": 900.0, "decode_tok_s": 40.0, "warm": {"covering": True, "unclean": False},
+                                                              "prefill_io": {"bytes": 0},
+                                                              "decode_layers": {"vram_pair_share": 0.39, "full_hit_rate_mean": 0.005, "ram_hit_rate_mean": 1.0}}],
+                                                    "balloon_ok": True, "cotenant_ok": not (bad and n == "a")})
+        wtext(os.path.join(a.out, f"seg-{n}.gpu.txt"), "before: 0x0, 100.0 W, 350.0 W, 350.0 W\nafter: 0x0, 300.0 W, 350.0 W, 350.0 W\n")
+    print(f"judged round {a.round} written")
+    return 0
+
+
 def main() -> int:
     argv = sys.argv[1:]
+    if argv[:1] == ["plan"]:
+        return fake_plan(argv[1:])
+    if argv[:1] == ["sc-box"] or argv[:1] == ["judged-round"]:
+        ap = argparse.ArgumentParser(allow_abbrev=False)
+        ap.add_argument("cmd")
+        ap.add_argument("--node")
+        ap.add_argument("--nodes")
+        ap.add_argument("--out", required=True)
+        ap.add_argument("--stages")
+        ap.add_argument("--span", default="0..47")
+        ap.add_argument("--round", default="1")
+        a = ap.parse_args(argv)
+        return fake_sc_box(a) if a.cmd == "sc-box" else fake_judged_round(a)
+    if argv[:2] in (["cluster", "probe"], ["cluster", "profile"]):
+        ap = argparse.ArgumentParser(allow_abbrev=False)
+        ap.add_argument("-o", "--out", required=True)
+        ap.add_argument("--probe")
+        a, _ = ap.parse_known_args(argv[2:])
+        fake_probe(a.out) if argv[1] == "probe" else fake_profile(a.out, a.probe)
+        return 0
     if argv[:1] == ["cluster"] and argv[1:2] == ["cert"]:
         ap = argparse.ArgumentParser()
         ap.add_argument("--node", required=True)
