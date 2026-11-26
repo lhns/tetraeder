@@ -884,6 +884,18 @@ impl Idle {
             LiveCut::Save
         }
     }
+
+    /// Whether a request sharing its first `common` tokens may take this sequence in place
+    /// while it could go elsewhere: when it keeps at least as many rows as it cuts, keeps the
+    /// whole prompt (the cut is the sequence's own output), or the cut is saved or cheap to
+    /// recompute (`live_cut`). Otherwise the cut is lost unsaved, which is all of a sequence
+    /// under `save_min` that shares a token or two (cluster-short-prefix-dropped, ADR 0074).
+    fn worth_taking(&self, common: usize, save_min: usize) -> bool {
+        let cut = self.toks.len() - common.min(self.toks.len());
+        common >= cut
+            || common >= self.prompt_len
+            || !matches!(self.live_cut(common, save_min), LiveCut::Nothing)
+    }
 }
 
 enum Slot {
@@ -1659,17 +1671,27 @@ impl Worker {
             ((req.params.max_tokens - req.stats.generated_tokens) as usize).min(EXPECT_AHEAD);
         self.expect_snapshot((toks.len() + ahead).min(self.n_ctx_seq));
         let fmt = self.backend.kv_format();
-        // The idle sequence sharing the longest prefix (at most prompt - 1).
+        // The idle sequence sharing the longest prefix (at most prompt - 1) among those this
+        // request may take in place; without a free slot the oldest idle one goes anyway.
+        let fallback = if self.slots.iter().any(|s| matches!(s, Slot::Free)) {
+            None
+        } else {
+            self.oldest_idle(&[])
+        };
         let best_idle = self
             .slots
             .iter()
             .enumerate()
             .filter_map(|(i, s)| match s {
                 Slot::Idle(x) if pin.is_none_or(|p| p == i) => {
-                    Some((i, common_prefix(&x.toks, &toks).min(last)))
+                    Some((i, common_prefix(&x.toks, &toks).min(last), x))
                 }
                 _ => None,
             })
+            .filter(|&(i, n, x)| {
+                pin.is_some() || fallback == Some(i) || x.worth_taking(n, self.save_min)
+            })
+            .map(|(i, n, _)| (i, n))
             .filter(|&(_, n)| n > 0 && self.prefix_reuse)
             .max_by_key(|&(_, n)| n);
         let live_n = best_idle.map_or(0, |(_, n)| n);

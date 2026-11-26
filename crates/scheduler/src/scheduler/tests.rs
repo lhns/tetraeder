@@ -1188,3 +1188,78 @@ fn a_prefix_is_served_from_an_idle_sequence_and_installed_in_another_worker() {
         .expect("the request finished");
     assert!(cached >= 100, "the installed snapshot was reused: {cached}");
 }
+
+/// Runs `p` to the end and returns its admission record.
+fn run_one(w: &mut Worker, p: &[TokenId], max: u32) -> AdmitRecord {
+    let mut rx = submit(w, p, max);
+    w.admit();
+    let rec = w.last_admit.clone().expect("admitted");
+    pump(w);
+    let _ = events(&mut rx);
+    rec
+}
+
+/// `p` with its first `n` tokens kept and the rest replaced by an unrelated tail.
+fn sharing(p: &[TokenId], n: usize, seed: u32) -> Vec<TokenId> {
+    let mut out = p[..n].to_vec();
+    out.extend(prompt(seed, p.len() - n));
+    out
+}
+
+/// cluster-short-prefix-dropped (2026-11-26): an idle sequence shorter than the save minimum
+/// (32 here) was taken in place, unsaved, by a request sharing one leading token with it while
+/// a slot was free, so its own continuation found nothing.
+#[test]
+fn a_short_idle_prefix_is_not_taken_by_a_request_sharing_little_with_it() {
+    let mut w = worker(FakeKv::new(N_VOCAB, 2, 8000, 1000));
+    let a = prompt(1, 20);
+    run_one(&mut w, &a, 1);
+    let rec = run_one(&mut w, &sharing(&a, 1, 9), 1);
+    assert_eq!((rec.seq, rec.common), (1, 0), "the free slot: {rec:?}");
+    let mut follow = a.clone();
+    follow.extend(prompt(5, 10));
+    let rec = run_one(&mut w, &follow, 1);
+    assert_eq!((rec.seq, rec.source), (0, "live"), "{rec:?}");
+    assert!(rec.common >= 20, "the prefix survived: {rec:?}");
+}
+
+/// Without a free slot such a request takes the oldest idle sequence, not the one it shares a
+/// token with.
+#[test]
+fn without_a_free_slot_a_short_idle_prefix_outlives_an_older_one() {
+    let mut w = worker(FakeKv::new(N_VOCAB, 2, 8000, 1000));
+    let (a, c) = (prompt(1, 20), prompt(2, 20));
+    assert_eq!(run_one(&mut w, &a, 1).seq, 0);
+    assert_eq!(run_one(&mut w, &c, 1).seq, 1);
+    let rec = run_one(&mut w, &sharing(&c, 1, 9), 1);
+    assert_eq!((rec.seq, rec.common), (0, 0), "the oldest: {rec:?}");
+    let mut follow = c.clone();
+    follow.extend(prompt(5, 10));
+    let rec = run_one(&mut w, &follow, 1);
+    assert_eq!(rec.seq, 1, "{rec:?}");
+    assert!(rec.common >= 20, "the prefix survived: {rec:?}");
+}
+
+/// With one slot there is nothing to keep: the shared token is still reused in place.
+#[test]
+fn a_single_slot_still_reuses_a_short_shared_prefix_in_place() {
+    let mut w = worker(FakeKv::new(N_VOCAB, 1, 8000, 1000));
+    let a = prompt(1, 20);
+    run_one(&mut w, &a, 1);
+    let rec = run_one(&mut w, &sharing(&a, 1, 9), 1);
+    assert_eq!((rec.seq, rec.common, rec.source), (0, 1, "live"), "{rec:?}");
+}
+
+/// A request that shares the whole prompt of a short idle sequence but not what it generated
+/// (a regenerate, or a client that reformats the answer) still takes it in place.
+#[test]
+fn a_short_idle_sequence_is_taken_in_place_by_its_own_prompt() {
+    let mut w = worker(FakeKv::new(N_VOCAB, 2, 8000, 1000));
+    let a = prompt(1, 10);
+    run_one(&mut w, &a, 15);
+    let mut follow = a.clone();
+    follow.extend(prompt(7, 30));
+    let rec = run_one(&mut w, &follow, 1);
+    assert_eq!((rec.seq, rec.source), (0, "live"), "{rec:?}");
+    assert!(rec.common >= 10, "{rec:?}");
+}
