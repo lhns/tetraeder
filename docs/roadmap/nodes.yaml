@@ -4627,7 +4627,7 @@ nodes:
   folded: []
   overview: false
   plain: 'cluster profile and cluster merge take --gpu-cap-gib and fill the compute and bandwidth of an A6000, A40, L40 or L40S from a committed class table (an unknown card gets the lowest prior and a note), so such a node plans against 24 GiB and a Case S pair with one gets its covering pick. The driver script still has to pass the flag.'
-  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). ADR 0091 History 2026-11-26. Open hand-off: scripts/phase6_exit_s.sh must pass --gpu-cap-gib 24 to cluster profile and cluster merge and copy their note lines into env.'
+  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). ADR 0091 History 2026-11-26. Wired 2026-11-26: scripts/phase6_exit_s.sh passes --gpu-cap-gib GPU_CAP_GIB (default 24) to every cluster profile and merge; the cap and prior notes are in the graph notes of the committed plans/hw-plan.json.'
 - id: bench-phase6-clock-offset
   title: Case F clock offset between the boxes is 2 to 6 s uncertain
   track: bench

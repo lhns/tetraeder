@@ -178,7 +178,7 @@ def flags(o):
     if (num(o.get("ram_gb")) or 0) < BALLOON_GB:
         f.append("RAM under 64 GB: no balloon, measured headroom")
     if o.get("gpu_name") in CLASSES_A:
-        f.append("A-class: planned against 24 GiB with the 3090 prior, recorded as a deviation")
+        f.append("A-class: the finder prices it with the 3090 prior; on the boxes cluster profile and merge cap it at 24 GiB and use its class prior")
     return f
 
 
@@ -189,7 +189,7 @@ def ram_budget_gb(ram_gb):
 
 def pair_graph(x, y, template=None):
     """Two-node graph from the committed WAN fixture (3090 prior, the measured WAN link) with each node's RAM budget and
-    thread count from its offer. A-class nodes get their class prior from crates/planner/priors.toml (cluster-profile-gpu-cap)."""
+    thread count from its offer. A-class nodes use the 3090 prior here; on the boxes, cluster profile and merge apply the class prior of crates/planner/priors.toml."""
     text = pathlib.Path(template or ROOT / GRAPH_TEMPLATE).read_text(encoding="utf-8")
     for node, o in (("a", x), ("b", y)):
         cap = int(ram_budget_gb(num(o["ram_gb"])) * 1e9)
