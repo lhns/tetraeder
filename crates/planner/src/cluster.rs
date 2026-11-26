@@ -27,8 +27,8 @@ use tetraeder_costmodel::cluster::{
 };
 use tetraeder_costmodel::predict::{ReadPath, RunFeatures};
 use tetraeder_plan::{
-    Assign, Context, DeviceBytes, Hints, Issue, Knobs, KvFormat, Phase, Plan, Replica, Segment,
-    SlotCache, Span, Stage, UnitKind, UnitSel, segment_plan, segments, validate,
+    Assign, Context, DeviceBytes, Hints, Knobs, KvFormat, ModelDesc, Phase, Plan, Replica, Segment,
+    SlotCache, Span, Stage, UnitId, UnitKind, UnitSel, segment_plan, segments, validate,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -339,11 +339,65 @@ fn choose(
     ))
 }
 
-/// What the validator holds against one segment's stage: builds the stage of `p` as
-/// [`assemble`] does (plus the head's rule on the leader when `head_on_leader`) and runs the
-/// validator on that one-stage plan, keeping only its memory issues. One source of truth with
-/// the plan's own validation: the same unit sizes, slot caches, buffers and reserves (tree node
-/// `planner-footprint-validator-gap`).
+/// Bytes the validator counts on each device for stage `st` of a plan of `model`: the units the
+/// stage's rules select (embed and head only where a rule names them, which [`assemble`] does
+/// only on the first and on the head's stage) at `model`'s per-kind sizes in the rule's format,
+/// split over the rule's homes, the first matching rule winning; plus its KV, workspace and slot
+/// caches (slots x layers x the stage's largest expert). Without phase budgets this is the
+/// validator's `memory_per_device` term by term, which `cluster_footprint_validator.rs` checks
+/// for every candidate the search emits (tree node `planner-footprint-validator-gap`).
+pub fn stage_memory(model: &ModelDesc, st: &Stage) -> BTreeMap<String, u64> {
+    let mut used: BTreeMap<String, u64> = BTreeMap::new();
+    let mut add = |device: &str, bytes: u64| {
+        let u = used.entry(device.to_string()).or_default();
+        *u = u.saturating_add(bytes);
+    };
+    let layers = st.layers.0..st.layers.1.min(model.layers);
+    let units = [UnitId::Embed, UnitId::Head]
+        .into_iter()
+        .chain(layers.flat_map(|l| {
+            [UnitId::Attn(l), UnitId::Mlp(l)]
+                .into_iter()
+                .chain((0..model.experts).map(move |e| UnitId::Expert(l, e)))
+        }));
+    let mut max_expert = 0u64;
+    for u in units {
+        let (Some(a), Some(size)) = (st.assign.iter().find(|a| a.units.matches(u)), model.size(u))
+        else {
+            continue;
+        };
+        let (Some(format), Some(home)) = (a.format, &a.home) else {
+            continue;
+        };
+        if home.is_empty() {
+            continue;
+        }
+        let bytes = size
+            .bytes_with(format, &a.role_formats)
+            .div_ceil(home.len() as u64);
+        if matches!(u, UnitId::Expert(..)) {
+            max_expert = max_expert.max(bytes);
+        }
+        for h in home {
+            add(h, bytes);
+        }
+    }
+    for d in st.kv.iter().flatten().chain(&st.workspace) {
+        add(&d.device, d.bytes);
+    }
+    if model.is_moe() {
+        for c in &st.expert_cache {
+            let rows = u64::from(c.slots) * u64::from(st.layers.len());
+            add(&c.device, rows.saturating_mul(max_expert));
+        }
+    }
+    used
+}
+
+/// The validator's memory check on one segment's stage, without building and validating a plan:
+/// the stage of `p` as [`assemble`] builds it (plus the head's rule on the leader when
+/// `head_on_leader`), [`stage_memory`] on each device against its capacity less the reserve the
+/// final `validate` uses.
 #[allow(clippy::too_many_arguments)]
 fn validator_fits(
     ctx: &Context,
@@ -370,26 +424,19 @@ fn validator_fits(
         let main = node.gpu.as_ref().unwrap_or(&node.cpu).clone();
         st.assign.push(head_rule(layout, main));
     }
-    let plan = Plan {
-        model: layout.model.clone(),
-        knobs: Knobs {
-            ubatch: Some(ubatch),
-            ..Default::default()
-        },
-        replicas: vec![Replica { stages: vec![st] }],
-    };
-    let Err(issues) = tetraeder_plan::validate_partial(&plan, ctx) else {
-        return Ok(());
-    };
-    match issues.iter().find(|i| {
-        matches!(
-            i,
-            Issue::MemoryExceeded { .. } | Issue::PhaseMemoryExceeded { .. }
-        )
-    }) {
-        Some(i) => Err(format!("the validator rejects it: {i}")),
-        None => Ok(()),
+    for (device, used) in stage_memory(ctx.model, &st) {
+        let Some(d) = ctx.hw.device(&device) else {
+            continue;
+        };
+        let reserve = ctx.reserve.get(&device).copied().unwrap_or(0);
+        let limit = d.capacity_bytes.saturating_sub(reserve);
+        if used > limit {
+            return Err(format!(
+                "the validator counts {used} B on {device}, which holds {limit} B after its reserve"
+            ));
+        }
     }
+    Ok(())
 }
 
 /// The head unit's rule on `main`, the leader's GPU (or CPU).

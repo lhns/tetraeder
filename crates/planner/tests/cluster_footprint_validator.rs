@@ -9,7 +9,9 @@
 //! Hardware label: none (simulated hardware fixtures only).
 
 use proptest::prelude::*;
-use tetraeder_plan::{Hints, Issue, KvFormat, Phase, segment_plan, segments};
+use std::collections::BTreeMap;
+use tetraeder_plan::{Context, Hints, Issue, KvFormat, Phase, segment_plan, segments, validate};
+use tetraeder_planner::cluster::stage_memory;
 use tetraeder_planner::layout::fixtures;
 use tetraeder_planner::{Placement, Workload, enumerate_cluster, footprint, segment_layout};
 use tetraeder_profiler::HardwareGraph;
@@ -81,11 +83,19 @@ fn memory_rejections(pruned: &[(String, String)]) -> Vec<&(String, String)> {
         .collect()
 }
 
-/// Rule 5 on every candidate the search emits: it validates, and each builder segment's
-/// footprint is within its node's capacity on the GPU and the host (the footprint carries the
-/// reserves the validator subtracts).
-fn check_candidates(hw: &HardwareGraph) -> Result<(), TestCaseError> {
+/// Without zero entries.
+fn nonzero(m: BTreeMap<String, u64>) -> BTreeMap<String, u64> {
+    m.into_iter().filter(|(_, b)| *b > 0).collect()
+}
+
+/// Rule 5 on every plan the search builds for the 235B on `hw`: none is pruned for memory; for
+/// every candidate the planner's gate ([`stage_memory`] summed over the stages) counts exactly
+/// what the validator counts on each device, and each builder segment's footprint is within its
+/// node's capacity on the GPU and the host (the footprint carries the reserves the validator
+/// subtracts). Returns the number of candidates.
+fn check_candidates(hw: &HardwareGraph) -> Result<usize, TestCaseError> {
     let layout = fixtures::moe_235b();
+    let desc = layout.to_model_desc();
     let (cands, pruned) = enumerate_cluster(hw, &layout, &Hints::default(), Phase(6));
     let bad = memory_rejections(&pruned);
     prop_assert!(
@@ -94,6 +104,24 @@ fn check_candidates(hw: &HardwareGraph) -> Result<(), TestCaseError> {
         bad.len(),
         bad.first()
     );
+    let reserve = BTreeMap::new();
+    let ctx = Context {
+        hw,
+        model: &desc,
+        phase: Phase(6),
+        reserve: &reserve,
+        hints: None,
+    };
+    for c in &cands {
+        let validator = validate(&c.plan, &ctx).unwrap().memory_per_device();
+        let mut gate: BTreeMap<String, u64> = BTreeMap::new();
+        for st in &c.plan.replicas[0].stages {
+            for (d, b) in stage_memory(&desc, st) {
+                *gate.entry(d).or_default() += b;
+            }
+        }
+        prop_assert_eq!(nonzero(gate), nonzero(validator), "{}", c.id);
+    }
     for c in &cands {
         let ub = c.plan.knobs.ubatch.unwrap();
         for seg in segments(&c.plan, 0, hw)
@@ -140,25 +168,15 @@ fn check_candidates(hw: &HardwareGraph) -> Result<(), TestCaseError> {
             );
         }
     }
-    Ok(())
+    Ok(cands.len())
 }
 
 /// The defect: seven 24 GiB nodes, every segment fits its node by the footprint, yet the
 /// validator rejected the assembled plans with MemoryExceeded.
 #[test]
 fn seven_24_gib_nodes_build_no_plan_the_validator_rejects() {
-    let hw = n_nodes(LAN, 7);
-    let layout = fixtures::moe_235b();
-    let (cands, pruned) = enumerate_cluster(&hw, &layout, &Hints::default(), Phase(6));
-    let bad = memory_rejections(&pruned);
-    assert!(
-        bad.is_empty(),
-        "{} rejected, first {:?}",
-        bad.len(),
-        bad.first()
-    );
-    assert!(!cands.is_empty(), "{:?}", &pruned[..pruned.len().min(5)]);
-    check_candidates(&hw).unwrap();
+    let n = check_candidates(&n_nodes(LAN, 7)).unwrap();
+    assert!(n > 0, "no candidate on seven 24 GiB nodes");
 }
 
 /// The filter of `memory_rejections` matches the validator's memory issue as the search prints
