@@ -10,7 +10,8 @@ use crate::chat::{
 };
 use crate::error::{GatewayError, OpenAiError};
 use crate::gateway::{
-    Collected, Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
+    Collected, Continuation, Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt,
+    tag_generation,
 };
 use crate::sampling::{self, SamplingFields};
 use axum::Json;
@@ -76,6 +77,8 @@ pub(crate) struct ChatRequest {
     n_probs: Option<i64>,
     reasoning_effort: Option<String>,
     chat_template_kwargs: Option<Map<String, Value>>,
+    continue_final_message: Option<Value>,
+    add_generation_prompt: Option<bool>,
     #[serde(flatten)]
     sampling: SamplingFields,
 }
@@ -438,6 +441,65 @@ pub(crate) struct ChatPlan {
     pub include_usage: bool,
 }
 
+/// `continue_final_message` and `add_generation_prompt` with llama-server's checks
+/// (`oaicompat_chat_params_parse`). Its `prefill_assistant` is on by default and has no switch
+/// here: a trailing assistant message is continued unless the request says otherwise.
+fn continuation(
+    messages: &[ChatMessage],
+    cont: Option<&Value>,
+    add_generation_prompt: Option<bool>,
+) -> std::result::Result<(Option<Continuation>, bool), GatewayError> {
+    let invalid = |m: &str| GatewayError::InvalidRequest(m.into());
+    // None: no continuation; Some(None): auto, resolved from the message below
+    let mut want = match cont {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(None),
+        Some(Value::String(s)) if s == "content" => Some(Some(Continuation::Content)),
+        Some(Value::String(s)) if s == "reasoning_content" => Some(Some(Continuation::Reasoning)),
+        Some(_) => {
+            return Err(invalid(
+                "Invalid continue_final_message: expected a boolean, \"content\" or \"reasoning_content\"",
+            ));
+        }
+    };
+    let mut add = add_generation_prompt.unwrap_or(true);
+    let is_assistant = |m: Option<&ChatMessage>| m.is_some_and(|m| m.role == "assistant");
+    let n = messages.len();
+    if want.is_none() && is_assistant(messages.last()) {
+        if n >= 2 && is_assistant(messages.get(n - 2)) {
+            return Err(invalid(
+                "Cannot have 2 or more assistant messages at the end of the list.",
+            ));
+        }
+        want = Some(None);
+        add = false;
+    }
+    let Some(want) = want else {
+        return Ok((None, add));
+    };
+    if add {
+        return Err(invalid(
+            "Cannot set both add_generation_prompt and continue_final_message to true.",
+        ));
+    }
+    let Some(last) = messages.last() else {
+        return Ok((None, false));
+    };
+    if last.role == "assistant" && !last.tool_calls.is_empty() {
+        return Err(invalid(
+            "Cannot continue an assistant message that contains tool calls.",
+        ));
+    }
+    let resolved = want.unwrap_or(
+        if last.content.is_empty() && last.reasoning_content.as_deref().is_some_and(|r| !r.is_empty()) {
+            Continuation::Reasoning
+        } else {
+            Continuation::Content
+        },
+    );
+    Ok((Some(resolved), false))
+}
+
 /// Validates a chat body and maps it onto a [`GenerateSpec`]; the chat route, `/apply-template`
 /// and `/v1/responses` share it.
 pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPlan, GatewayError> {
@@ -459,11 +521,19 @@ pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPl
     let choice = tool_choice(req.tool_choice, !tools.is_empty())?;
     let mut kwargs = req.chat_template_kwargs.unwrap_or_default();
     reasoning_effort(&mut kwargs, req.reasoning_effort.as_deref());
+    let messages = messages(&req.messages)?;
+    let (continuation, add_generation_prompt) = continuation(
+        &messages,
+        req.continue_final_message.as_ref(),
+        req.add_generation_prompt,
+    )?;
     let mut spec = GenerateSpec::new(
         req.model,
         Prompt::Chat {
-            messages: messages(&req.messages)?,
+            messages,
             prefill: None,
+            continuation,
+            add_generation_prompt,
             tools,
             tool_choice: choice,
             parallel_tool_calls: req.parallel_tool_calls.unwrap_or(true),
@@ -508,6 +578,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         stream,
         include_usage,
     } = chat_plan(parse_body(&body)?, gw.parallel_slots())?;
+    let prefix = ContinuedPrefix::of(&spec);
     let generations = gw
         .generate_many(choice_specs(spec, n), Operation::Chat)
         .await?;
@@ -528,7 +599,10 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     let choices: Vec<Value> = all
         .into_iter()
         .enumerate()
-        .map(|(i, c)| chat_choice(&gw, &model, i, c))
+        .map(|(i, mut c)| {
+            prefix.apply(&mut c);
+            chat_choice(&gw, &model, i, c)
+        })
         .collect();
     let mut body = json!({
         "id": id,
@@ -543,6 +617,47 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         body["timings"] = t.to_json();
     }
     Ok(tag_generation(Json(body).into_response(), &gid))
+}
+
+/// The text a continued message already has. llama-server parses the reply from the prefill
+/// on, so a whole (not streamed) reply starts with it; streamed deltas do not repeat it.
+#[derive(Default)]
+pub(crate) struct ContinuedPrefix {
+    content: String,
+    reasoning: String,
+}
+
+impl ContinuedPrefix {
+    pub(crate) fn of(spec: &GenerateSpec) -> Self {
+        let Prompt::Chat {
+            continuation: Some(c),
+            messages,
+            ..
+        } = &spec.prompt
+        else {
+            return Self::default();
+        };
+        let Some(last) = messages.last() else {
+            return Self::default();
+        };
+        Self {
+            content: match c {
+                Continuation::Content => last.content.clone(),
+                Continuation::Reasoning => String::new(),
+            },
+            reasoning: last.reasoning_content.clone().unwrap_or_default(),
+        }
+    }
+
+    pub(crate) fn apply(&self, c: &mut Collected) {
+        if !self.content.is_empty() {
+            c.text.insert_str(0, &self.content);
+        }
+        if !self.reasoning.is_empty() {
+            let r = c.reasoning.get_or_insert_with(String::new);
+            r.insert_str(0, &self.reasoning);
+        }
+    }
 }
 
 fn chat_choice(gw: &Gateway, model: &str, index: usize, c: Collected) -> Value {

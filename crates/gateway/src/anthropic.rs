@@ -425,6 +425,8 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
         Prompt::Chat {
             messages,
             prefill,
+            continuation: None,
+            add_generation_prompt: true,
             tools,
             tool_choice: choice,
             parallel_tool_calls: parallel,

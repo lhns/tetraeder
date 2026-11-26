@@ -87,12 +87,26 @@ impl Operation {
     }
 }
 
+/// What a continued message continues (llama-server's `common_chat_continuation`, resolved).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Continuation {
+    /// The reply continues the message's content (its reasoning, if any, is closed).
+    Content,
+    /// The reply continues the message's reasoning, inside the think block.
+    Reasoning,
+}
+
 #[derive(Clone)]
 pub enum Prompt {
     Chat {
         messages: Vec<ChatMessage>,
         /// Text of a final assistant message the reply continues (Anthropic prefill).
         prefill: Option<String>,
+        /// The reply continues the last message (`continue_final_message`, or a trailing
+        /// assistant message on the OpenAI routes), built as llama-server builds it.
+        continuation: Option<Continuation>,
+        /// `add_generation_prompt` (OpenAI routes; true elsewhere).
+        add_generation_prompt: bool,
         tools: Vec<ToolDef>,
         tool_choice: ToolChoice,
         parallel_tool_calls: bool,
@@ -560,6 +574,8 @@ impl Gateway {
             Prompt::Chat {
                 messages,
                 prefill,
+                continuation,
+                add_generation_prompt,
                 tools,
                 tool_choice,
                 kwargs,
@@ -586,19 +602,44 @@ impl Gateway {
                     tpl.render(msgs, tools, gen_prompt, kwargs)
                         .map_err(|e| GatewayError::InvalidRequest(e.to_string()))
                 };
-                let text = match prefill {
+                let text = match (continuation, prefill, messages.split_last()) {
+                    // llama-server's continuation (`peg_generator::generate_parser`): the
+                    // conversation before the message, the template's generation prompt (cut
+                    // before its think block, which is reopened with the message's reasoning),
+                    // then the message's content.
+                    (Some(c), _, Some((last, rest))) => {
+                        let base = render(rest, false)?;
+                        let full = render(rest, true)?;
+                        let mut gen_prompt = full.strip_prefix(&base).unwrap_or(&full).to_owned();
+                        if st.think {
+                            if let Some(i) = gen_prompt.find("<think>") {
+                                gen_prompt.truncate(i);
+                            }
+                            gen_prompt.push_str("<think>");
+                            gen_prompt.push_str(last.reasoning_content.as_deref().unwrap_or(""));
+                            if *c == Continuation::Content {
+                                gen_prompt.push_str("</think>");
+                            }
+                        }
+                        if *c == Continuation::Content {
+                            gen_prompt.push_str(&last.content);
+                        }
+                        base + &gen_prompt
+                    }
                     // Render the final assistant message and cut after its text; if the
                     // template altered the text, fall back to the conversation without it.
-                    Some(p) => {
+                    (None, Some(p), _) => {
                         let full = render(messages, false)?;
                         match full.rfind(p.as_str()) {
                             Some(i) => full[..i + p.len()].to_owned(),
                             None => render(&messages[..messages.len() - 1], true)?,
                         }
                     }
-                    None => render(messages, true)?,
+                    _ => render(messages, *add_generation_prompt)?,
                 };
-                let open = st.think && text.trim_end().ends_with("<think>");
+                let open = st.think
+                    && (*continuation == Some(Continuation::Reasoning)
+                        || text.trim_end().ends_with("<think>"));
                 Ok((text, open))
             }
         }

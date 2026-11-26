@@ -7,7 +7,7 @@ use crate::error::{LlamaError, bad};
 use crate::gateway::{
     Collected, Gateway, Generation, Operation, OutEvent, new_id, now_unix, tag_generation,
 };
-use crate::openai::{ChatPlan, chat_plan, data, sse};
+use crate::openai::{ChatPlan, ContinuedPrefix, chat_plan, data, sse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -423,6 +423,7 @@ pub async fn responses(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Re
     let body: Value =
         serde_json::from_slice(&body).map_err(|e| bad(format!("invalid request body: {e}")))?;
     let ChatPlan { spec, stream, .. } = chat_plan(to_chat_body(&body)?, gw.parallel_slots())?;
+    let prefix = ContinuedPrefix::of(&spec);
     let generation = gw.generate(spec, Operation::Chat).await?;
     let gid = generation.id.clone();
     let resp_id = format!("resp_{gid}");
@@ -430,7 +431,8 @@ pub async fn responses(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Re
         return Ok(tag_generation(sse(event_stream(generation, resp_id)), &gid));
     }
     let model = generation.model.clone();
-    let c = generation.collect().await?;
+    let mut c = generation.collect().await?;
+    prefix.apply(&mut c);
     Ok(tag_generation(
         Json(response_json(&resp_id, &model, &c)).into_response(),
         &gid,

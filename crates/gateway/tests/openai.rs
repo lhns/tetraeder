@@ -68,6 +68,60 @@ async fn chat_prompt_uses_the_template() {
     );
 }
 
+/// llama-server's continuation: a trailing assistant message is continued (its default
+/// `prefill_assistant`), `continue_final_message` needs `add_generation_prompt: false`.
+#[tokio::test]
+async fn chat_continues_the_final_message() {
+    let engine = FakeEngine::fixed("ok");
+    let prompts = engine.prompts.clone();
+    let (app, _) = app(engine);
+    let convo = json!([{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]);
+    let want = "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi";
+    for extra in [
+        json!({}),
+        json!({"continue_final_message": true, "add_generation_prompt": false}),
+        json!({"continue_final_message": "content", "add_generation_prompt": false}),
+    ] {
+        let mut body = json!({"model": "fake", "messages": convo});
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200, "{extra}: {v}");
+        assert_eq!(prompts.lock().unwrap().pop().unwrap(), want, "{extra}");
+        // a whole reply starts with the continued text, as llama-server parses it from there
+        assert_eq!(v["choices"][0]["message"]["content"], "Hiok");
+    }
+    // no generation prompt at all
+    let body = json!({"model": "fake", "messages": user("Hello"), "add_generation_prompt": false});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(
+        prompts.lock().unwrap().pop().unwrap(),
+        "<|im_start|>user\nHello<|im_end|>\n"
+    );
+    for (body, msg) in [
+        (
+            json!({"messages": convo, "continue_final_message": true}),
+            "Cannot set both add_generation_prompt and continue_final_message to true.",
+        ),
+        (
+            json!({"messages": convo, "continue_final_message": 3, "add_generation_prompt": false}),
+            "Invalid continue_final_message",
+        ),
+        (
+            json!({"messages": [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}, {"role": "assistant", "content": "c"}]}),
+            "Cannot have 2 or more assistant messages at the end of the list.",
+        ),
+    ] {
+        let mut body = body;
+        body["model"] = json!("fake");
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 400, "{v}");
+        assert!(v["error"]["message"].as_str().unwrap().contains(msg), "{v}");
+    }
+}
+
 #[tokio::test]
 async fn chat_stream_sequence() {
     let (app, _) = app(FakeEngine::fixed("Hi you"));

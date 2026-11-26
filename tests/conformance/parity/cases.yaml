@@ -1185,16 +1185,59 @@ cases:
     mode: text
     engines: [auto]
     expect: gap serving-parity-remaining
-  # llama-server continues the last assistant message; the OpenAI routes here close it and open a new turn, so the prompt differs
-  - id: gap-continue-final-message
+  # add_generation_prompt defaults to true, and both true is a 400 there
+  - id: continue-final-message-needs-no-generation-prompt
     group: B
     row: "continue_final_message / add_generation_prompt / prefill_assistant"
     endpoint: POST /v1/chat/completions
     body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_tokens": 3, "continue_final_message": true}
-    value_paths: ["usage.prompt_tokens"]
-    mode: shape
+    mode: status
     engines: [auto]
-    expect: gap serving-parity-remaining
+    expect: pass
+  - id: continue-final-message
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_tokens": 6, "continue_final_message": true, "add_generation_prompt": false}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto, dense]
+    expect: pass
+  # prefill_assistant is on by default there: a trailing assistant message is continued without a flag
+  - id: prefill-assistant
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_tokens": 6}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: add-generation-prompt-false
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 6, "add_generation_prompt": false}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: continue-final-message-stream
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_tokens": 6, "stream": true}
+    mode: stream
+    engines: [auto]
+    expect: pass
+  - id: prefill-assistant-two-trailing
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}, {"role": "assistant", "content": "there"}], "max_tokens": 3}
+    mode: status
+    engines: [auto]
+    expect: pass
   - id: input-tokens-chat
     group: C
     row: "POST /v1/chat/completions/input_tokens, /responses/input_tokens"
