@@ -353,7 +353,6 @@ flowchart TB
 | KV cache on another machine | ○ next | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
-| Cap a node's GPU memory | ○ next | The cluster profile cannot plan an A6000 or A40 node against 24 GiB, and an unknown card has no compute prior, so those cards (allowed by ADR 0091 answer 9) cannot join a Case S pair. |
 | Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
 | Second cold request through a split plan returns an empty stream | ⚠ open | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Not confirmed, because the leader log of that window was not kept. Hardened with a bulk deadline (120 s) for snapshots, restores and prefill steps, a loopback eviction test and logging; the node stays open until a box run shows it. |
 <!-- END GENERATED: plain-words -->
@@ -372,7 +371,6 @@ flowchart TB
 
 - `planner-footprint-validator-gap`: Planner footprint against the validator
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
-- `cluster-profile-gpu-cap`: Cap a node's GPU memory
 
 **box-later**
 
@@ -886,6 +884,12 @@ Generated on 2026-11-26.
   - Gateway review cleanup (2026-10-31)
 
 </details>
+
+<details><summary><b>Undated</b>: 1 done</summary>
+
+- `cluster-profile-gpu-cap`: Cap a node's GPU memory (✔ done · unrated). cluster profile and cluster merge take --gpu-cap-gib and fill the compute and bandwidth of an A6000, A40, L40 or L40S from a committed class table (an unknown card gets the lowest prior and a note), so such a node plans against 24 GiB and a Case S pair with one gets its covering pick. The driver script still has to pass the flag.
+
+</details>
 <!-- END GENERATED: done-by-month -->
 
 ## Tracks
@@ -900,5 +904,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 56 nodes (43 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 36 nodes (29 done, 4 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 36 nodes (30 done, 3 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->
