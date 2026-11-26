@@ -1,0 +1,165 @@
+{
+  "model": "Qwen3 235B Gptq Int4 Fp16 New",
+  "knobs": {
+    "prefill_micro_batches": 1,
+    "cuda_graphs": true,
+    "ubatch": 2048,
+    "op_offload": true
+  },
+  "replicas": [
+    {
+      "stages": [
+        {
+          "layers": [
+            0,
+            44
+          ],
+          "devices": [
+            "a/gpu0",
+            "a/cpu0"
+          ],
+          "tp": 1,
+          "ep": 1,
+          "assign": [
+            {
+              "units": {
+                "kinds": [
+                  "embed"
+                ]
+              },
+              "home": [
+                "a/cpu0"
+              ],
+              "format": "Q4_K"
+            },
+            {
+              "units": {
+                "kinds": [
+                  "attn",
+                  "mlp"
+                ]
+              },
+              "home": [
+                "a/gpu0"
+              ],
+              "format": "Q4_K"
+            },
+            {
+              "units": {
+                "kinds": [
+                  "expert"
+                ]
+              },
+              "home": [
+                "a/nvme0"
+              ],
+              "compute": [
+                "a/cpu0"
+              ],
+              "format": "Q4_K"
+            }
+          ],
+          "kv": [
+            {
+              "device": "a/gpu0",
+              "bytes": 207618048
+            }
+          ],
+          "workspace": [
+            {
+              "device": "a/gpu0",
+              "bytes": 2049966080
+            }
+          ],
+          "expert_cache": [
+            {
+              "device": "a/gpu0",
+              "slots": 32
+            },
+            {
+              "device": "a/cpu0",
+              "slots": 96
+            }
+          ]
+        },
+        {
+          "layers": [
+            44,
+            94
+          ],
+          "devices": [
+            "b/gpu0",
+            "b/cpu0"
+          ],
+          "tp": 1,
+          "ep": 1,
+          "assign": [
+            {
+              "units": {
+                "kinds": [
+                  "attn",
+                  "mlp"
+                ]
+              },
+              "home": [
+                "b/gpu0"
+              ],
+              "format": "Q4_K"
+            },
+            {
+              "units": {
+                "kinds": [
+                  "expert"
+                ]
+              },
+              "home": [
+                "b/nvme0"
+              ],
+              "compute": [
+                "b/cpu0"
+              ],
+              "format": "Q4_K"
+            },
+            {
+              "units": {
+                "kinds": [
+                  "head"
+                ]
+              },
+              "home": [
+                "a/gpu0"
+              ],
+              "compute": [
+                "a/gpu0"
+              ],
+              "format": "Q4_K"
+            }
+          ],
+          "kv": [
+            {
+              "device": "b/gpu0",
+              "bytes": 235929600
+            }
+          ],
+          "workspace": [
+            {
+              "device": "b/gpu0",
+              "bytes": 2049966080
+            }
+          ],
+          "expert_cache": [
+            {
+              "device": "b/gpu0",
+              "slots": 32
+            },
+            {
+              "device": "b/cpu0",
+              "slots": 96
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+pp 40.090833 tg 3.932955 request_s 83.629497

@@ -27,8 +27,8 @@ use tetraeder_costmodel::cluster::{
 };
 use tetraeder_costmodel::predict::{ReadPath, RunFeatures};
 use tetraeder_plan::{
-    Assign, Context, DeviceBytes, Hints, Knobs, KvFormat, Phase, Plan, Replica, Segment, SlotCache,
-    Span, Stage, UnitKind, UnitSel, segment_plan, segments, validate,
+    Assign, Context, DeviceBytes, Hints, Issue, Knobs, KvFormat, Phase, Plan, Replica, Segment,
+    SlotCache, Span, Stage, UnitKind, UnitSel, segment_plan, segments, validate,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -218,9 +218,10 @@ fn run_features(
 }
 
 /// The best placement of `sub` on `node` for `ubatch`, by predicted request time, with `extra`
-/// GPU bytes already taken. `Err` names what does not fit. With `covering` only builder
-/// placements whose VRAM and RAM slots together hold every expert of each layer are considered
-/// (every slot count that fits, not only the builder's tiers), and none without a GPU.
+/// GPU bytes already taken, among those `fits` accepts. `Err` names what does not fit. With
+/// `covering` only builder placements whose VRAM and RAM slots together hold every expert of
+/// each layer are considered (every slot count that fits, not only the builder's tiers), and
+/// none without a GPU.
 fn choose(
     node: &Node,
     sub: &ModelLayout,
@@ -228,6 +229,7 @@ fn choose(
     extra_gpu: u64,
     w: &Workload,
     covering: bool,
+    fits: &dyn Fn(Placement) -> Result<(), String>,
 ) -> Result<Choice, String> {
     let label = node.name.as_deref().unwrap_or("local");
     let threads = node.threads;
@@ -239,7 +241,8 @@ fn choose(
     };
     let mut feasible: Vec<Placement> = Vec::new();
     if node.gpu.is_some() {
-        // A margin of 1%: the validator sizes units by their kind's mean, the footprint by bytes.
+        // A margin of 1% on the footprint. The validator sizes units by their kind's mean (a
+        // segment of light layers counts more than its bytes), so `fits` has the last word.
         let budget = Budget {
             gpu_bytes: node.gpu_bytes.saturating_sub(extra_gpu) / 100 * 99,
             ram_bytes: node.ram_bytes / 100 * 99,
@@ -285,40 +288,122 @@ fn choose(
     // A placement the graph cannot price (a discovered CPU has no compute spec, which every
     // placement with experts outside VRAM needs) is left out; the others still compete. Only
     // when none prices is that the reason.
-    let mut best: Option<Choice> = None;
+    let mut priced: Vec<(Placement, f64)> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
     for p in feasible {
         match time(p) {
-            Ok(request_s) => {
-                if best.as_ref().is_none_or(|b| request_s < b.request_s) {
-                    best = Some(Choice {
-                        placement: p,
-                        request_s,
-                        skipped: Vec::new(),
-                    });
-                }
-            }
+            Ok(request_s) => priced.push((p, request_s)),
             Err(e) => skipped.push(format!(
                 "node {label}: placement {p:?} skipped, not priced: {e}"
             )),
         }
     }
-    if let Some(b) = &mut best {
-        skipped.dedup();
-        b.skipped = skipped;
-        return Ok(b.clone());
+    // The fastest placement the validator's memory accounting accepts (`fits`); the footprint
+    // above only narrows the search. The first of equal times wins, as before.
+    let mut rejected: Option<String> = None;
+    while !priced.is_empty() {
+        let mut i = 0;
+        for (k, c) in priced.iter().enumerate() {
+            if c.1 < priced[i].1 {
+                i = k;
+            }
+        }
+        let (placement, request_s) = priced.remove(i);
+        match fits(placement) {
+            Ok(()) => {
+                skipped.dedup();
+                return Ok(Choice {
+                    placement,
+                    request_s,
+                    skipped,
+                });
+            }
+            Err(e) => {
+                rejected.get_or_insert(format!("node {label}: placement {placement:?}: {e}"));
+            }
+        }
+    }
+    if let Some(e) = rejected {
+        return Err(format!(
+            "{e}; no feasible placement fits the validator's memory accounting"
+        ));
     }
     if let Some(e) = skipped.first() {
         return Err(format!("node {label}: no placement is priced: {e}"));
     }
-    best.ok_or_else(|| {
-        format!(
-            "node {label}: layers {} do not fit {} B of VRAM and {} B of RAM",
-            sub.n_layer,
-            node.gpu_bytes.saturating_sub(extra_gpu),
-            node.ram_bytes
+    Err(format!(
+        "node {label}: layers {} do not fit {} B of VRAM and {} B of RAM",
+        sub.n_layer,
+        node.gpu_bytes.saturating_sub(extra_gpu),
+        node.ram_bytes
+    ))
+}
+
+/// What the validator holds against one segment's stage: builds the stage of `p` as
+/// [`assemble`] does (plus the head's rule on the leader when `head_on_leader`) and runs the
+/// validator on that one-stage plan, keeping only its memory issues. One source of truth with
+/// the plan's own validation: the same unit sizes, slot caches, buffers and reserves (tree node
+/// `planner-footprint-validator-gap`).
+#[allow(clippy::too_many_arguments)]
+fn validator_fits(
+    ctx: &Context,
+    node: &Node,
+    layout: &ModelLayout,
+    sub: &ModelLayout,
+    layers: Span,
+    embed: bool,
+    head_here: bool,
+    head_on_leader: bool,
+    p: Placement,
+    ubatch: u32,
+    w: &Workload,
+) -> Result<(), String> {
+    let choice = Choice {
+        placement: p,
+        request_s: 0.0,
+        skipped: Vec::new(),
+    };
+    let mut st = stage_of(
+        node, layout, sub, layers, embed, head_here, choice, ubatch, w,
+    );
+    if head_on_leader {
+        let main = node.gpu.as_ref().unwrap_or(&node.cpu).clone();
+        st.assign.push(head_rule(layout, main));
+    }
+    let plan = Plan {
+        model: layout.model.clone(),
+        knobs: Knobs {
+            ubatch: Some(ubatch),
+            ..Default::default()
+        },
+        replicas: vec![Replica { stages: vec![st] }],
+    };
+    let Err(issues) = tetraeder_plan::validate_partial(&plan, ctx) else {
+        return Ok(());
+    };
+    match issues.iter().find(|i| {
+        matches!(
+            i,
+            Issue::MemoryExceeded { .. } | Issue::PhaseMemoryExceeded { .. }
         )
-    })
+    }) {
+        Some(i) => Err(format!("the validator rejects it: {i}")),
+        None => Ok(()),
+    }
+}
+
+/// The head unit's rule on `main`, the leader's GPU (or CPU).
+fn head_rule(layout: &ModelLayout, main: String) -> Assign {
+    Assign {
+        units: UnitSel {
+            kinds: vec![UnitKind::Head],
+            ..Default::default()
+        },
+        home: Some(vec![main.clone()]),
+        compute: Some(vec![main]),
+        format: Some(format_of(layout)),
+        ..Default::default()
+    }
 }
 
 fn format_of(layout: &ModelLayout) -> tetraeder_plan::Format {
@@ -469,16 +554,7 @@ fn assemble(
         if last && head == HeadAt::Leader {
             let leader = nodes[0];
             let main = leader.gpu.as_ref().unwrap_or(&leader.cpu).clone();
-            st.assign.push(Assign {
-                units: UnitSel {
-                    kinds: vec![UnitKind::Head],
-                    ..Default::default()
-                },
-                home: Some(vec![main.clone()]),
-                compute: Some(vec![main]),
-                format: Some(format_of(layout)),
-                ..Default::default()
-            });
+            st.assign.push(head_rule(layout, main));
         }
         stages.push(st);
     }
@@ -935,6 +1011,15 @@ fn enumerate_cluster_with(
     if let Some(rule) = order_rule {
         pruned.push(("node order search".into(), rule));
     }
+    let desc = layout.to_model_desc();
+    let reserve = reserve_of(hw);
+    let ctx = Context {
+        hw,
+        model: &desc,
+        phase,
+        reserve: &reserve,
+        hints: Some(hints),
+    };
     let mut cache: BTreeMap<ChoiceKey, Result<Choice, String>> = BTreeMap::new();
     let mut found: Vec<Found> = Vec::new();
     for perm in orders {
@@ -971,13 +1056,24 @@ fn enumerate_cluster_with(
                             ubatch + u32::from(extra > 0),
                         );
                         let c = cache.entry(key).or_insert_with(|| {
-                            let sub = segment_layout(
-                                layout,
-                                Span(bounds[j], bounds[j + 1]),
-                                j == 0,
-                                head_here,
-                            );
-                            choose(ns[j], &sub, ubatch, extra, &w, covering)
+                            let span = Span(bounds[j], bounds[j + 1]);
+                            let sub = segment_layout(layout, span, j == 0, head_here);
+                            let fits = |p| {
+                                validator_fits(
+                                    &ctx,
+                                    ns[j],
+                                    layout,
+                                    &sub,
+                                    span,
+                                    j == 0,
+                                    head_here,
+                                    extra > 0,
+                                    p,
+                                    ubatch,
+                                    &w,
+                                )
+                            };
+                            choose(ns[j], &sub, ubatch, extra, &w, covering, &fits)
                         });
                         match c {
                             Ok(c) => choices.push(c.clone()),
@@ -1037,15 +1133,6 @@ fn enumerate_cluster_with(
             kept += 1;
         }
     }
-    let desc = layout.to_model_desc();
-    let reserve = reserve_of(hw);
-    let ctx = Context {
-        hw,
-        model: &desc,
-        phase,
-        reserve: &reserve,
-        hints: Some(hints),
-    };
     let mut out = Vec::new();
     for (i, (_, _, _, plan, prediction, note, skipped)) in found.into_iter().enumerate() {
         if !keep[i] {
@@ -1093,7 +1180,7 @@ pub fn single_node_references(
     for node in usable_nodes(hw, hints, &mut pruned) {
         let mut best: Option<(f64, Plan, ClusterPrediction)> = None;
         for &ubatch in &CLUSTER_UBATCHES {
-            let choice = choose(&node, layout, ubatch, 0, &w, false);
+            let choice = choose(&node, layout, ubatch, 0, &w, false, &|_| Ok(()));
             let Ok(c) = choice else { continue };
             let plan = assemble(&[&node], layout, &[], HeadAt::Last, ubatch, 1, &[c], &w);
             if let Ok(p) = predict_cluster_plan(hw, layout, &plan, &w)

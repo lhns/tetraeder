@@ -741,6 +741,31 @@ fn the_covering_pick_is_a_0_44_b_44_94_with_32_and_96_slots() {
     );
 }
 
+/// The covering pick is byte-identical to the committed snapshot: plan and prediction (tree node
+/// `planner-footprint-validator-gap`; a judged Case S run is pending on this pick).
+// hardware: none
+#[test]
+fn the_covering_pick_matches_the_committed_snapshot() {
+    let (pick, _) = covering_pick();
+    let text = format!(
+        "{}\npp {:.6} tg {:.6} request_s {:.6}\n",
+        serde_json::to_string_pretty(&pick.plan).unwrap(),
+        pick.prediction.pp_tps,
+        pick.prediction.tg_tps,
+        pick.prediction.request_s
+    );
+    let path = format!(
+        "{}/tests/snapshots/case_s_covering_pick.txt",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let want = std::fs::read_to_string(&path).unwrap_or_default();
+    assert_eq!(
+        want.replace("\r\n", "\n"),
+        text,
+        "the Case S pick changed; if on purpose, write this to {path}:\n<<<SNAP\n{text}SNAP>>>"
+    );
+}
+
 // hardware: none
 #[test]
 fn the_covering_pick_priced_on_fitted_rates_on_each_rehearsal_probe() {
