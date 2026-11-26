@@ -34,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODES = ("worker", "daemon", "stop")
 FRESH_S = 0.5  # a step line older than this means nothing is decoding
+GATE_FRESH_S = 0.25  # the fire gate takes only a newer reading
 TAIL_BYTES = 256 * 1024
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 STEP = re.compile(r"^(\d{4}-\d\d-\d\dT[\d:.]+)Z\s+DEBUG tetraeder::step: (?:step|admit) .*?\blive=(\d+)")
@@ -45,7 +46,7 @@ def read_token(path: str) -> str:
         return f.read().strip()
 
 
-def inflight(log_path: str, now: float | None = None) -> dict:
+def inflight(log_path: str, now: float | None = None, fresh_s: float = FRESH_S) -> dict:
     """The newest `live=N` of the node log's tail, as {live, age_s, last_live}."""
     now = time.time() if now is None else now
     try:
@@ -60,7 +61,7 @@ def inflight(log_path: str, now: float | None = None) -> dict:
         if m:
             t = datetime.datetime.fromisoformat(m.group(1)).replace(tzinfo=datetime.timezone.utc).timestamp()
             age = round(now - t, 3)
-            return {"live": int(m.group(2)) if age <= FRESH_S else 0, "age_s": age, "last_live": int(m.group(2))}
+            return {"live": int(m.group(2)) if age <= fresh_s else 0, "age_s": age, "last_live": int(m.group(2))}
     return {"live": 0, "age_s": None, "last_live": None}
 
 
@@ -111,7 +112,16 @@ def make_handler(token: str, p6: str, repo: str):
             log = os.path.join(p6, "logs", f"fault-{label}.log")
             env = dict(os.environ, P6=p6, FAULT_LOG=log, STOP_FOR=str(req.get("stop_for", 60)),
                        RESTORE_AFTER=str(req.get("restore_after", 40)), POLL_S=str(req.get("poll_s", 0.2)))
-            seen = inflight(node_log)
+            # The gate is here, not on the client: the reading that licenses the fault and the start of the fault are one step, with no
+            # round trip between them (a client that polled /inflight and then fired lost the request in that gap, flaky in CI).
+            # `wait_s` > 0: wait up to that long for a fresh reading of live >= 1, then fire; at the deadline fire anyway (live 0, which
+            # the evidence calls invalid and the driver repeats).
+            wait_s = min(float(req.get("wait_s", 0) or 0), 120.0)
+            t_wait = time.time()
+            seen = inflight(node_log, fresh_s=GATE_FRESH_S)
+            while seen["live"] < 1 and time.time() - t_wait < wait_s:
+                time.sleep(0.01)
+                seen = inflight(node_log, fresh_s=GATE_FRESH_S)
             t_recv = time.time()
             os.makedirs(os.path.dirname(log), exist_ok=True)
             with open(log, "a", encoding="utf-8") as out:
@@ -136,7 +146,7 @@ def make_handler(token: str, p6: str, repo: str):
             if t_done is None:
                 return self.send_json({"error": "the fault script did not report `fault done` within 10 s"}, 500)
             self.send_json({"mode": mode, "label": label, "live": seen["live"], "step_age_s": seen["age_s"], "last_live": seen["last_live"],
-                            "t_b_recv": t_recv, "t_b_fault": t_fault, "t_b_done": t_done, "t_b_ack": time.time()})
+                            "waited_s": round(t_recv - t_wait, 3), "t_b_recv": t_recv, "t_b_fault": t_fault, "t_b_done": t_done, "t_b_ack": time.time()})
 
     return H
 
@@ -183,10 +193,10 @@ def clock(peer: str, token: str, samples: int = 20) -> dict:
     return {"b_minus_a_s": round(best[0], 4), "uncertainty_s": round(best[1], 4), "samples": samples, "source": "direct exchange with the trigger"}
 
 
-def fire(peer: str, token: str, mode: str, label: str, params: dict) -> dict:
+def fire(peer: str, token: str, mode: str, label: str, params: dict, timeout: float = 20) -> dict:
     """One fire: time on A's clock is the middle of send and ack, uncertain by half the interval."""
     t_send = time.time()
-    resp = call(peer, token, "POST", "/fire", {"mode": mode, "label": label, **params}, timeout=20)
+    resp = call(peer, token, "POST", "/fire", {"mode": mode, "label": label, **params}, timeout=timeout)
     t_ack = time.time()
     return {"source": "trigger", "t_send": t_send, "t_ack": t_ack, "t_fault": round((t_send + t_ack) / 2, 4),
             "uncertainty_s": round((t_ack - t_send) / 2, 4), "live_b": resp["live"], "step_age_s": resp["step_age_s"],
@@ -195,19 +205,13 @@ def fire(peer: str, token: str, mode: str, label: str, params: dict) -> dict:
 
 def fire_when_in_flight(peer: str, token: str, mode: str, label: str, params: dict, start: float, after_s: float,
                         out_path: str, poll_s: float = 0.05, give_up_s: float = 30.0) -> dict:
-    """Waits until `after_s` after `start`, then for requests in flight on B (at most `give_up_s`: then fires anyway, and the trial
-    is the one the evidence calls invalid), fires, and writes the record to out_path."""
+    """Waits until `after_s` after `start`, then has the trigger wait for requests in flight on B (at most `give_up_s`: then it fires
+    anyway, and the trial is the one the evidence calls invalid) and fire, and writes the record to out_path."""
     try:
         time.sleep(max(start + after_s - time.time(), 0))
         t_wait = time.time()
-        while time.time() - t_wait < give_up_s:
-            try:
-                if call(peer, token, "GET", "/inflight", timeout=5)["live"] >= 1:
-                    break
-            except (OSError, RuntimeError, ValueError):
-                pass
-            time.sleep(poll_s)
-        rec = fire(peer, token, mode, label, params)
+        # the trigger waits for the in-flight reading itself and fires in the same step (see the /fire handler)
+        rec = fire(peer, token, mode, label, {**params, "wait_s": give_up_s}, timeout=give_up_s + 30)
         rec["waited_s"] = round(time.time() - t_wait, 3)
     except Exception as e:  # noqa: BLE001 - the record says why there is no fault
         rec = {"error": f"{type(e).__name__}: {e}", "mode": mode, "label": label}
