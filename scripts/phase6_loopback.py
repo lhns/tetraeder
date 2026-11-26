@@ -17,7 +17,7 @@ It is not the engine and proves nothing about it: it exists so that the drivers'
 the daemon and its children, SIGSTOP and SIGCONT), the load, the epochs, the trial directories and the summary run in CI. The
 behaviour that Case F judges is modelled after the real head: a node is down after `node_down_after_ms` without an answer, its
 in-flight requests end with one error naming the replica, a request waits for a free replica, and a restored node rejoins on its own.
-Env: LB_LOAD_S (engine load time, 0.5), LB_TOKEN_S (seconds per token, 0.02), LB_MAX_TOKENS (tokens per answer, 40).
+Env: LB_LOAD_S (engine load time, 0.5), LB_TOKEN_S (seconds per token, 0.02), LB_MAX_TOKENS (tokens per answer, 100).
 Case S scenarios (LB_SCENARIO, comma list): gate_drift (the second link-gate probe 50% slower on bulk), fit_band_miss (node b's fit band 0.12), link_drift (the end probe 12% slower), single_node
 (no candidate computes on both nodes), no_covering (the covering search finds no plan and refuses), aa_early_miss (judged round 2 at half the rate), aa_last_miss, unclean_rounds (rounds 1 and 3
 report a busy co-tenant), seed_anchors (node b's anchors on fixed-seed input), wrong_prompt (round prompt hash differs).
@@ -39,7 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LOAD_S = float(os.environ.get("LB_LOAD_S", "0.5"))
 TOKEN_S = float(os.environ.get("LB_TOKEN_S", "0.02"))
-MAX_TOKENS = int(os.environ.get("LB_MAX_TOKENS", "40"))
+MAX_TOKENS = int(os.environ.get("LB_MAX_TOKENS", "100"))  # 2 s an answer: a request admitted when the fault gate fires outlasts the fault script start
 
 
 def iso_now() -> str:

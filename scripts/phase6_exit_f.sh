@@ -221,7 +221,7 @@ b_admits_since() { # b_admits_since EPOCH_B: how many admit lines of node b are 
 ensure_b_serving() { # ensure_b_serving TAG: warm load on a, until b admits a request; never restarts anything
   local tag=$1 t0b n=0 t0=$SECONDS
   if [ "$lb_fake" = 1 ]; then # the fake head logs when B's replica joins: wait for that signal, then give the warm loads their time
-    bx a $((b_up_wait + 30)) "for i in \$(seq 1 $((b_up_wait * 2))); do grep -E 'replica 1 (joined|left)' $(p6dir a)/logs/serve.log 2> /dev/null | tail -n 1 | grep -q joined && exit 0; sleep 0.5; done; exit 1" > /dev/null       || die "B's replica did not join the fake head within $b_up_wait s before $tag"
+    bx a $((b_up_wait + 30)) "for i in \$(seq 1 $((b_up_wait * 2))); do grep -E 'replica 1 (joined|left)' $(p6dir a)/logs/serve.log 2> /dev/null | tail -n 1 | grep -q joined && exit 0; sleep 0.5; done; exit 1" > /dev/null       || die "B is not in service: its replica did not join the fake head within $b_up_wait s before $tag. Nothing was restarted"
     t0=$SECONDS
   fi
   while [ $((SECONDS - t0)) -lt "$b_up_wait" ]; do
