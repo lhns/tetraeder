@@ -195,12 +195,15 @@ def clock(peer: str, token: str, samples: int = 20) -> dict:
 
 
 def fire(peer: str, token: str, mode: str, label: str, params: dict, timeout: float = 20) -> dict:
-    """One fire: time on A's clock is the middle of send and ack, uncertain by half the interval."""
+    """One fire: time on A's clock is the middle of the interval from the end of the trigger's wait to the ack, uncertain by half of it."""
     t_send = time.time()
     resp = call(peer, token, "POST", "/fire", {"mode": mode, "label": label, **params}, timeout=timeout)
     t_ack = time.time()
-    return {"source": "trigger", "t_send": t_send, "t_ack": t_ack, "t_fault": round((t_send + t_ack) / 2, 4),
-            "uncertainty_s": round((t_ack - t_send) / 2, 4), "live_b": resp["live"], "step_age_s": resp["step_age_s"],
+    # the trigger's own wait for a fresh request (`waited_s`) is not part of the fault's timing: the fault lies in the rest of the interval,
+    # and a request admitted during the wait must count as in flight at the fault
+    t_from = t_send + min(max(float(resp.get("waited_s") or 0), 0.0), t_ack - t_send)
+    return {"source": "trigger", "t_send": t_send, "t_ack": t_ack, "t_fault": round((t_from + t_ack) / 2, 4),
+            "uncertainty_s": round((t_ack - t_from) / 2, 4), "live_b": resp["live"], "step_age_s": resp["step_age_s"],
             "t_b_fault": resp["t_b_fault"], "t_b_done": resp["t_b_done"], "mode": mode, "label": label}
 
 
