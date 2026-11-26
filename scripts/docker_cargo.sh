@@ -3,8 +3,9 @@
 # command reaches a remote engine with far more cores and RAM). The engine is remote, so nothing is bind-mounted: the
 # checkout's tracked files (submodules included, plus uncommitted edits) are streamed in as a tar; target/ and the
 # cargo registry live in named volumes per lane, so builds stay incremental. Linux only (the Windows half stays in CI).
-# Usage: scripts/docker_cargo.sh [-l LANE] -- <command...>     e.g. scripts/docker_cargo.sh -l kv -- cargo test -p tetraeder-control
-# Env: DOCKER_CARGO_JOBS (default 8), DOCKER_CARGO_MEM (default 24g). Containers and volumes are named tetraeder-*.
+# Usage: scripts/docker_cargo.sh [-l LANE] -- <command...>     e.g. scripts/docker_cargo.sh -l l1 -- cargo test -p tetraeder-control
+# LANE is one of the fixed pool main, l1, l2 (AGENTS.md): the host is shared with other projects, so volumes are reused, never one per
+# worker. Env: DOCKER_CARGO_JOBS (default 6), DOCKER_CARGO_CPUS (default 8), DOCKER_CARGO_MEM (default 16g).
 set -euo pipefail
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" # Git Bash on Windows must not rewrite /src, /target into Windows paths
 lane=main
@@ -16,6 +17,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ $# -gt 0 ] || { echo "usage: $0 [-l LANE] -- <command...>" >&2; exit 2; }
+case $lane in main | l1 | l2) ;; *) echo "lane must be main, l1 or l2 (AGENTS.md)" >&2; exit 2 ;; esac
 image=tetraeder-dev:1.95
 root=$(git rev-parse --show-toplevel)
 if ! docker image inspect "$image" > /dev/null 2>&1; then
@@ -27,8 +29,8 @@ EOF
 fi
 name="tetraeder-$lane-$$"
 trap 'docker rm -f "$name" > /dev/null 2>&1 || true' EXIT
-docker create --name "$name" -w /src --cpus 16 --memory "${DOCKER_CARGO_MEM:-24g}" \
-  -e CARGO_TARGET_DIR=/target -e CARGO_BUILD_JOBS="${DOCKER_CARGO_JOBS:-8}" -e CARGO_HOME=/cargo \
+docker create --name "$name" -w /src --cpus "${DOCKER_CARGO_CPUS:-8}" --memory "${DOCKER_CARGO_MEM:-16g}" \
+  -e CARGO_TARGET_DIR=/target -e CARGO_BUILD_JOBS="${DOCKER_CARGO_JOBS:-6}" -e CARGO_HOME=/cargo \
   -v "tetraeder-target-$lane:/target" -v "tetraeder-vendor-$lane:/src/vendor/llama.cpp" -v tetraeder-cargo:/cargo "$image" sleep infinity > /dev/null
 docker start "$name" > /dev/null
 # tracked files of the checkout as they are on disk (uncommitted edits included, deleted files skipped); vendor/llama.cpp is not
