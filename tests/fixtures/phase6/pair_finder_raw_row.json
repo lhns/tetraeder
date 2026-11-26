@@ -1,0 +1,3 @@
+{"cpu_ram": 125829, "cpu_name": "AMD EPYC 7542 32-Core Processor", "disk_space": 426.5, "inet_down": 7995.2, "inet_up": 3137.2,
+ "hosting_type": 1, "cpu_cores_effective": 16.0, "geolocation": "Florida, US", "gpu_max_power": 370.0, "machine_id": 153018,
+ "host_id": 192026, "num_gpus": 1, "dph_total": 0.4078, "id": 62579299, "gpu_name": "RTX 3090"}
