@@ -527,10 +527,18 @@ fn predict_cluster_judged_exits_non_zero_without_a_trace_and_carries_the_hash() 
     );
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
     assert_eq!(doc["routing"], "uniform");
-    assert_eq!(
-        doc["prediction"]["pp_tps"].as_f64().unwrap().to_bits(),
-        c.prediction.pp_tps.to_bits()
-    );
+    // serde_json's default float parser is not exact (it can land one ULP off), so the number is
+    // parsed from the file's text; the file itself carries the shortest round-trip form.
+    let text = std::fs::read_to_string(&out).unwrap();
+    let at = text.find("\"pp_tps\": ").unwrap() + "\"pp_tps\": ".len();
+    let num: f64 = text[at..]
+        .split([',', '\n', '\r'])
+        .next()
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert_eq!(num.to_bits(), c.prediction.pp_tps.to_bits());
     std::fs::remove_dir_all(&dir).ok();
 }
 
