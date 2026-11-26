@@ -1,0 +1,126 @@
+lane_groups = []
+
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+tier = "ram"
+capacity_bytes = 256450998272
+threads = 15
+copy_bytes_per_s = 12879360000.0
+
+[devices.bandwidth_bytes_per_s]
+value = 40000000000.0
+spread = 0.0
+samples = 0
+source = "prior"
+
+[devices.compute]
+flops_per_s = 600000000000.0
+c0_graph_s = 0.000003768344538145147
+c0_eager_s = 0.000003768344538145147
+
+[[devices.thread_curve]]
+threads = 15
+flops_per_s = 506953752871.9993
+bytes_per_s = 44901694386.53932
+
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 0
+
+[devices.bandwidth_bytes_per_s]
+value = 797412776973.8866
+spread = 0.0
+samples = 0
+source = "measured"
+
+[devices.compute]
+flops_per_s = 40000000000000.0
+c0_graph_s = 0.000015581191963847184
+c0_eager_s = 0.000015
+
+[devices.pcie]
+gen_current = 4
+width_current = 16
+gen_max = 4
+width_max = 16
+
+[[devices]]
+id = "nvme0"
+kind = "disk"
+name = "Box NVMe"
+tier = "nvme"
+capacity_bytes = 2000000000000
+media = "ssd"
+queue_chunk_bytes = 1048576
+
+[devices.bandwidth_bytes_per_s]
+value = 917493500.0
+spread = 0.0
+samples = 0
+source = "measured"
+
+[[devices.queue_curve]]
+depth = 1
+bytes_per_s = 169500800.0
+
+[[devices.queue_curve]]
+depth = 2
+bytes_per_s = 299833000.0
+
+[[devices.queue_curve]]
+depth = 4
+bytes_per_s = 517751900.0
+
+[[devices.queue_curve]]
+depth = 8
+bytes_per_s = 728719700.0
+
+[[devices.queue_curve]]
+depth = 16
+bytes_per_s = 917493500.0
+
+[[devices.queue_curve]]
+depth = 32
+bytes_per_s = 970126400.0
+
+[[links]]
+id = "pcie-gpu0"
+a = "gpu0"
+b = "cpu0"
+kind = "pcie"
+
+[links.alpha_s]
+value = 0.000010536782876797112
+spread = 0.0
+samples = 0
+source = "measured"
+
+[links.beta_bytes_per_s]
+value = 13859626464.7719
+spread = 0.0
+samples = 0
+source = "measured"
+
+[[links]]
+id = "nvme-cpu0"
+a = "nvme0"
+b = "cpu0"
+kind = "storage"
+
+[links.alpha_s]
+value = 0.0001
+spread = 0.0
+samples = 0
+source = "prior"
+
+[links.beta_bytes_per_s]
+value = 5000000000.0
+spread = 0.0
+samples = 0
+source = "prior"

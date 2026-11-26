@@ -1,0 +1,511 @@
+{
+  "env": {
+    "available_parallelism": 15,
+    "ggml_system_info": "CUDA : ARCHS = 860 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16,q8_0-q4_0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | REPACK = 1 |",
+    "gpu_devices_visible": 1,
+    "os": "linux",
+    "cpu_model": "AMD EPYC 7542 32-Core Processor",
+    "cpu_avx512_flags": [],
+    "thp_mode": "madvise",
+    "smt_siblings": [
+      [
+        0,
+        32
+      ],
+      [
+        1,
+        33
+      ],
+      [
+        2,
+        34
+      ],
+      [
+        3,
+        35
+      ],
+      [
+        4,
+        36
+      ],
+      [
+        5,
+        37
+      ],
+      [
+        6,
+        38
+      ],
+      [
+        7,
+        39
+      ],
+      [
+        8,
+        40
+      ],
+      [
+        9,
+        41
+      ],
+      [
+        10,
+        42
+      ],
+      [
+        11,
+        43
+      ],
+      [
+        12,
+        44
+      ],
+      [
+        13,
+        45
+      ],
+      [
+        14,
+        46
+      ],
+      [
+        15,
+        47
+      ],
+      [
+        16,
+        48
+      ],
+      [
+        17,
+        49
+      ],
+      [
+        18,
+        50
+      ],
+      [
+        19,
+        51
+      ],
+      [
+        20,
+        52
+      ],
+      [
+        21,
+        53
+      ],
+      [
+        22,
+        54
+      ],
+      [
+        23,
+        55
+      ],
+      [
+        24,
+        56
+      ],
+      [
+        25,
+        57
+      ],
+      [
+        26,
+        58
+      ],
+      [
+        27,
+        59
+      ],
+      [
+        28,
+        60
+      ],
+      [
+        29,
+        61
+      ],
+      [
+        30,
+        62
+      ],
+      [
+        31,
+        63
+      ]
+    ],
+    "disk_curve": null
+  },
+  "expert_bytes_per_layer": [
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288
+  ],
+  "io_backend": null,
+  "machine": "vast 2d214125bb69 segment-confirm trace-whole",
+  "model": {
+    "path": "/root/p6/tiny/tiny-00001-of-00003.gguf"
+  },
+  "options": {
+    "admit_share": null,
+    "cpu_poll": null,
+    "cpu_poll_auto": null,
+    "cpu_quota_detected": null,
+    "expert_slot_bytes": null,
+    "expert_slots": 4,
+    "gpu": true,
+    "io_chunk_bytes": 0,
+    "io_service": false,
+    "io_workers": 0,
+    "kv": "f16/f16",
+    "kv_rotation": false,
+    "n_ctx": 80,
+    "op_offload": true,
+    "overlap": false,
+    "pool_pause": false,
+    "prefetch": true,
+    "prefetch_depth": 1,
+    "prefetch_threads": null,
+    "ram_hugepages": false,
+    "ram_policy": "lru",
+    "ram_slot_bytes": null,
+    "ram_slots": 4,
+    "refresh_hot": false,
+    "threads": 15,
+    "urgent_first": false
+  },
+  "prompt": {
+    "fnv1a64": "64c7fec2a5b92146",
+    "tokens": 64
+  },
+  "provenance": {
+    "cpu_quota": 15.36,
+    "cpu_variant": "avx2",
+    "engine_commit": null,
+    "engine_dirty": null,
+    "host_id": "2d214125bb69",
+    "session": null,
+    "threads": 15
+  },
+  "runs": [
+    {
+      "decode_fed": [
+        36,
+        72,
+        21,
+        30,
+        242,
+        184,
+        181,
+        86,
+        78,
+        118,
+        60,
+        41,
+        156,
+        98,
+        124,
+        226
+      ],
+      "decode_io": null,
+      "decode_layers": null,
+      "decode_profile_per_token": null,
+      "decode_tok_s": 222.87606630874998,
+      "decode_tokens": 16,
+      "decode_windows": [
+        {
+          "end_unix_s": 1795676972.1757476,
+          "start_unix_s": 1795676972.1039588,
+          "tokens": 16
+        }
+      ],
+      "engine": "tetraeder",
+      "first_top": [
+        [
+          64,
+          9.708677291870117
+        ],
+        [
+          44,
+          9.481285095214844
+        ],
+        [
+          245,
+          8.358915328979492
+        ],
+        [
+          170,
+          7.29969596862793
+        ],
+        [
+          180,
+          7.170780181884766
+        ],
+        [
+          223,
+          7.134803771972656
+        ],
+        [
+          114,
+          7.012851715087891
+        ],
+        [
+          231,
+          6.9679460525512695
+        ],
+        [
+          17,
+          6.740405082702637
+        ],
+        [
+          81,
+          6.476490497589111
+        ]
+      ],
+      "greedy": [
+        36,
+        72,
+        21,
+        30,
+        242,
+        184,
+        181,
+        86,
+        78,
+        118,
+        60,
+        41,
+        156,
+        98,
+        124,
+        226
+      ],
+      "hot_refresh_s": 0.0,
+      "load_s": 0.180731423,
+      "max_splits": 5,
+      "memory": [
+        {
+          "capacity": 142848,
+          "device": "CUDA0",
+          "kind": "weights",
+          "tier": "vram",
+          "used": 142848
+        },
+        {
+          "capacity": 196608,
+          "device": "CUDA0",
+          "kind": "slots",
+          "tier": "vram",
+          "used": 196608
+        },
+        {
+          "capacity": 131072,
+          "device": "CUDA0",
+          "kind": "kv",
+          "tier": "vram",
+          "used": 131072
+        },
+        {
+          "capacity": 196608,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 196608
+        },
+        {
+          "capacity": 401408,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 401408
+        },
+        {
+          "capacity": 16777216,
+          "device": "host",
+          "kind": "staging",
+          "tier": "ram",
+          "used": 16777216
+        },
+        {
+          "capacity": 12672,
+          "device": "CUDA0",
+          "kind": "workspace",
+          "tier": "vram",
+          "used": 12672
+        },
+        {
+          "capacity": 49152,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 49152
+        },
+        {
+          "capacity": 143104,
+          "device": "CUDA0",
+          "kind": "weights",
+          "tier": "vram",
+          "used": 143104
+        },
+        {
+          "capacity": 196608,
+          "device": "CUDA0",
+          "kind": "slots",
+          "tier": "vram",
+          "used": 172032
+        },
+        {
+          "capacity": 131072,
+          "device": "CUDA0",
+          "kind": "kv",
+          "tier": "vram",
+          "used": 131072
+        },
+        {
+          "capacity": 196608,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 196608
+        },
+        {
+          "capacity": 335872,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 335872
+        },
+        {
+          "capacity": 16777216,
+          "device": "host",
+          "kind": "staging",
+          "tier": "ram",
+          "used": 16777216
+        },
+        {
+          "capacity": 15744,
+          "device": "CUDA0",
+          "kind": "workspace",
+          "tier": "vram",
+          "used": 15744
+        },
+        {
+          "capacity": 49152,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 49152
+        }
+      ],
+      "peak_rss_bytes": 617308160,
+      "prefill_io": null,
+      "prefill_profile_per_ubatch": null,
+      "prefill_s": 0.268444224,
+      "prefill_tok_s": 238.41079180753763,
+      "prefill_tokens": 64,
+      "request_log": [
+        "timed:reset",
+        "timed:prefill",
+        "timed:decode"
+      ],
+      "rss_bytes": 617308160,
+      "segment": {
+        "hidden_in": null,
+        "hidden_out": {
+          "bytes": 20828,
+          "file": "/root/tetraeder/runs/sc/hidden.bin",
+          "fnv1a64": "6348e26e8bc75cef",
+          "layer": 4,
+          "rows": 80
+        },
+        "layers": [
+          0,
+          8
+        ],
+        "segments": [
+          {
+            "embed": true,
+            "head": false,
+            "layers": [
+              0,
+              4
+            ]
+          },
+          {
+            "embed": false,
+            "head": true,
+            "layers": [
+              4,
+              8
+            ]
+          }
+        ]
+      },
+      "ubatch": 16,
+      "ubatch_s": [
+        0.161421317,
+        0.073789364,
+        0.017628986,
+        0.015569498
+      ],
+      "warm": {
+        "covering": true,
+        "prefix_reuse": false,
+        "prompt_cache": false,
+        "requests": 0,
+        "timed_prefill_disk_bytes": 0,
+        "unclean": false
+      },
+      "warm_prefill": null,
+      "warm_requests": []
+    }
+  ],
+  "slot_bytes_all_layers": 98304,
+  "host": {
+    "prefill": {
+      "seconds": 0.268444299697876,
+      "tokens": 64,
+      "samples": 0,
+      "error": "too few samples"
+    },
+    "decode": {
+      "seconds": 0.07178878784179688,
+      "tokens": 16,
+      "samples": 0,
+      "error": "too few samples"
+    },
+    "decode_windows": [
+      {
+        "seconds": 0.07178878784179688,
+        "tokens": 16,
+        "samples": 0,
+        "error": "too few samples"
+      }
+    ]
+  },
+  "host_windows": {
+    "prefill": [
+      1795676971.8355145,
+      1795676972.1039588,
+      64
+    ],
+    "decode": [
+      1795676972.1039588,
+      1795676972.1757476,
+      16
+    ],
+    "threads": 15
+  },
+  "cotenant_ok": null,
+  "cotenant_reason": "no host CPU counters for the decode phase",
+  "balloon_ok": true,
+  "exit_ubatch": 16
+}

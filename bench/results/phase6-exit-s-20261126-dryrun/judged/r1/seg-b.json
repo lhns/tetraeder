@@ -1,0 +1,131 @@
+{
+  "runs": [
+    {
+      "engine": "tetraeder",
+      "segment": {
+        "node": "b",
+        "layers": [
+          4,
+          8
+        ],
+        "embed": false,
+        "head": true
+      },
+      "prompt": {
+        "tokens": 64,
+        "fnv1a64": "64c7fec2a5b92146"
+      },
+      "prefill_tok_s": 2388.260208413019,
+      "decode_tok_s": 190.06590380785994,
+      "warm": {
+        "requests": 1,
+        "covering": true,
+        "timed_prefill_disk_bytes": 0,
+        "unclean": false,
+        "prefix_reuse": false,
+        "prompt_cache": false,
+        "computed_prompt_tokens": 64
+      },
+      "warm_requests": [
+        {
+          "prefill_s": 0.522440947,
+          "prefill_tok_s": 122.50188345210239,
+          "decode_s": 0.494589003
+        }
+      ],
+      "prefill_io": {
+        "bytes": 0
+      },
+      "decode_io": {
+        "bytes": 0
+      },
+      "decode_layers": {
+        "vram_pair_share": 0.59375,
+        "first_layer": 4,
+        "vram_pair_share_layers": [
+          0.375,
+          0.625,
+          0.96875,
+          0.40625
+        ],
+        "pairs_layers": [
+          32,
+          32,
+          32,
+          32
+        ],
+        "full_hit_rate_mean": 0.34375,
+        "ram_hit_rate_mean": 1.0,
+        "full_hit_rate": [
+          0.0625,
+          0.375,
+          0.9375,
+          0.0
+        ],
+        "ram_hit_rate": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "prefill_layers": {
+        "vram_pair_share": 0.6162790697674418,
+        "first_layer": 4,
+        "vram_pair_share_layers": [
+          0.5925925925925926,
+          0.5925925925925926,
+          0.6666666666666666,
+          0.625
+        ],
+        "pairs_layers": [
+          27,
+          27,
+          24,
+          8
+        ],
+        "full_hit_rate_mean": 0.0625,
+        "ram_hit_rate_mean": 1.0,
+        "full_hit_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.25
+        ],
+        "ram_hit_rate": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "tiers": {
+        "n_expert": 8,
+        "vram_slots": 4,
+        "ram_slots": 8
+      },
+      "times": {
+        "prefill": {
+          "prefill_steps": 4,
+          "prefill_own_s": 0.02679775000000001,
+          "prefill_wall_s": 0.11742586099999996,
+          "prefill_hop_s": 0.09062811099999996,
+          "decode_steps": 0,
+          "decode_own_s": 0.0,
+          "decode_wall_s": 0.0,
+          "decode_hop_s": 0.0
+        },
+        "decode": {
+          "prefill_steps": 0,
+          "prefill_own_s": 0.0,
+          "prefill_wall_s": 0.0,
+          "prefill_hop_s": 0.0,
+          "decode_steps": 16,
+          "decode_own_s": 0.08418132699999999,
+          "decode_wall_s": 0.48608712799999987,
+          "decode_hop_s": 0.4019058009999999
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "kind": "segment-predict",
+  "hw_sha256": "8c2c772375b5c7f54212289d58e9990f6bb4bf593d67a36f16b981fb85e7d46f",
+  "layout_sha256": "b640a4fb5ae253b7b593ed2e6df79922b7dce9b4bd83a1d9966aabf548af20e9",
+  "routing": "trace",
+  "routing_trace": {
+    "sha256": "f901db2cf2939db7c1fd659a39a9de4fef53476221276cf3d5cdd7d798708706",
+    "prompt_hash": "64c7fec2a5b92146",
+    "fnv1a64": "d5609e6c2618ebfd",
+    "replay_version": 2,
+    "scope": {
+      "layers": [
+        0,
+        4
+      ],
+      "warm": 1
+    }
+  },
+  "judged": true,
+  "workload": {
+    "prompt": 64,
+    "gen": 16
+  },
+  "prediction": {
+    "span": [
+      0,
+      4
+    ],
+    "vram_slots": 4,
+    "ram_slots": 8,
+    "ubatch": 16,
+    "threads": 15,
+    "pp_tps": 7809.295147594585,
+    "tg_tps": 488.6384250437172,
+    "request_s": 0.04093940981983177,
+    "uncalibrated_request_s": 0.01283859944,
+    "binding": "compute:gpu0",
+    "tg_breakdown": [
+      [
+        "compute:gpu0",
+        0.0019121455102670854
+      ],
+      [
+        "compute:cpu0",
+        0.000070319778522897
+      ],
+      [
+        "switches",
+        0.00006403770554684798
+      ]
+    ],
+    "pp_breakdown": [
+      [
+        "compute:gpu0",
+        0.007648643697412212
+      ],
+      [
+        "compute:cpu0",
+        0.0002829432417650771
+      ],
+      [
+        "switches",
+        0.0002637749712651977
+      ]
+    ],
+    "uncalibrated_pp_tps": 24883.476124569042,
+    "uncalibrated_tg_tps": 1558.449929544037,
+    "band": 0.33009615394445024,
+    "residuals": [
+      [
+        "a1:pp",
+        0.21438572982499257
+      ],
+      [
+        "a1:tg",
+        -0.2852512358192529
+      ],
+      [
+        "a2:pp",
+        0.22078082216700864
+      ],
+      [
+        "a2:tg",
+        -0.14819491364489795
+      ]
+    ],
+    "anchors": [
+      {
+        "id": "a1",
+        "span": [
+          0,
+          1
+        ],
+        "rounds": 2,
+        "pp_tok_s": 22225.131016515796,
+        "tg_tok_s": 2292.1012433118394,
+        "pair_share": 0.71875,
+        "full_hit_rate": 0.4375,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      },
+      {
+        "id": "a2",
+        "span": [
+          0,
+          2
+        ],
+        "rounds": 2,
+        "pp_tok_s": 11853.494376394536,
+        "tg_tok_s": 1072.5485096359694,
+        "pair_share": 0.6875,
+        "full_hit_rate": 0.4375,
+        "ram_hit_rate": 1.0,
+        "prefill_bytes_per_token": 0.0
+      }
+    ],
+    "footprint_gpu": 629672704,
+    "footprint_host": 2416345600,
+    "gpu_budget": 25512105663,
+    "ram_budget": 253176333102,
+    "replay_prefill_disk_bytes_per_token": 0.0,
+    "replay_decode_disk_bytes_per_token": 0.0,
+    "replay_vram_share": 0.5703125,
+    "replay_full_hit_share": 0.3125,
+    "replay_ram_hit_rate": 1.0,
+    "replay_layer_rows": 4,
+    "prefill_source": "replay"
+  },
+  "exit_regime_env": {
+    "TETRAEDER_EXIT_DECODE": "16",
+    "TETRAEDER_EXIT_GPU": "1",
+    "TETRAEDER_EXIT_LAYERS": "0..4",
+    "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+    "TETRAEDER_EXIT_PREFILL": "64",
+    "TETRAEDER_EXIT_RAM_SLOTS": "8",
+    "TETRAEDER_EXIT_SLOTS": "4",
+    "TETRAEDER_EXIT_THREADS": "15",
+    "TETRAEDER_EXIT_UBATCH": "16"
+  }
+}

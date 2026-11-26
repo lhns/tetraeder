@@ -1,0 +1,92 @@
+ Downloading crates ...
+  Downloaded unarray v0.1.4
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded bit-vec v0.10.1
+  Downloaded wait-timeout v0.2.1
+  Downloaded borsh-derive v1.8.1
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded tempfile v3.27.0
+  Downloaded borsh v1.8.1
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded proptest v1.12.0
+  Downloaded rusty-fork v0.3.1
+  Downloaded quick-error v1.2.3
+  Downloaded bit-set v0.11.1
+  Downloaded rand_xorshift v0.5.0
+  Downloaded fastrand v2.5.0
+  Downloaded core_detect v1.0.0
+  Downloaded winnow v1.0.4
+  Downloaded rustix v1.1.6
+  Downloaded linux-raw-sys v0.12.1
+   Compiling syn v2.0.119
+   Compiling serde_core v1.0.229
+   Compiling displaydoc v0.2.7
+   Compiling slab v0.4.12
+   Compiling tokio v1.54.1
+   Compiling bitflags v2.13.2
+   Compiling form_urlencoded v1.2.2
+   Compiling futures-util v0.3.34
+   Compiling serde_json v1.0.154
+   Compiling tinystr v0.8.5
+   Compiling zerotrie v0.2.5
+   Compiling icu_collections v2.4.0
+   Compiling icu_locale_core v2.4.0
+   Compiling rustix v1.1.6
+   Compiling linux-raw-sys v0.12.1
+   Compiling num-traits v0.2.19
+   Compiling io-uring v0.7.15
+   Compiling icu_provider v2.4.0
+   Compiling fastrand v2.5.0
+   Compiling icu_properties v2.4.0
+   Compiling icu_normalizer v2.4.0
+   Compiling serde v1.0.229
+   Compiling futures-executor v0.3.34
+   Compiling tracing-attributes v0.1.31
+   Compiling prost-derive v0.14.4
+   Compiling prettyplease v0.2.37
+   Compiling serde_spanned v0.6.9
+   Compiling tower v0.5.3
+   Compiling hyper v1.12.0
+   Compiling tracing v0.1.44
+   Compiling toml_datetime v0.6.11
+   Compiling idna_adapter v1.2.2
+   Compiling opentelemetry v0.33.1
+   Compiling idna v1.1.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml_edit v0.22.27
+   Compiling prost v0.14.4
+   Compiling bindgen v0.72.1
+   Compiling hyper-util v0.1.21
+   Compiling url v2.5.8
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling tempfile v3.27.0
+   Compiling tower-http v0.6.11
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling toml v0.8.23
+   Compiling bit-vec v0.10.1
+   Compiling fnv v1.0.7
+   Compiling rusty-fork v0.3.1
+   Compiling reqwest v0.13.5
+   Compiling bit-set v0.11.1
+   Compiling rand v0.10.3
+   Compiling rand_xorshift v0.5.0
+   Compiling core_detect v1.0.0
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling unarray v0.1.4
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling proptest v1.12.0
+   Compiling opentelemetry-proto v0.33.1
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 1m 42s
+  Executable tests/exit_regime.rs (target/release/deps/exit_regime-cae74c78839bbc2a)

@@ -1,0 +1,16 @@
+{
+  "t_cluster_toml": 1795675578.68461,
+  "t_created": {
+    "a": 1795673941,
+    "b": 1795673988
+  },
+  "band_source": "bench/spec/phase0.toml",
+  "boxes": {
+    "a": {
+      "id": "62646852"
+    },
+    "b": {
+      "id": "62646930"
+    }
+  }
+}

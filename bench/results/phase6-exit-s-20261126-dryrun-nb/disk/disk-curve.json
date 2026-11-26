@@ -1,0 +1,110 @@
+{
+  "tool": "tetraeder-bench disk-curve",
+  "adr": "0056",
+  "file": "/root/p6/tiny/tiny-00001-of-00003.gguf",
+  "chunk_bytes": 16384,
+  "seconds": 1.0,
+  "load_threads": 0,
+  "buffered": false,
+  "provenance": {
+    "host_id": "2c20940d2ff9",
+    "hostname": "2c20940d2ff9",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "Intel(R) Xeon(R) W-2133 CPU @ 3.60GHz",
+    "cpus": 11,
+    "cpu_quota": 11.52,
+    "ram_gb": 125.5,
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 3090",
+        "driver": "580.95.05",
+        "memory_mb": 24576.0,
+        "clocks_sm_mhz": 210.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_max_sm_mhz": 2100.0,
+        "throttle_reasons": "0x0000000000000001",
+        "power_w": 29.57,
+        "temperature_c": 51.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": null,
+    "cuda_env": "ok",
+    "started_utc": "2026-11-26T06:51:25Z",
+    "cpu_backend": null
+  },
+  "points": [
+    {
+      "depth": 1,
+      "chunks": 11039,
+      "bytes_per_s": 180852547.68039566,
+      "p50_ms": 0.082733,
+      "p99_ms": 0.099209
+    },
+    {
+      "depth": 2,
+      "chunks": 25592,
+      "bytes_per_s": 419295394.1706119,
+      "p50_ms": 0.06736199999999999,
+      "p99_ms": 0.092114
+    },
+    {
+      "depth": 4,
+      "chunks": 44877,
+      "bytes_per_s": 735260377.7602844,
+      "p50_ms": 0.078095,
+      "p99_ms": 0.128691
+    },
+    {
+      "depth": 8,
+      "chunks": 71383,
+      "bytes_per_s": 1169525568.6577842,
+      "p50_ms": 0.101896,
+      "p99_ms": 0.19348200000000002
+    },
+    {
+      "depth": 16,
+      "chunks": 88282,
+      "bytes_per_s": 1446396882.4268053,
+      "p50_ms": 0.153317,
+      "p99_ms": 0.386832
+    },
+    {
+      "depth": 32,
+      "chunks": 37966,
+      "bytes_per_s": 621779750.667612,
+      "p50_ms": 0.075363,
+      "p99_ms": 0.12276999999999999
+    }
+  ],
+  "queue_chunk_bytes": 16384,
+  "copy_bytes_per_s": 15775477145.152128,
+  "queue_curve": [
+    {
+      "depth": 1,
+      "bytes_per_s": 180852547.68039566
+    },
+    {
+      "depth": 2,
+      "bytes_per_s": 419295394.1706119
+    },
+    {
+      "depth": 4,
+      "bytes_per_s": 735260377.7602844
+    },
+    {
+      "depth": 8,
+      "bytes_per_s": 1169525568.6577842
+    },
+    {
+      "depth": 16,
+      "bytes_per_s": 1446396882.4268053
+    },
+    {
+      "depth": 32,
+      "bytes_per_s": 621779750.667612
+    }
+  ]
+}
