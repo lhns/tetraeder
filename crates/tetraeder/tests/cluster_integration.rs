@@ -1149,7 +1149,7 @@ const PREFIX_ARGS: [&str; 10] = [
     "--threads",
     "2",
     "--ctx",
-    "2048",
+    "4096",
     "--parallel",
     "2",
 ];
@@ -1296,7 +1296,7 @@ fn busy(port: u16, prompt: &str, max_tokens: u32) -> TcpStream {
 fn prompt_of(port: u16, tag: &str, n: usize) -> String {
     let mut text = format!("{tag}:");
     loop {
-        text += " the quick brown fox jumps over the lazy dog.";
+        text += &" the quick brown fox jumps over the lazy dog.".repeat(4);
         let body = serde_json::json!({ "content": text }).to_string();
         let (status, t) = http(port, "/tokenize", Some(&body));
         assert_eq!(status, 200, "{t}");
@@ -1315,23 +1315,32 @@ struct Round {
     again: (String, u64),
 }
 
-/// X1 (a prompt of about 120 tokens) runs on replica 0 (b) and finishes. Then replica 0 is made
-/// busy: by an unrelated long request, or (`share`) by one that extends X1's prompt, as the
-/// rehearsal's fillers did. X1 again then goes to replica 1 (c) with replica 0 as the holder,
-/// and the head decides. `None`: the busy request ended before X1 again was routed (no decision
-/// line), so the round is to be repeated.
+/// X1 (a base text of about 600 tokens and a question) runs on replica 0 (b) and finishes. Then
+/// replica 0 is made busy: by an unrelated long request, or (`share`) by one on the same base
+/// text with another ending, as the rehearsal's fillers were. X1 again then goes to replica 1
+/// (c) with replica 0 as the holder, and the head decides. `None`: the busy request ended before
+/// X1 again was routed (no decision line), so the round is to be repeated.
+///
+/// The base is longer than the cache's save minimum (512 tokens), so an unrelated request that
+/// shares a leading token with X1's idle sequence copies that token to a free slot and leaves
+/// the sequence idle (a shorter one it would take in place, unsaved). The filler takes X1's
+/// sequence in place (its cut, the question and the answer, is below the save minimum), so
+/// nothing on b starts with X1's prompt any more, whether the filler still runs or not.
 fn prefix_round(head: &LoggedHead, tag: &str, share: bool) -> Option<Round> {
     let port = head.port;
-    let p = prompt_of(port, tag, 120);
+    let base = prompt_of(port, tag, 600);
+    let p = format!("{base} Question one: what is the first word of this text?");
     let (first, _) = complete(port, &p, 8);
+    // The router frees the slot just after the client has the answer.
+    std::thread::sleep(Duration::from_millis(100));
     let decisions_before = head.lines("prefix decision").len();
     let done_before = head.lines("prefix fetch done").len();
     let blocker = if share {
-        format!("{p} And so the story goes on:")
+        format!("{base} Filler: continue the story.")
     } else {
-        format!("{tag} blocker: count from one to a thousand.")
+        format!("Count from one to a thousand, {tag}.")
     };
-    let mut stream = busy(port, &blocker, 600);
+    let mut stream = busy(port, &blocker, 300);
     let again = complete(port, &p, 8);
     let mut rest = Vec::new();
     let _ = stream.read_to_end(&mut rest);
@@ -1379,10 +1388,10 @@ fn has_field(line: &str, key: &str, value: &str) -> bool {
 /// - priced to fetch (prefill 0.001 tok/s): the head logs `decision=fetch`, the target reports
 ///   `fetched` with the snapshot's bytes, `/metrics` counts both, the prompt is restored (cached
 ///   tokens) and decodes like the first run;
-/// - rehearsal 2's shape (the holder busy with a request that extends the same prompt): the fetch
-///   is asked and the holder has nothing to serve, because its only copy of the prefix is the
-///   sequence that request now extends in place (only idle sequences and cache entries are
-///   served): `gone`, recomputed, the same tokens;
+/// - rehearsal 2's shape (the holder busy with a request on the same base text and another
+///   ending): the fetch is asked and the holder has nothing to serve, because that request took
+///   the only copy of the prefix in place (only idle sequences and cache entries are served):
+///   `gone`, recomputed, the same tokens;
 /// - priced to recompute (prefill 1e12 tok/s): `decision=recompute reason=priced_recompute`,
 ///   nothing fetched, the same tokens.
 #[test]

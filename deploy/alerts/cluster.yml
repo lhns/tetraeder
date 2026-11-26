@@ -71,22 +71,23 @@ groups:
           summary: "{{ $value }} replicas up, fewer than the plan has"
           description: "A replica has been out of the router for 5 minutes: its node is down, its engine does not start or does not answer the probe step. Look at TetraederNodeDown, the node's daemon log (`tetraeder node`) and the replica child's stderr."
 
-      # Prefix fetch between replicas: a fetch the rule priced to win and the head asked for ended
-      # recomputed (the holder no longer had it, the link failed, the reply or its install was
-      # refused). A priced recompute is the rule working and does not count. Reasons:
-      # control::metrics::FETCH_REASONS; the head logs a `prefix decision` and a `prefix fetch
-      # done` line per request.
+      # Prefix fetch between replicas: a fetch the rule priced to win and the head asked for broke
+      # (the link failed, the reply or its install was refused, the holder could not be told). A
+      # priced recompute is the rule working, and `gone` is normal (a holder busy with requests on
+      # the same prefix extends it in place and has no copy to serve): neither counts; both show
+      # on the panel. Reasons: control::metrics::FETCH_REASONS; the head logs a `prefix decision`
+      # and a `prefix fetch done` line per request.
       - alert: TetraederPrefixFetchFailing
         expr: |
-          sum(increase(tetraeder_kv_prefix_fetch_total{result="recomputed",reason=~"gone|failed|bad_snapshot|not_installed|not_offered|refused|unknown"}[30m])) >= 3
+          sum(increase(tetraeder_kv_prefix_fetch_total{result="recomputed",reason=~"failed|bad_snapshot|not_installed|not_offered|refused|unknown"}[30m])) >= 3
             and
-          sum(increase(tetraeder_kv_prefix_fetch_total{result="recomputed",reason=~"gone|failed|bad_snapshot|not_installed|not_offered|refused|unknown"}[30m]))
+          sum(increase(tetraeder_kv_prefix_fetch_total{result="recomputed",reason=~"failed|bad_snapshot|not_installed|not_offered|refused|unknown"}[30m]))
             > (sum(increase(tetraeder_kv_prefix_fetch_total{reason="fetched"}[30m])) or vector(0))
         labels:
           severity: warning
         annotations:
-          summary: "Most asked prefix fetches ended recomputed"
-          description: "In the last 30 minutes more asked fetches failed than succeeded. gone: the holder's only copy was a running sequence or was evicted; failed: the Prefix link (look at the daemon's relay and prefix listener lines); bad_snapshot or not_installed: the replicas disagree on the snapshot size or the target's cache is off; not_offered: the head could not tell the holder. Read the head's `prefix decision` and `prefix fetch done` lines."
+          summary: "Most asked prefix fetches broke"
+          description: "In the last 30 minutes more asked fetches broke than succeeded. failed: the Prefix link (look at the daemon's relay and prefix listener lines); bad_snapshot or not_installed: the replicas disagree on the snapshot size or the target's cache is off; not_offered: the head could not tell the holder; refused: the target cannot check or hold a snapshot (no row size, another format). Read the head's `prefix decision` and `prefix fetch done` lines."
 
       # Step 6 (integration): a planned drain of a replica (a node told to drain, a replan) waits
       # for the replica's in-flight requests and, after the drain timeout, cuts what is left.
