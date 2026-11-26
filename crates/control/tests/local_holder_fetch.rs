@@ -63,9 +63,10 @@ impl PrefixStore for Store {
         Some((key.tokens.clone(), v))
     }
 
-    fn put(&self, key: PrefixKey, bytes: Vec<u8>) {
+    fn put(&self, key: PrefixKey, bytes: Vec<u8>) -> bool {
         self.puts.fetch_add(1, Ordering::SeqCst);
         self.map.lock().unwrap().insert(key, bytes);
+        true
     }
 
     fn row_bytes(&self) -> u64 {

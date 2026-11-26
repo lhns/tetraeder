@@ -51,8 +51,9 @@ pub trait PrefixStore: Send + Sync {
     /// The snapshot sharing the longest prefix with `key.tokens` (at least the cache's restore
     /// gain); the tokens it holds come back with it and can be more than asked for.
     fn get(&self, key: &PrefixKey) -> Option<(Vec<u32>, Vec<u8>)>;
-    /// Installs a fetched snapshot of `key.tokens`, as if this replica had computed it.
-    fn put(&self, key: PrefixKey, bytes: Vec<u8>);
+    /// Installs a fetched snapshot of `key.tokens`, as if this replica had computed it; false
+    /// when the cache did not take it (off, too short, already held).
+    fn put(&self, key: PrefixKey, bytes: Vec<u8>) -> bool;
     /// Bytes of snapshot per cached token, for the head's fetch rule; 0 when not known. A
     /// replica fetches only when it is known: the size of a reply is checked against it.
     fn row_bytes(&self) -> u64 {
@@ -287,10 +288,24 @@ pub fn serve_prefix_io<R: io::Read, W: io::Write>(
                     match store.get(&key) {
                         Some((tokens, bytes)) if tokens.starts_with(&key.tokens) => {
                             metrics::prefix_served("snapshot");
+                            tracing::info!(
+                                peer = %peer,
+                                tokens = key.tokens.len(),
+                                held = tokens.len(),
+                                bytes = bytes.len(),
+                                "prefix served"
+                            );
                             (PrefixReply::Snapshot { tokens }, bytes)
                         }
                         _ => {
                             metrics::prefix_served("gone");
+                            // Only idle sequences and cache entries are served: a prefix that
+                            // a running request extends in place is not.
+                            tracing::info!(
+                                peer = %peer,
+                                tokens = key.tokens.len(),
+                                "prefix gone: no idle sequence or cache entry holds it"
+                            );
                             (PrefixReply::Gone, Vec::new())
                         }
                     }
@@ -522,7 +537,9 @@ mod tests {
         fn get(&self, key: &PrefixKey) -> Option<(Vec<u32>, Vec<u8>)> {
             Some((key.tokens.clone(), vec![1u8; 8]))
         }
-        fn put(&self, _key: PrefixKey, _bytes: Vec<u8>) {}
+        fn put(&self, _key: PrefixKey, _bytes: Vec<u8>) -> bool {
+            false
+        }
     }
 
     fn fetch_frame(k: &PrefixKey) -> Vec<u8> {

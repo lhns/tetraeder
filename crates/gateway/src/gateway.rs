@@ -384,17 +384,17 @@ impl Gateway {
         self.cfg.max_concurrent.max(1)
     }
 
-    /// llama-server's `/metrics` text and the server's start time (Unix seconds).
+    /// llama-server's `/metrics` text, then the engine's own ([`Engine::metrics_text`]), and the
+    /// server's start time (Unix seconds).
     pub fn render_metrics(&self) -> (String, u64) {
         let processing = self
             .cfg
             .max_concurrent
             .max(1)
             .saturating_sub(self.admission.slots.available_permits());
-        (
-            self.counters.render(processing, self.queue_depth()),
-            self.counters.started_unix(),
-        )
+        let mut text = self.counters.render(processing, self.queue_depth());
+        text += &self.engine.metrics_text();
+        (text, self.counters.started_unix())
     }
 
     /// Tokenizes `text` as llama.cpp's `llama_tokenize` with the two switches.

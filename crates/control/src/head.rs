@@ -48,6 +48,59 @@ pub trait FetchPolicy: Send + Sync {
         tokens: &[u32],
         holder_kv: &KvInfo,
     ) -> Option<FetchFrom>;
+
+    /// [`FetchPolicy::plan`] with why and what it priced, for the head's decision log line. A
+    /// policy that prices overrides it; the default only knows its answer.
+    fn decide(
+        &self,
+        holder: u32,
+        target: u32,
+        tokens: &[u32],
+        holder_kv: &KvInfo,
+    ) -> FetchDecision {
+        let fetch = self.plan(holder, target, tokens, holder_kv);
+        FetchDecision {
+            reason: if fetch.is_some() {
+                "priced_fetch"
+            } else {
+                "policy_recompute"
+            },
+            fetch,
+            ..FetchDecision::default()
+        }
+    }
+}
+
+/// What the head decided for a prefix another replica holds, with the inputs it was priced on.
+#[derive(Debug, Clone, Default)]
+pub struct FetchDecision {
+    /// `Some`: ask the target to fetch it.
+    pub fetch: Option<FetchFrom>,
+    /// `priced_fetch`, or why not (one of `metrics::FETCH_REASONS`).
+    pub reason: &'static str,
+    /// Snapshot bytes (tokens x the holder's row bytes); 0 when not known.
+    pub bytes: u64,
+    /// Predicted link time of the snapshot; `None` without a probed curve.
+    pub hop_s: Option<f64>,
+    /// Predicted copy of the snapshot into the target's KV.
+    pub restore_s: f64,
+    /// Predicted prefill of the prefix on the target; `None` without a rate.
+    pub recompute_s: Option<f64>,
+}
+
+impl FetchDecision {
+    /// Recompute, for `reason`.
+    pub fn recompute(reason: &'static str) -> Self {
+        Self {
+            reason,
+            ..Self::default()
+        }
+    }
+}
+
+/// A predicted time for the log: seconds, or `-` when not known.
+fn secs(t: Option<f64>) -> String {
+    t.map_or_else(|| "-".into(), |t| format!("{t:.6}"))
 }
 
 /// What a replica reported about its snapshots when it joined.
@@ -518,34 +571,7 @@ impl Inner {
         if moved {
             self.count(to.0, "moved");
         }
-        let fetch = match (elsewhere, &self.policy, &target.remote) {
-            (Some(hit), Some(policy), Some(_)) => {
-                let kv = {
-                    let st = lock(&self.state);
-                    KvInfo {
-                        format: st
-                            .kv_formats
-                            .get(hit.holder.0 as usize)
-                            .cloned()
-                            .unwrap_or_default(),
-                        row_bytes: st
-                            .kv_row_bytes
-                            .get(hit.holder.0 as usize)
-                            .copied()
-                            .unwrap_or(0),
-                    }
-                };
-                let f = policy
-                    .plan(hit.holder.0, to.0, &prompt[..hit.tokens as usize], &kv)
-                    // The holder serves only what it was told to: no announcement, no fetch.
-                    .filter(|f| self.offer_prefix(hit.holder.0, to.0, f));
-                if f.is_none() {
-                    metrics::prefix_fetch("recomputed");
-                }
-                f
-            }
-            _ => None,
-        };
+        let fetch = elsewhere.and_then(|hit| self.decide_fetch(id, hit, to, &prompt));
         let result = match &target.remote {
             Some(r) => r.generate_with(req, fetch),
             None => target.engine.generate(req),
@@ -567,6 +593,61 @@ impl Inner {
                 self.settle(id);
             }
         }
+    }
+
+    /// Fetch or recompute the prefix `hit` of `prompt` that another replica holds, for request
+    /// `id` going to `to`. Every decision is logged with what it was priced on; a recompute is
+    /// counted here, a fetch when the target reports how it went.
+    fn decide_fetch(
+        &self,
+        id: ReqId,
+        hit: PrefixHit,
+        to: ReplicaId,
+        prompt: &[u32],
+    ) -> Option<FetchFrom> {
+        let (holder, n) = (hit.holder.0, hit.tokens);
+        let tokens = &prompt[..(n as usize).min(prompt.len())];
+        let kv = {
+            let st = lock(&self.state);
+            KvInfo {
+                format: st
+                    .kv_formats
+                    .get(holder as usize)
+                    .cloned()
+                    .unwrap_or_default(),
+                row_bytes: st.kv_row_bytes.get(holder as usize).copied().unwrap_or(0),
+            }
+        };
+        let mut d = match (&self.policy, &self.targets[to.0 as usize].remote) {
+            (None, _) => FetchDecision::recompute("no_policy"),
+            // The fetch hint rides the replica connection, which the head's own replica lacks.
+            (Some(_), None) => FetchDecision::recompute("target_in_process"),
+            (Some(policy), Some(_)) => policy.decide(holder, to.0, tokens, &kv),
+        };
+        // The holder serves only what it was told to: no announcement, no fetch.
+        if let Some(f) = &d.fetch
+            && !self.offer_prefix(holder, to.0, f)
+        {
+            d.fetch = None;
+            d.reason = "not_offered";
+        }
+        tracing::info!(
+            request = id,
+            holder,
+            to = to.0,
+            tokens = n,
+            bytes = d.bytes,
+            hop_s = %secs(d.hop_s),
+            restore_s = %secs(Some(d.restore_s)),
+            recompute_s = %secs(d.recompute_s),
+            decision = if d.fetch.is_some() { "fetch" } else { "recompute" },
+            reason = d.reason,
+            "prefix decision"
+        );
+        if d.fetch.is_none() {
+            metrics::prefix_fetch("recomputed", metrics::fetch_reason(d.reason));
+        }
+        d.fetch
     }
 
     /// Announces to the holder's leader that the node of replica `to` may fetch `f` once; false
@@ -687,6 +768,10 @@ impl Engine for ClusterEngine {
 
     fn ready(&self) -> bool {
         self.up_count() > 0
+    }
+
+    fn metrics_text(&self) -> String {
+        metrics::prefix_text()
     }
 
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {

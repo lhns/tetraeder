@@ -50,8 +50,8 @@ impl PrefixStore for SchedulerStore {
         self.0.prefix_get(&key.tokens)
     }
 
-    fn put(&self, key: PrefixKey, bytes: Vec<u8>) {
-        let _ = self.0.prefix_put(key.tokens, bytes);
+    fn put(&self, key: PrefixKey, bytes: Vec<u8>) -> bool {
+        self.0.prefix_put(key.tokens, bytes)
     }
 
     fn row_bytes(&self) -> u64 {

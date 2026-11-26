@@ -8,16 +8,24 @@
 //! `result`: `joined`, `failed`; every try of the head to start and connect a remote replica,
 //! alert `TetraederReplicaJoinFailing`). Dashboard row "Router: requests per replica and result, replicas
 //! up, prefix fetches" and alert `TetraederReplicaOut`.
+//!
+//! The prefix fetch counter also carries `reason` (why a prefix another replica held was fetched
+//! or recomputed, see [`FETCH_REASONS`]), with `tetraeder.kv.prefix.fetch.bytes` (snapshot bytes
+//! fetched) and alert `TetraederPrefixFetchFailing`. The head renders both on the gateway's
+//! `/metrics` too ([`prefix_text`]), so they are readable without an OTLP collector.
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Gauge, Histogram};
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 struct M {
     requests: Counter<u64>,
     up: Gauge<u64>,
     planned: Gauge<u64>,
     prefix: Counter<u64>,
+    prefix_bytes: Counter<u64>,
     served: Counter<u64>,
     drains: Counter<u64>,
     drain_s: Histogram<f64>,
@@ -43,7 +51,12 @@ fn m() -> &'static M {
                 .build(),
             prefix: meter
                 .u64_counter("tetraeder.kv.prefix.fetch")
-                .with_description("Prefixes another replica held: fetched or recomputed")
+                .with_description("Prefixes another replica held: fetched or recomputed, and why")
+                .build(),
+            prefix_bytes: meter
+                .u64_counter("tetraeder.kv.prefix.fetch.bytes")
+                .with_unit("By")
+                .with_description("Snapshot bytes fetched from another replica")
                 .build(),
             served: meter
                 .u64_counter("tetraeder.kv.prefix.served")
@@ -86,9 +99,104 @@ pub fn replicas_planned(n: usize) {
     m().planned.record(n as u64, &[]);
 }
 
-/// `result`: `fetched` or `recomputed`.
-pub fn prefix_fetch(result: &'static str) {
-    m().prefix.add(1, &[KeyValue::new("result", result)]);
+/// Why a prefix another replica held was fetched or recomputed. Decided by the head:
+/// `no_policy` (no hardware graph to price it), `target_in_process` (the head's own replica
+/// cannot be told to fetch), `priced_recompute`, `same_node`, `unknown_kv`, `too_short`,
+/// `no_rate`, `no_link` (the rule), `policy_recompute` (another policy), `not_offered` (the
+/// holder could not be told). Reported by the fetching replica once asked: `fetched`, `gone`
+/// (the holder no longer had it: evicted, or held only by a live sequence), `failed`,
+/// `bad_snapshot`, `not_installed` (its cache refused it), `refused` (the replica cannot check
+/// or hold it), `unknown` (an older replica).
+pub const FETCH_REASONS: &[&str] = &[
+    "fetched",
+    "no_policy",
+    "target_in_process",
+    "priced_recompute",
+    "same_node",
+    "unknown_kv",
+    "too_short",
+    "no_rate",
+    "no_link",
+    "policy_recompute",
+    "not_offered",
+    "gone",
+    "failed",
+    "bad_snapshot",
+    "not_installed",
+    "refused",
+    "unknown",
+];
+
+/// `reason` as one of [`FETCH_REASONS`]: what a replica reports is bounded to them.
+pub fn fetch_reason(reason: &str) -> &'static str {
+    FETCH_REASONS
+        .iter()
+        .find(|r| **r == reason)
+        .copied()
+        .unwrap_or("unknown")
+}
+
+/// The counters of [`prefix_text`], kept beside the OTel instruments.
+struct Mirror {
+    fetch: Mutex<BTreeMap<(&'static str, &'static str), u64>>,
+    bytes: AtomicU64,
+}
+
+fn mirror() -> &'static Mirror {
+    static M: OnceLock<Mirror> = OnceLock::new();
+    M.get_or_init(|| Mirror {
+        fetch: Mutex::new(BTreeMap::new()),
+        bytes: AtomicU64::new(0),
+    })
+}
+
+/// A prefix another replica held: `fetched` (reason `fetched`) or `recomputed` (reason: why).
+pub fn prefix_fetch(result: &'static str, reason: &'static str) {
+    m().prefix.add(
+        1,
+        &[
+            KeyValue::new("result", result),
+            KeyValue::new("reason", reason),
+        ],
+    );
+    *mirror()
+        .fetch
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry((result, reason))
+        .or_default() += 1;
+}
+
+/// Snapshot bytes a replica fetched from another.
+pub fn prefix_fetch_bytes(bytes: u64) {
+    m().prefix_bytes.add(bytes, &[]);
+    mirror().bytes.fetch_add(bytes, Ordering::Relaxed);
+}
+
+/// The prefix fetch counters of this process in Prometheus text, under the names the OTel export
+/// gives them (`tetraeder_kv_prefix_fetch_total`, `tetraeder_kv_prefix_fetch_bytes_total`).
+pub fn prefix_text() -> String {
+    let mut s = String::from(
+        "# HELP tetraeder_kv_prefix_fetch_total Prefixes another replica held: fetched or recomputed, and why\n\
+         # TYPE tetraeder_kv_prefix_fetch_total counter\n",
+    );
+    for ((result, reason), n) in mirror()
+        .fetch
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+    {
+        s += &format!(
+            "tetraeder_kv_prefix_fetch_total{{result=\"{result}\",reason=\"{reason}\"}} {n}\n"
+        );
+    }
+    s += &format!(
+        "# HELP tetraeder_kv_prefix_fetch_bytes_total Snapshot bytes fetched from another replica\n\
+         # TYPE tetraeder_kv_prefix_fetch_bytes_total counter\n\
+         tetraeder_kv_prefix_fetch_bytes_total {}\n",
+        mirror().bytes.load(Ordering::Relaxed)
+    );
+    s
 }
 
 /// `result`: `snapshot` or `gone`.

@@ -415,6 +415,11 @@ pub trait Engine: Send + Sync + 'static {
     fn ready(&self) -> bool {
         true
     }
+    /// Prometheus text the engine adds to `/metrics` after llama-server's counters (the cluster
+    /// head's prefix fetch counters); none by default.
+    fn metrics_text(&self) -> String {
+        String::new()
+    }
     /// Starts generation. The channel is bounded; the engine stops when `req.cancel` fires or
     /// the receiver is dropped, and always ends with `Finished` or `Error` unless the
     /// receiver is gone.

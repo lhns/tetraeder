@@ -12,6 +12,12 @@
 //! With a plan, a node that changes state replans the replicas that span it: the replica is
 //! drained (its in-flight requests finish) and started again with the new plan.
 //!
+//! A request whose prefix another replica holds gets one `prefix decision` log line (info) with
+//! the priced inputs and the reason, and, when a fetch was asked, one `prefix fetch done` line
+//! with the target's outcome; `/metrics` (with `--metrics`) shows the counts and bytes. A fetch
+//! is priced only with a hardware graph (`--cluster-plan`, or `--cluster-hw` next to a
+//! replicas file).
+//!
 //! `replicas.toml`:
 //!
 //! ```toml
@@ -40,8 +46,8 @@ use std::time::Duration;
 use tetraeder_control::ClusterConfig;
 use tetraeder_control::cluster_replan::{ClusterControl, Derive, ReplanWatcher};
 use tetraeder_control::head::{
-    ClusterEngine, ClusterHead, FetchPolicy, KvInfo, ReplicaTarget, SegmentAssign, StartSpec,
-    specs_from_plan,
+    ClusterEngine, ClusterHead, FetchDecision, FetchPolicy, KvInfo, ReplicaTarget, SegmentAssign,
+    StartSpec, specs_from_plan,
 };
 use tetraeder_control::kv::{
     PrefixGrants, PrefixKey, PrefixStore, fetch_beats_recompute, new_token,
@@ -52,6 +58,7 @@ use tetraeder_control::replica::FetchFrom;
 use tetraeder_control::{
     Config, Outcome, PlanSource, Proposal, Replanner, SystemClock, Trigger, client,
 };
+use tetraeder_costmodel::cluster::hop_time;
 use tetraeder_gateway::engine::Engine as GatewayEngine;
 use tetraeder_gateway::fake::{FakeEngine, serve_script};
 use tetraeder_plan::{Forbid, Hints, Phase, Plan, segments};
@@ -311,32 +318,55 @@ impl PricedFetch {
 
 impl FetchPolicy for PricedFetch {
     fn plan(&self, holder: u32, target: u32, tokens: &[u32], kv: &KvInfo) -> Option<FetchFrom> {
-        let (from, to) = (
-            self.nodes.get(holder as usize)?,
-            self.nodes.get(target as usize)?,
-        );
-        if from == to || kv.row_bytes == 0 || kv.format.is_empty() {
-            return None;
+        self.decide(holder, target, tokens, kv).fetch
+    }
+
+    fn decide(&self, holder: u32, target: u32, tokens: &[u32], kv: &KvInfo) -> FetchDecision {
+        let (Some(from), Some(to)) = (
+            self.nodes.get(holder as usize),
+            self.nodes.get(target as usize),
+        ) else {
+            return FetchDecision::recompute("no_link");
+        };
+        if from == to {
+            return FetchDecision::recompute("same_node");
         }
-        let n = u32::try_from(tokens.len()).ok()?;
+        if kv.row_bytes == 0 || kv.format.is_empty() {
+            return FetchDecision::recompute("unknown_kv");
+        }
+        let n = u32::try_from(tokens.len()).unwrap_or(u32::MAX);
         let bytes = u64::from(n) * kv.row_bytes;
-        fetch_beats_recompute(
-            &self.hw,
-            from,
-            to,
+        let pp = self.pp_tps.get(target as usize).copied().unwrap_or(0.0);
+        let restore_s = bytes as f64 / RESTORE_BYTES_PER_S;
+        // The rule decides; its inputs are priced again here only for the log line.
+        let fetch = fetch_beats_recompute(&self.hw, from, to, bytes, n, pp, restore_s, MIN_PREFIX);
+        let hop_s = hop_time(&self.hw, from, to, bytes as f64);
+        let recompute_s = (pp > 0.0).then(|| f64::from(n) / pp);
+        let reason = if fetch {
+            "priced_fetch"
+        } else if n < MIN_PREFIX {
+            "too_short"
+        } else if recompute_s.is_none() {
+            "no_rate"
+        } else if hop_s.is_none() {
+            "no_link"
+        } else {
+            "priced_recompute"
+        };
+        FetchDecision {
+            fetch: fetch.then(|| FetchFrom {
+                node: NodeId::new(from.clone()),
+                key: PrefixKey {
+                    format: kv.format.clone(),
+                    tokens: tokens.to_vec(),
+                },
+            }),
+            reason,
             bytes,
-            n,
-            self.pp_tps.get(target as usize).copied().unwrap_or(0.0),
-            bytes as f64 / RESTORE_BYTES_PER_S,
-            MIN_PREFIX,
-        )
-        .then(|| FetchFrom {
-            node: NodeId::new(from.clone()),
-            key: PrefixKey {
-                format: kv.format.clone(),
-                tokens: tokens.to_vec(),
-            },
-        })
+            hop_s,
+            restore_s,
+            recompute_s,
+        }
     }
 }
 
