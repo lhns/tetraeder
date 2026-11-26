@@ -4898,7 +4898,7 @@ nodes:
   folded: []
   overview: false
   plain: 'The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26).'
-  notes: 'Worst case about 12.5 USD of 16.13 (two attempts, 4 h, 1.56 USD/h).'
+  notes: 'Attempt 2026-11-26 evening (bench/results/phase6-exit-s-20261126c): no verdict. Pairs vanished within minutes, so scripts/phase6_pair_create.sh now finds and creates both boxes in one step; the pair 3090 host 45726 plus A40 host 682584 came up, and 682584 failed the one-NUMA gate at first SSH (2 sockets, 2 NUMA nodes); both destroyed before build and download, about 0.21 USD for three boxes, 0 of 2 download attempts used. 682584 is now skipped. The 4 h one-off is used; a retry runs under 3 h (170 min padded fits only without the report-only runs) unless the owner grants a new one.'
 - id: cluster-short-prefix-dropped
   title: Short idle prefix taken unsaved
   track: cluster
@@ -4981,18 +4981,19 @@ nodes:
   title: Replay expected-uses expert ranking
   track: memory
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: dead-end
+  evidence:
+  - bench/results/replay-expected-uses-20261126/README.md
+  verdict_quote: 'No: gexp:512 reads 11.91 MB of synchronous misses per token at 26 slots against 11.80 for gfreq:1 (1.009x); the best of the sweep, gexp:64, is 0.971x; the bar was 0.90x.'
+  headline: 'expected-uses ranking ties gfreq:1 in the replay at 26 slots; not ported'
   depends_on:
   - memory-ram-freq
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
-  plain: 'Add Magnitude''s expert ranking (expected uses within a tier turnover from routing history and router lookahead) as a policy in the offline replay and compare it with gfreq and glru on the saved 235B trace; port into the engine only if it wins (rule 3).'
+  plain: 'Magnitude''s expected-uses ranking (decayed routing counts plus router lookahead), tried as a policy in the offline replay on the saved 235B trace, reads about the same synchronous miss bytes as gfreq:1 at 26 slots (1% more, 3% fewer at the best horizon), so it is not ported to the engine.'
   notes: 'Reference: docs/plan.md references, Magnitude row. No box time; needs the trace in bench/traces. Advisor 2026-11-26: the comparison touches no judged path, a port waits for the Case S verdict.'

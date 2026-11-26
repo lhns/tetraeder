@@ -22,12 +22,12 @@ flowchart TB
     memory_prefix_ssd["✔ Prefix cache spills<br/>to SSD"]
     memory_prefix_disk_async["✔ Disk prefix restore<br/>off the step"]
     memory_ram_tier_complement>"✔ Read-free covering<br/>expert tiers"]
+    memory_replay_expected_uses[/"✔ Replay expected-uses<br/>expert ranking"/]
     memory_safetensors["⏸ Load safetensors<br/>models directly"]
     memory_kv_host["○ KV cache partly in<br/>RAM"]
     memory_kv_tiers["⏸ KV cache spills to<br/>RAM, disk"]
     memory_prefill_misses["⏸ Stream expert misses<br/>during prefill"]
     memory_typed_slots["⏸ Per-expert formats<br/>by tier"]
-    memory_replay_expected_uses[/"○ Replay expected-uses<br/>expert ranking"/]
     memory_tiers ~~~ memory_pair_groups
     memory_tiers ~~~ memory_prefetch
     memory_tiers ~~~ memory_conversion
@@ -42,16 +42,13 @@ flowchart TB
     memory_kv_auto ~~~ memory_prefix_ssd
     memory_prefix_ssd ~~~ memory_prefix_disk_async
     memory_prefix_ssd ~~~ memory_ram_tier_complement
-    memory_prefix_ssd ~~~ memory_safetensors
-    memory_prefix_disk_async ~~~ memory_kv_host
+    memory_prefix_ssd ~~~ memory_replay_expected_uses
+    memory_prefix_disk_async ~~~ memory_safetensors
     memory_ram_tier_complement ~~~ memory_kv_host
-    memory_safetensors ~~~ memory_kv_host
-    memory_kv_host ~~~ memory_kv_tiers
+    memory_replay_expected_uses ~~~ memory_kv_host
+    memory_safetensors ~~~ memory_kv_tiers
     memory_kv_host ~~~ memory_prefill_misses
     memory_kv_host ~~~ memory_typed_slots
-    memory_kv_tiers ~~~ memory_replay_expected_uses
-    memory_prefill_misses ~~~ memory_replay_expected_uses
-    memory_typed_slots ~~~ memory_replay_expected_uses
     memory_tiers --> memory_pair_groups
     memory_tiers --> memory_prefetch
     memory_prefetch --> memory_io_service
@@ -60,10 +57,10 @@ flowchart TB
     memory_io_service --> memory_adaptive_tier
     memory_ram_freq --> memory_ram_pool
     memory_prefix_ssd --> memory_prefix_disk_async
+    memory_ram_freq --> memory_replay_expected_uses
     memory_conversion --> memory_safetensors
     memory_kv_host --> memory_kv_tiers
     memory_io_service --> memory_prefill_misses
-    memory_ram_freq --> memory_replay_expected_uses
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -82,9 +79,9 @@ flowchart TB
     class memory_pair_groups,memory_ram_freq,memory_adaptive_tier mixed
     class memory_prefetch,memory_conversion,memory_io_service vsucc
     class memory_low_bit_kv,memory_ram_tier_complement succ
-    class memory_ram_pool dead
+    class memory_ram_pool,memory_replay_expected_uses dead
     class memory_safetensors,memory_kv_tiers,memory_prefill_misses,memory_typed_slots parked
-    class memory_kv_host,memory_replay_expected_uses next
+    class memory_kv_host next
 ```
 <!-- END GENERATED: track-memory -->
 
@@ -111,7 +108,7 @@ flowchart TB
 | `memory-ram-tier-complement` | Read-free covering expert tiers | defect | ci | done | unrated | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  |  | crates/memory/tests/replay.rs; crates/model/tests/cpu_experts.rs; crates/memory/src/replay/sim.rs |
 | `memory-prefill-misses` | Stream expert misses during prefill | feature | local | parked | unrated |  |  | memory-io-service |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier | feature | local | parked | unrated |  |  | serving-kv-layout, planner-quality |  |  |  |  |
-| `memory-replay-expected-uses` | Replay expected-uses expert ranking | experiment | local | next | unrated |  |  | memory-ram-freq |  |  |  |  |
+| `memory-replay-expected-uses` | Replay expected-uses expert ranking | experiment | local | done | dead-end | 2026-11-26 | 2026-11-26 | memory-ram-freq |  |  | expected-uses ranking ties gfreq:1 in the replay at 26 slots; not ported | bench/results/replay-expected-uses-20261126/README.md |
 
 ### Details per node
 
@@ -135,7 +132,7 @@ flowchart TB
 | `memory-ram-tier-complement` | Read-free covering expert tiers | CI run 45415720514 ubuntu test cpu_covering_slots_read_nothing_after_the_refresh ... ok; test covering_slots_leave_the_ram_tier_holding_the_complement ... ok |  | When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again). |  |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill |  |  | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). | Parked with Track B (m2-plan, Track B: candidate first item when it resumes). Done when: one timed box run of the prefill buckets first, then a paired run of the 235B 32K prefill. |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier |  |  | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). | Parked: was waiting for the KV and slot layout (C6, decided chunked 2026-11-14); nothing schedules it now. Done when: a mix of slot formats passes parity and the quality gate. |  |  |  |  |
-| `memory-replay-expected-uses` | Replay expected-uses expert ranking |  |  | Add Magnitude's expert ranking (expected uses within a tier turnover from routing history and router lookahead) as a policy in the offline replay and compare it with gfreq and glru on the saved 235B trace; port into the engine only if it wins (rule 3). | Reference: docs/plan.md references, Magnitude row. No box time; needs the trace in bench/traces. Advisor 2026-11-26: the comparison touches no judged path, a port waits for the Case S verdict. |  |  |  |  |
+| `memory-replay-expected-uses` | Replay expected-uses expert ranking | No: gexp:512 reads 11.91 MB of synchronous misses per token at 26 slots against 11.80 for gfreq:1 (1.009x); the best of the sweep, gexp:64, is 0.971x; the bar was 0.90x. | expected-uses ranking ties gfreq:1 in the replay at 26 slots; not ported | Magnitude's expected-uses ranking (decayed routing counts plus router lookahead), tried as a policy in the offline replay on the saved 235B trace, reads about the same synchronous miss bytes as gfreq:1 at 26 slots (1% more, 3% fewer at the best horizon), so it is not ported to the engine. | Reference: docs/plan.md references, Magnitude row. No box time; needs the trace in bench/traces. Advisor 2026-11-26: the comparison touches no judged path, a port waits for the Case S verdict. |  |  |  |  |
 
 ### Folded items per node
 
