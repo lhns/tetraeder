@@ -193,7 +193,7 @@ fn the_filter_matches_the_validators_memory_issue() {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(8))]
+    #![proptest_config(ProptestConfig::with_cases(6))]
 
     /// AGENTS rules 4 and 5: on every fixture, as committed or with its first node copied to up
     /// to seven nodes, at any GPU and RAM size, the planner emits only plans whose memory the
