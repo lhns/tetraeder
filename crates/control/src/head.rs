@@ -15,7 +15,7 @@ use crate::membership::NodeState;
 use crate::metrics;
 use crate::monitor::Monitor;
 use crate::proto::{NodeReply, NodeRequest};
-use crate::replica::{FetchFrom, RemoteEngine};
+use crate::replica::{FetchDone, FetchFrom, RemoteEngine};
 use crate::router::{Action, PrefixHit, ReplicaId, ReqId, Route, Router};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -409,6 +409,11 @@ impl ClusterEngine {
         lock(&self.inner.state).router.outstanding(ReplicaId(r))
     }
 
+    /// Longest prefix of `prompt` the router believes replica `r` holds.
+    pub fn holds(&self, r: u32, prompt: &[u32]) -> u32 {
+        lock(&self.inner.state).router.holds(ReplicaId(r), prompt)
+    }
+
     pub fn counts(&self) -> Counts {
         let c = |i: usize| self.inner.counts[i].load(Ordering::SeqCst);
         Counts {
@@ -572,8 +577,18 @@ impl Inner {
             self.count(to.0, "moved");
         }
         let fetch = elsewhere.and_then(|hit| self.decide_fetch(id, hit, to, &prompt));
+        // A holder that had nothing to serve has lost the prefix: the router forgets it there,
+        // so later requests are not routed or priced on it.
+        let done = fetch.as_ref().zip(elsewhere).map(|(f, hit)| {
+            let (me, tokens) = (Arc::clone(self), f.key.tokens.clone());
+            Box::new(move |reason: &'static str| {
+                if reason == "gone" {
+                    lock(&me.state).router.prefix_gone(hit.holder, &tokens);
+                }
+            }) as FetchDone
+        });
         let result = match &target.remote {
-            Some(r) => r.generate_with(req, fetch),
+            Some(r) => r.generate_with(req, fetch, done),
             None => target.engine.generate(req),
         };
         match result {

@@ -905,7 +905,7 @@ fn cpu_a_fetched_prefix_decodes_like_a_recomputed_one() {
             assert!(remotes[0].offer(remotes[1].peer().id.clone(), h.key.clone()));
         }
         let rx = remotes[1]
-            .generate_with(greedy_request(&follow, 12), hint)
+            .generate_with(greedy_request(&follow, 12), hint, None)
             .unwrap();
         let (got, cached) = collect(rx).unwrap();
         let (want, _) = greedy(front.as_ref(), &follow, 12).unwrap();
