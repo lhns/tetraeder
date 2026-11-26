@@ -34,10 +34,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODES = ("worker", "daemon", "stop")
 FRESH_S = 0.5  # a step line older than this means nothing is decoding
-GATE_FRESH_S = 0.25  # the fire gate takes only a newer reading
+ADMIT_FRESH_S = 0.15  # the fire gate takes only a request admitted this recently: it has nearly its whole token budget left
 TAIL_BYTES = 256 * 1024
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-STEP = re.compile(r"^(\d{4}-\d\d-\d\dT[\d:.]+)Z\s+DEBUG tetraeder::step: (?:step|admit) .*?\blive=(\d+)")
+STEP = re.compile(r"^(\d{4}-\d\d-\d\dT[\d:.]+)Z\s+DEBUG tetraeder::step: (step|admit) .*?\blive=(\d+)")
 LABEL = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
 
 
@@ -46,8 +46,8 @@ def read_token(path: str) -> str:
         return f.read().strip()
 
 
-def inflight(log_path: str, now: float | None = None, fresh_s: float = FRESH_S) -> dict:
-    """The newest `live=N` of the node log's tail, as {live, age_s, last_live}."""
+def inflight(log_path: str, now: float | None = None, kind: str | None = None, fresh_s: float = FRESH_S) -> dict:
+    """The newest `live=N` of the node log's tail, as {live, age_s, last_live}. With `kind` ("admit"), only lines of that kind count."""
     now = time.time() if now is None else now
     try:
         with open(log_path, "rb") as f:
@@ -58,10 +58,10 @@ def inflight(log_path: str, now: float | None = None, fresh_s: float = FRESH_S) 
         return {"live": 0, "age_s": None, "last_live": None, "log": "unreadable"}
     for line in reversed(lines):
         m = STEP.match(ANSI.sub("", line))
-        if m:
+        if m and (kind is None or m.group(2) == kind):
             t = datetime.datetime.fromisoformat(m.group(1)).replace(tzinfo=datetime.timezone.utc).timestamp()
             age = round(now - t, 3)
-            return {"live": int(m.group(2)) if age <= fresh_s else 0, "age_s": age, "last_live": int(m.group(2))}
+            return {"live": int(m.group(3)) if age <= fresh_s else 0, "age_s": age, "last_live": int(m.group(3))}
     return {"live": 0, "age_s": None, "last_live": None}
 
 
@@ -114,14 +114,15 @@ def make_handler(token: str, p6: str, repo: str):
                        RESTORE_AFTER=str(req.get("restore_after", 40)), POLL_S=str(req.get("poll_s", 0.2)))
             # The gate is here, not on the client: the reading that licenses the fault and the start of the fault are one step, with no
             # round trip between them (a client that polled /inflight and then fired lost the request in that gap, flaky in CI).
-            # `wait_s` > 0: wait up to that long for a fresh reading of live >= 1, then fire; at the deadline fire anyway (live 0, which
+            # `wait_s` > 0: wait up to that long for a request admitted in the last ADMIT_FRESH_S (its remaining tokens outlast the
+            # fault-to-error window; a daemon fault once hit four requests that had just finished), then fire; at the deadline fire anyway (live 0, which
             # the evidence calls invalid and the driver repeats).
             wait_s = min(float(req.get("wait_s", 0) or 0), 120.0)
             t_wait = time.time()
-            seen = inflight(node_log, fresh_s=GATE_FRESH_S)
+            seen = inflight(node_log) if wait_s <= 0 else inflight(node_log, kind="admit", fresh_s=ADMIT_FRESH_S)
             while seen["live"] < 1 and time.time() - t_wait < wait_s:
                 time.sleep(0.01)
-                seen = inflight(node_log, fresh_s=GATE_FRESH_S)
+                seen = inflight(node_log, kind="admit", fresh_s=ADMIT_FRESH_S)
             t_recv = time.time()
             os.makedirs(os.path.dirname(log), exist_ok=True)
             with open(log, "a", encoding="utf-8") as out:
