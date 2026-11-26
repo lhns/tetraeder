@@ -20,13 +20,27 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 for p in d.get("pairs", []):
     if p.get("plannable") and not any("RAM under 64 GB" in f for f in p.get("flags", [])):
-        print(" ".join(b["id"] + "|" + b["gpu_name"].replace(" ", "_") for b in p["boxes"]))
+        print(" ".join(b["id"] + "|" + b["gpu_name"].replace(" ", "_") + "|" + str(b.get("machine_id") or "") for b in p["boxes"]))
         break
 ' "$outd/pairs.json") || exit 3
 [ -n "$pick" ] || { echo "[$(date +%T)] no pair without a RAM flag: nothing created"; exit 3; }
 read -r pa pb <<< "$pick"
-oa=${pa%%|*} ga=${pa#*|} ob=${pb%%|*} gb=${pb#*|}
+IFS='|' read -r oa ga ma <<< "$pa"
+IFS='|' read -r ob gb mb <<< "$pb"
 ga=${ga//_/ } gb=${gb//_/ }
+# the finder's offer ids rotate within seconds (2026-11-26: both ids gone 13 s later); one `offers` listing of both classes records
+# each current id's machine in .vast/offers.json (taxameter ADR 0013), the creates take the id the finder's machine has now, and
+# `create --offer` follows that machine if it rotates again. Same machine, same filters and caps: no rule changes
+bash scripts/sc_offers.sh offers --gpu "$ga,$gb" --top 500 > "$outd/offers.log" 2>&1
+cur() { # cur MACHINE FALLBACK_ID: the listed offer id of that machine now, else the finder's
+  "$py" -I -c '
+import json, sys
+m, fb = sys.argv[2:4]
+d = json.load(open(sys.argv[1])) if m else {}
+print(next((k for k, v in d.items() if str(v.get("machine_id")) == m), fb))
+' "${VAST_STATE_DIR:-.vast}/offers.json" "$1" "$2" 2> /dev/null || echo "$2"
+}
+oa=$(cur "$ma" "$oa") ob=$(cur "$mb" "$ob")
 echo "[$(date +%T)] pair: a $oa ($ga), b $ob ($gb); both creates now"
 ta=$(date +%s)
 bash scripts/sc_offers.sh create --offer "$oa" --gpu "$ga" --ports 7000 > "$outd/create-a.log" 2>&1 &
