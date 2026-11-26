@@ -4,7 +4,8 @@
 # checkout's tracked files (submodules included, plus uncommitted edits) are streamed in as a tar; target/ and the
 # cargo registry live in named volumes per lane, so builds stay incremental. Linux only (the Windows half stays in CI).
 # Usage: scripts/docker_cargo.sh [-l LANE] -- <command...>     e.g. scripts/docker_cargo.sh -l kv -- cargo test -p tetraeder-control
-# Env: DOCKER_CARGO_JOBS (default 8), DOCKER_CARGO_MEM (default 24g). Containers and volumes are named tetraeder-*.
+# Env: DOCKER_CARGO_JOBS (default 8), DOCKER_CARGO_MEM (default 24g), DOCKER_CARGO_EXTRA (space-separated paths relative to the
+# checkout, e.g. git-ignored traces, that are copied in too). Containers and volumes are named tetraeder-*.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" # Git Bash on Windows must not rewrite /src, /target into Windows paths
 lane=main
@@ -35,5 +36,9 @@ docker start "$name" > /dev/null
 # copied: it lives in a volume, where patches/apply.sh fetches the pinned commit once and applies the patch queue
 (cd "$root" && git ls-files -z | while IFS= read -r -d '' f; do [ -f "$f" ] && printf '%s\0' "$f"; done \
   | tar --null -T - -cf -) | docker cp - "$name:/src"
+if [ -n "${DOCKER_CARGO_EXTRA:-}" ]; then
+  # shellcheck disable=SC2086 # the paths are a word list, without spaces in themselves
+  (cd "$root" && tar -cf - $DOCKER_CARGO_EXTRA) | docker cp - "$name:/src"
+fi
 docker exec "$name" sh -c 'cd /src && bash patches/apply.sh > /dev/null'
 docker exec -w /src "$name" "$@"

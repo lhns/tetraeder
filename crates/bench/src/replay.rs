@@ -163,6 +163,10 @@ pub fn run_with(
                 "decode_windows".into(),
                 json!(decode_windows(&o.decode_step_bytes, w)),
             );
+            m.insert(
+                "decode_sync_windows".into(),
+                json!(decode_windows(&o.decode_step_sync_bytes, w)),
+            );
         }
         outcome_values.push(v);
     }

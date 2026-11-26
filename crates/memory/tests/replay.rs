@@ -660,6 +660,7 @@ fn decode_step_bytes_add_up_to_the_decode_bytes() {
             Policy::Freq { share: 0.5 },
             Policy::GlobalLru,
             Policy::GlobalFreq { share: 0.5 },
+            Policy::GlobalExpected { horizon: 8 },
         ] {
             for pf in [true, false] {
                 let o = replay(&t, &cfg(2, 6, policy, pf));
@@ -670,6 +671,10 @@ fn decode_step_bytes_add_up_to_the_decode_bytes() {
                     (sum as f64 - want).abs() < 1e-6,
                     "{policy:?} {pf}: {sum} {want}"
                 );
+                let sync: u64 = o.decode_step_sync_bytes.iter().sum();
+                let want = o.decode.sync_miss_bytes_per_token * o.decode.tokens as f64;
+                assert_eq!(o.decode_step_sync_bytes.len() as u64, o.decode.steps);
+                assert!((sync as f64 - want).abs() < 1e-6, "{policy:?} {pf} sync");
             }
         }
     }
@@ -696,11 +701,17 @@ fn global_frequency_core_helps_a_skewed_workload() {
 
 #[test]
 fn global_policy_names_parse_and_roundtrip() {
-    for s in ["glru", "gbelady", "gfreq:0.5", "gfreq:1"] {
+    for s in ["glru", "gbelady", "gfreq:0.5", "gfreq:1", "gexp:512", "gexp:7"] {
         let p = Policy::parse(s).unwrap();
         assert_eq!(p.name(), s);
         assert_eq!(Policy::parse(&p.name()).unwrap(), p);
     }
+    assert_eq!(
+        Policy::parse("gexp").unwrap(),
+        Policy::GlobalExpected { horizon: 512 }
+    );
+    assert!(Policy::parse("gexp:0").is_err());
+    assert!(Policy::parse("gexp:x").is_err());
     assert!(Policy::parse("gfreq:0").is_err());
     assert!(Policy::parse("gfreq:1.5").is_err());
 }
@@ -722,6 +733,7 @@ proptest! {
             Policy::GlobalLru,
             Policy::GlobalFreq { share: 0.5 },
             Policy::GlobalFreq { share: 1.0 },
+            Policy::GlobalExpected { horizon: 8 },
         ] {
             let (_, violations) = replay_checked(&t, &cfg(2, ram, policy, true));
             prop_assert_eq!(violations, 0, "{:?}", policy);
@@ -841,4 +853,80 @@ fn a_warm_request_does_not_help_a_tier_that_does_not_cover() {
         },
     );
     assert!(prefill_bytes(&warm) > 0);
+}
+
+// ---- expected uses (`gexp`): decayed routing counts plus the router's lookahead
+
+#[test]
+fn expected_uses_keep_a_hot_expert_that_lru_evicts() {
+    // Expert 0 is routed every 4th step among one-off experts, 3 slots of one layer. Six one-offs
+    // pass between its uses, so LRU always lost it; after two uses it outranks every one-off.
+    let mut next = 1u16;
+    let mut cold = || {
+        next += 1;
+        next - 1
+    };
+    let steps: Vec<Vec<Vec<u16>>> = (0..60)
+        .map(|s| {
+            let first = if s % 4 == 0 { 0 } else { cold() };
+            vec![vec![first, cold()]]
+        })
+        .collect();
+    let t = decode_trace(header(1, 256, 2), &steps, None);
+    let glru = replay(&t, &cfg(0, 3, Policy::GlobalLru, false));
+    let gexp = replay(&t, &cfg(0, 3, Policy::GlobalExpected { horizon: 64 }, false));
+    assert_eq!(glru.decode.ram_hits, 0);
+    assert!(gexp.decode.ram_hits >= 12, "{}", gexp.decode.ram_hits);
+}
+
+#[test]
+fn wrong_predictions_do_not_displace_hot_residents() {
+    // Layer 1 routes the experts 0 and 1 every step and fills the pool with layer 0's. Layer 0
+    // predicts two fresh experts of layer 1 each step, always wrong. A prefetch under `glru`
+    // evicts layer 1's residents; under `gexp` it is refused once they have a history.
+    let mut records = Vec::new();
+    for s in 0..40u32 {
+        let junk = (2 + 2 * s) as u16;
+        records.push(Record::Step(LayerStep {
+            step: s,
+            layer: 0,
+            n_tokens: 1,
+            ids: vec![0, 1],
+            predicted: Some(vec![junk, junk + 1]),
+            predicted2: None,
+        }));
+        records.push(Record::Step(LayerStep {
+            step: s,
+            layer: 1,
+            n_tokens: 1,
+            ids: vec![0, 1],
+            predicted: None,
+            predicted2: None,
+        }));
+    }
+    let t = Trace {
+        header: header(2, 256, 2),
+        records,
+    };
+    let glru = replay(&t, &cfg(0, 2, Policy::GlobalLru, true));
+    let gexp = replay(&t, &cfg(0, 2, Policy::GlobalExpected { horizon: 64 }, true));
+    assert!(
+        gexp.decode.sync_miss_bytes_per_token * 2.0 < glru.decode.sync_miss_bytes_per_token,
+        "gexp {} glru {}",
+        gexp.decode.sync_miss_bytes_per_token,
+        glru.decode.sync_miss_bytes_per_token
+    );
+    assert!(gexp.decode.prefetch_wasted < glru.decode.prefetch_wasted);
+}
+
+#[test]
+fn expected_uses_replay_prefill_as_glru() {
+    for seed in [3u64, 17, 99] {
+        let t = prefetch_trace(seed, 30);
+        for pf in [true, false] {
+            let glru = replay(&t, &cfg(2, 5, Policy::GlobalLru, pf));
+            let gexp = replay(&t, &cfg(2, 5, Policy::GlobalExpected { horizon: 16 }, pf));
+            assert_eq!(glru.prefill, gexp.prefill, "seed {seed} prefetch {pf}");
+        }
+    }
 }
