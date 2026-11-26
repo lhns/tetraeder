@@ -20,6 +20,7 @@ interruptible = false
 # hours; the nightly fetches about 25 GB (8B + 30B), an exit box about 160 GB (pass --download-gb 160 to create);
 # CPU-bound runs pass --min-cpu-cores 11
 expected_download_gb = 25
+expected_box_hours = 3  # traffic is priced over 3 h even while a one-off raises max_box_hours (the 0.90 cap check stays as strict)
 
 [image]
 name = "ghcr.io/lhns/tetraeder-box"
