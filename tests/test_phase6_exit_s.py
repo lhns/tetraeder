@@ -703,3 +703,53 @@ def test_a_gpu_segment_without_a_card_reading_stays_unclean_next_to_a_cpu_one(tm
     why = summary(res)["rounds"][0]["unclean_reasons"]
     assert not any(r["clean"] for r in summary(res)["rounds"])
     assert any(w.startswith("b:") and "gpu_mem_total_mib" in w for w in why) and not any(w.startswith("a:") for w in why), why
+
+
+# ---- the dry run on the tiny model (session.json `tiny`): the same summary, no verdict, the 235B's numeric rules n/a ------------------------
+
+
+def as_tiny(res, frozen):
+    d = json.loads((res / "session.json").read_text())
+    d["tiny"] = True
+    write(res / "session.json", d)
+    shutil.rmtree(res / "plans" / "candidates")
+    (res / "plans" / "candidates.json").unlink()  # the pinned plan has no candidate list
+
+
+def test_a_clean_tiny_session_is_no_verdict_and_never_a_pass(tmp_path):
+    # numbers that would fail the 235B's rules (a link that moves the prediction by 0.5, a budget over the emulated 64 GB, no dry run of its own)
+    res, _ = build(tmp_path, mutate=as_tiny, gate=(700.0, 1.5, 1.5), dryrun=False, budgets=(200_000_000_000, 190_000_000_000), end_move=(1.4, 1.4))
+    o = summary(res)
+    assert o["tiny"] is True and failed(o) == [], o["status"]
+    assert o["verdict"] == "no verdict" and o["status"].startswith("dry run on the tiny model, no verdict: every rule that applies holds")
+    assert "n/a" in next(r["detail"] for r in o["rules"] if r["name"] == "dryrun")
+    # the same files as a 235B session are not clean
+    res2, _ = build(tmp_path / "real", gate=(700.0, 1.5, 1.5), end_move=(1.4, 1.4), budgets=(200_000_000_000, 190_000_000_000))
+    assert {"link_gate", "link_reprice", "ram_budget_a"} <= set(failed(summary(res2)))
+
+
+def test_a_tiny_session_still_fails_on_what_applies(tmp_path):
+    def m(res, frozen):
+        as_tiny(res, frozen)
+        (res / "judged" / "aa-last" / "cluster.json").unlink()
+
+    res, _ = build(tmp_path, mutate=m)
+    f = failed(summary(res))
+    assert "aa" in f and "freeze" not in f
+
+
+def test_the_bulk_cli_wants_the_screen_to_have_passed(tmp_path):
+    res = tmp_path / "res"
+    (res / "link").mkdir(parents=True)
+
+    def run():
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "bulk", str(res)], capture_output=True, text=True, check=False)
+
+    r = run()
+    assert r.returncode == 1 and "no link/bulk.json" in r.stdout
+    write(res / "link" / "bulk.json", {"pass": False, "why": ["moves +0.34"]})
+    r = run()
+    assert r.returncode == 1 and "moves +0.34" in r.stdout
+    write(res / "link" / "bulk.json", {"pass": True, "why": []})
+    assert run().returncode == 0
+

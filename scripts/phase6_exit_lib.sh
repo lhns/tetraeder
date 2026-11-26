@@ -3,7 +3,9 @@
 # The caller sets LOOPBACK (1: both boxes are directories and process sets on this machine), repo, out, lb (the loopback work dir),
 # port_a, port_b, head_port, poll_s, wait_step, and defines say and die.
 # shellcheck shell=bash disable=SC2154
-p6dir() { if [ "$LOOPBACK" = 1 ]; then echo "$lb/$1"; else echo /root/p6; fi; }
+# the work dir of a box: /root/p6, or P6_ROOT (the dry run on the boxes has /root/p6-dry, so nothing it leaves reaches the real session)
+p6root() { echo "${P6_ROOT:-/root/p6}"; }
+p6dir() { if [ "$LOOPBACK" = 1 ]; then echo "$lb/$1"; else p6root; fi; }
 box_id() { if [ "$1" = a ]; then echo "${ID_A:?set ID_A}"; else echo "${ID_B:?set ID_B}"; fi; }
 bx() { # bx BOX TIMEOUT CMD...: CMD runs in the box's repo with its P6 work dir
   local box=$1 t=$2
@@ -17,7 +19,7 @@ bx() { # bx BOX TIMEOUT CMD...: CMD runs in the box's repo with its P6 work dir
   else
     # taxameter prints its own "box running ..." status line (CRLF) on stdout before the command's output: drop it, keep the exit status
     local rc
-    uv run taxameter ssh --id "$(box_id "$box")" --timeout "$t" -- "cd /root/tetraeder && export P6=/root/p6 && $*" \
+    uv run taxameter ssh --id "$(box_id "$box")" --timeout "$t" -- "cd /root/tetraeder && export P6=$(p6root) && $*" \
       | tr -d '\r' | sed -u '/^\[[0-9:]*\] box running /d'
     rc=${PIPESTATUS[0]}
     return "$rc"
@@ -30,7 +32,7 @@ put() { # put BOX LOCAL_FILE REL_PATH_UNDER_P6
   else
     local bin=()
     case "$f" in *.gz) bin=(--binary) ;; esac # text mode turns CRLF into LF, which breaks a gzip file
-    uv run taxameter put --id "$(box_id "$box")" "${bin[@]}" "$f" "/root/p6/$rel" > /dev/null
+    uv run taxameter put --id "$(box_id "$box")" "${bin[@]}" "$f" "$(p6root)/$rel" > /dev/null
   fi
 }
 get() { # get BOX REL_PATH_UNDER_P6 LOCAL_FILE: through ssh (base64), so no fetch pack is needed for files of a few MB
@@ -39,7 +41,7 @@ get() { # get BOX REL_PATH_UNDER_P6 LOCAL_FILE: through ssh (base64), so no fetc
   if [ "$LOOPBACK" = 1 ]; then
     cp "$lb/$box/$rel" "$f"
   else
-    bx "$box" 300 "gzip -c /root/p6/$rel | base64 -w0" | base64 -d | gzip -dc > "$f"
+    bx "$box" 300 "gzip -c $(p6root)/$rel | base64 -w0" | base64 -d | gzip -dc > "$f"
   fi
 }
 wait_line() { # wait_line BOX REL_LOG REGEX SECONDS: waits on the box (ssh loops of 500 s) for REGEX on the log's LAST line

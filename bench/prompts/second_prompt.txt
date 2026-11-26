@@ -1,0 +1,275 @@
+# Tetraeder: build plan
+
+Oct 29, 2026 · @Pierre
+
+This file is the maintained design. It started as an export of the Claude Doc "Tetraeder: build plan" (rev 105); since Oct 29, 2026 changes go here, and the Claude Doc is the older version.
+
+Tetraeder is an LLM inference engine in Rust on a patched ggml: one placement plan expresses every parallel mode and memory tier, a measured-cost planner chooses it for whatever mix of GPUs, CPUs, VRAM, RAM, NVMe and nodes you have, and built-in OpenTelemetry observability finds the bottleneck and proposes the fix.
+
+## Goals and principles
+
+Tetraeder runs any supported model on any mix of hardware you hand it, picks the placement itself, tells you where the time goes, and stays maintainable by one person with Claude Code.
+
+### What "always does the right thing" means
+
+- **Never** breaks a hard constraint: memory per device and tier, a pinned placement, a rule about which node may see what.
+- **Optimal within the cost model** for the space it searches; real instances are small enough (about 100 layers, a few hundred experts, a few dozen devices) for exact or bounded search.
+- **Close to optimal in reality:** scored by regret, the gap between the plan it picked and the best plan measured. Target: at most 10%.
+- **Never worse than a safe fallback plan** (one node, layer split, RAM offload).
+- **Explains itself:** predicted numbers, the binding bottleneck, the runner-up and why it lost.
+- **Shows its work at runtime:** every prediction is compared with OpenTelemetry measurements; drift triggers recalibration or replanning.
+
+### Principles
+
+1. **One plan, many shapes.** Tensor, pipeline, expert, data and context parallel, offload and tiering are shapes of one placement plan, not separate code paths.
+2. **Measure, don't assume.** Costs come from measured curves on your hardware; datasheets are only priors for what-if questions.
+3. **Reuse before build.** Kernels from ggml, model graphs, GGUF and tokenizers from llama.cpp, collectives from NCCL and RCCL, QUIC from quinn, solvers from HiGHS.
+4. **Patch, never fork.** ggml changes are a short, ordered patch queue against a pinned version, kept private for now and written cleanly enough to upstream later if you decide to.
+5. **Strangler path.** Start by driving llama.cpp's library from Rust for dense models; write the first own graph builder (one MoE family) as early as Phase 2, because expert streaming needs it; then replace scheduler, KV cache and executor piece by piece, each step behind a benchmark.
+6. **Observable by default.** Every layer emits OpenTelemetry metrics and traces from the first commit; the bottleneck detector and the planner read the same data.
+
+### Non-goals
+
+- Training or fine-tuning.
+- Tensor parallel across GPU vendors (pipeline across vendors is in scope).
+- Python at runtime (offline test tooling only).
+- Untrusted public meshes; every node is yours or explicitly trusted.
+- Beating vLLM or SGLang on peak NVIDIA datacenter throughput at high concurrency; they stay benchmark baselines and an optional backend for that case.
+
+### First targets
+
+Models: Qwen3 dense, then Qwen3 MoE, then GLM and DeepSeek-style MoE. Formats: GGUF first, safetensors later. Backends: CUDA and CPU until M2; HIP, Vulkan and Metal for own graph builders in Phase 8. Hardware: your Linux host and Windows desktop, then rented multi-GPU machines.
+
+## Feature map
+
+All 52 wanted features have a home and a phase; the MVP (M1, after Phase 3b) covers one MoE family plus dense models on CUDA and CPU, with tiered memory, expert streaming, the planner, observability and the bottleneck detector on one machine.
+
+| # | Feature | Built in | Phase |
+| --- | --- | --- | --- |
+| 1 | Tiered weights across VRAM, RAM, NVMe | `memory`, own graph builder | 2 |
+| 2 | MoE-aware expert placement and streaming | `memory`, `planner`, own graph builder | 2 |
+| 3 | KV cache tiers (VRAM, RAM, NVMe, remote) | `kvcache` | 4, remote in 6 |
+| 4 | Prefix caching, shared across nodes | `kvcache` | 4, cross-node in 6 |
+| 5 | Weight and KV quantization, chosen per unit with placement (see Quantization and quality) | ggml formats, `planner` | 1 whole-model, 2 per unit |
+| 6 | Fast model loading | `model` (aligned direct reads, parallel I/O) | 2 |
+| 7 | Tensor parallel | own executor, NCCL, all-reduce patch | 5 |
+| 8 | Pipeline parallel (layer split) | `executor` | 1 in a node, 6 across nodes |
+| 9 | Expert parallel | own executor, `memory` | 5, across nodes in 6 |
+| 10 | Sequence or context parallel | ggml patch (attention with log-sum-exp) | 9 |
+| 11 | Data parallel replicas | `control`, `gateway` | 6 |
+| 12 | CPU as a compute device | ggml CPU backend; free choice per shard with own executor | 1, free in 5 |
+| 13 | Prefill and decode on different hardware | `executor`, `kvcache` | 7 |
+| 14 | Mixed GPU sizes and vendors | ggml backends, `planner` | sizes 1, vendors after the Phase 0 spike, own builders on HIP, Vulkan, Metal in 8 |
+| 15 | Interconnect-aware placement, PCIe topology included | `profiler`, `costmodel` | 3a |
+| 16 | Multiple nodes | `transport`, `control` | 6 |
+| 17 | Automatic node discovery | `control` (static list in Phase 6, mDNS later; ADR 0091) | 6, mDNS later |
+| 18 | Live node join and leave | `control`, `planner` | 6 |
+| 19 | Fault tolerance | replicas, `control` | 6 |
+| 20 | Security (mTLS, node trust rules) | `transport`, `control` | 6 |
+| 21 | Automatic hardware discovery | `profiler` | 0 |
+| 22 | Measured-cost planner | `profiler`, `costmodel`, `planner` | 3a |
+| 23 | Objective as limits (target tok/s, quality floor, device cost) plus a position on the speed and quality front | `planner` | 3a |
+| 24 | Live replanning | `planner`, `control` | 3a as drain-and-restart, 7 live |
+| 25 | Continuous batching | `scheduler` | 4 |
+| 26 | Chunked prefill | `scheduler` | 4 |
+| 27 | Speculative decoding (n-gram, draft; MTP where the GGUF has heads) | `scheduler` | 4 |
+| 28 | Optimized kernels, CUDA graphs | ggml; graphs survive expert streaming only on cache hits | 1, 2, 4 |
+| 29 | Several models at once, on demand | `gateway`, `planner` | 9 |
+| 30 | LoRA hot swap, batched multi-LoRA | `executor`, ggml patch | 9 |
+| 31 | Priorities, quotas, auth | `gateway` | 9 |
+| 32 | OpenAI and Anthropic API | `gateway` | 3b |
+| 33 | Tool calling, structured output | `gateway` (minijinja, llguidance) | 3b |
+| 34 | Multimodal, embeddings | llama.cpp mtmd, `gateway` | 9 |
+| 35 | Metrics, traces, logs (OpenTelemetry) | `telemetry` | 0, extended every phase |
+| 36 | No forced telemetry | design rule: OTLP only to endpoints you configure | 0 |
+| 37 | Windows and Linux, container image | build, packaging | 1, packages in 9 |
+| 38 | Live change of parallel layout | migration DAGs | 7 |
+| 39 | Live replica scaling | `control` | 7 |
+| 40 | Separate layouts for prefill and decode | `planner`, `executor` | 7 |
+| 41 | Bottleneck detection (ranked, with confidence) | `analysis` | 3a |
+| 42 | Improvement advisor (ranked actions, what-if) | `analysis`, `planner` | 3a, auto-apply in 7 |
+| 43 | Detailed profiling | step timing always; per-op calibration runs; CUPTI or rocprof in profiling mode | 1, 3a |
+| 44 | Per-request cost accounting (GPU-seconds, bytes streamed) | `telemetry`, `gateway` | 3b |
+| 45 | SLO burn-rate alerts | `telemetry`, dashboards | 3a |
+| 46 | Process isolation per device | `executor` (one worker process per box, ADR 0069; per device in ADR 0017) | 5 |
+| 47 | Request cancellation and backpressure | `gateway`, `scheduler` | 3b |
+| 48 | Quality profile per model (measured drift per tensor group and format) | `profiler`, calibration job | 2, used by the planner in 3a |
+| 49 | Load-time conversion from F16 or BF16 with a disk cache | `model` | 2, safetensors with the own loaders |
+| 50 | 1 to 2 bit formats (IQ1, IQ2, TQ, Q1\_0) as planner choices | ggml formats, `planner` | 2 |
+| 51 | Natively ternary model families (BitNet b1.58) | libllama, own builder | 1 via libllama, own builder in 9 |
+| 52 | Self-speculative decoding (low-bit draft of the same model) | `scheduler`, `planner` | 4 |
+
+## Architecture
+
+The planner writes placement plans, the executor runs them on patched ggml, and telemetry feeds measurements back to the planner and the bottleneck detector, closing the loop.
+
+```mermaid
+flowchart TB
+    subgraph loop[" "]
+        direction TB
+        planner["planner<br/>writes placement plans"]
+        executor["executor on patched ggml<br/>runs the plan"]
+        telemetry["telemetry<br/>OpenTelemetry metrics and traces"]
+        analysis["analysis<br/>bottleneck detector and advisor"]
+        control["control<br/>replanning triggers, membership"]
+    end
+    planner -->|"placement plan"| executor
+    executor -->|"step timing, tier and link traffic"| telemetry
+    telemetry -->|"calibration residuals (left)"| planner
+    telemetry -->|"measurements (right)"| analysis
+    analysis -->|"ranked actions"| control
+    control -->|"replan, apply safe changes"| planner
+    control -->|"drain, reconfigure"| executor
+```
+
+Measurements flow down into telemetry and back up: to the planner for calibration (left) and to the detector and advisor (right), which act through the control plane.
+
+| Crate | Job | Built on |
+| --- | --- | --- |
+| `plan` | Placement plan IR, validator, diff, migration DAGs | Own |
+| `ggml-sys` | Rust bindings to the pinned, patched ggml | bindgen; ggml patch queue |
+| `model` | GGUF loading, architecture graph builders, tokenizer, chat templates | libllama first (strangler path), then own builders where needed; minijinja |
+| `memory` | Per-device arenas, tiers (VRAM, RAM, NVMe, remote), expert slot cache, direct I/O, prefetch | Own; ggml backend buffers; io\_uring on Linux, unbuffered overlapped I/O or IoRing on Windows |
+| `executor` | Per-rank graphs cut at collectives, runs plan stages, async copies, weight streaming | ggml backend scheduler until Phase 5; then own executor, one worker process per box (ADR 0016, 0069; ADR 0017 had one per device) |
+| `kvcache` | Chunked KV (paged not needed, ADR 0067), prefix tree, quantized KV, tiers, migration | Own from Phase 4; llama.cpp's cache before |
+| `scheduler` | Continuous batching, chunked prefill, speculative decoding, priorities | Own from Phase 4 |
+| `transport` | One trait for collectives and point-to-point: NCCL or RCCL, QUIC, RDMA, shared memory | NCCL, RCCL, quinn or iroh |
+| `profiler` | Hardware discovery and measurement: per-op curves, bandwidth per tier, link latency and bandwidth | Own; NVML, amdsmi |
+| `costmodel` and `sim` | Predicts step times; discrete-event simulator for load | Own |
+| `planner` | Search, hints, explain, what-if, replanning | Own; HiGHS |
+| `telemetry` | OpenTelemetry metrics, traces, logs; GPU and host metrics | opentelemetry-rust, tracing |
+| `analysis` | Bottleneck detection, improvement advisor | Own |
+| `control` | Discovery, membership, failover, replanning triggers, mTLS | Own; step-ca for certificates |
+| `gateway` | OpenAI and Anthropic API, tool calls, structured output, auth, quotas, routing | axum; llguidance |
+
+### The placement plan
+
+The plan is the contract between planner and executor; every mode is a shape of it.
+
+- **Units:** the model split into embedding, attention block, MLP, each expert, LM head; each records weight bytes, FLOPs per token, activation bytes and KV bytes per token.
+- **Shards:** a unit split into k pieces along a chosen dimension. Each shard has a home (device and tier) and a compute device chosen independently, CPU included (executable from Phase 5; before that compute follows the weight buffer, apart from ggml's own fixed offload heuristic).
+- **Stages and edges:** units grouped into stages; every boundary is an edge with a transport and a measured cost.
+- **Expert map:** per expert its tier (VRAM, RAM, NVMe, remote node), cache slots per layer, pinned hot set.
+- **Replica groups:** copies of a sub-plan behind a router.
+- **Phase plans:** prefill and decode may differ while sharing weights. First form (Phase 2): per-device prefill and decode budgets for slots and workspace, so prefill borrows slot VRAM and decode gets it back (ADR 0031).
+- **Knobs:** batch limits, KV budget per device and tier, speculative decoding settings.
+
+Plans are TOML, hand-editable (the strongest hint), and a diff between two plans compiles to a migration DAG: moves ordered per shard, independent across shards, drained first, finished with a two-phase commit.
+
+### What each phase can execute
+
+The IR is richer than what can run early; the planner only proposes fields the current phase can execute.
+
+| Plan field | Phase 1 (libllama) | Phases 2 to 4 (own graph builder) | Phase 5 on (own executor) |
+| --- | --- | --- | --- |
+| Layer split and GPU ratios | Yes (tensor split, split mode) | Yes | Yes |
+| Tensor-to-buffer overrides (offload, experts to CPU) | Yes (buffer-type overrides by regex) | Yes | Yes |
+| Expert tiers and slot cache | No | Yes, for the own MoE family | Yes |
+| Prefill and decode budgets for slots and workspace | No | Yes | Yes |
+| Compute device per shard | No (follows the buffer; ggml copies CPU weights to the GPU at larger batches, not tunable) | Partly | Experts only, single-GPU plans; stages of several GPUs compute on GPUs only (ADR 0069) |
+| Tensor and expert parallel | No | No | Yes; expert parallel with `tp = ep` (ADR 0070) |
+| Replicas, stages across nodes | No | No | Phase 6 |
+
+The Phase 3a regret test uses only executable fields: per hardware fixture, every candidate the planner enumerates (at least 20 plans) is benchmarked, and regret and rank correlation are measured over that set.
+
+### Platform constraints
+
+- NCCL, RCCL, GPUDirect Storage, io\_uring and RDMA verbs are Linux only. Windows machines are API clients, workers or pipeline stages. Tensor parallel and expert parallel across nodes need NCCL or RDMA and run on Linux; expert parallel inside one Windows machine works without NCCL.
+- Windows keeps VRAM headroom for the desktop compositor; the arena reserves it.
+- llama.cpp's RPC transport is plaintext; Tetraeder uses its own transport with mTLS instead.
+
+## Engine on ggml
+
+Rust owns everything outside the kernels; ggml supplies the kernels for every backend through a short private patch queue; libllama carries dense models at first, own graph builders arrive in Phase 2 because expert streaming needs them, and an own executor replaces ggml's scheduler in Phase 5 because tensor parallel needs it.
+
+### Rust and C boundary
+
+- `ggml-sys` is the only crate with raw FFI to ggml and libllama; `unsafe` stays in `ggml-sys` and `memory`.
+- Tensors and buffers are Rust types that own their lifetime per device and tier; the executor never frees memory the arena did not allocate.
+- One pin: a llama.cpp commit, which vendors ggml. One weekly CI job rebases both the libllama binding and the ggml patch queue.
+
+### Strangler path
+
+1. **Phase 1, libllama for dense models.** llama.cpp loads, builds the graph, keeps the KV cache and batches. Tetraeder sets placement through its parameters (layer split, split mode, buffer-type overrides, mmap) and measures step times.
+2. **Phase 2, first own graph builder.** Qwen3 MoE, written in Rust on ggml ops, CUDA and CPU only, validated against libllama logits. It owns the expert tensors as slot tensors, reads the router's top-k back and remaps it to slots; that is what makes expert streaming possible, since libllama allocates full expert tensors and runs top-k inside its graph with no public hook.
+3. **Phase 4, own KV cache and scheduler,** plus a second builder (Qwen3 dense), still CUDA and CPU.
+4. **Phase 5, own executor** replaces ggml's backend scheduler across devices, which issues splits one after another from one host thread. The own executor issues per-device graphs, cut at collectives, asynchronously with no host sync between ranks, using ggml's comm API (NCCL or its internal all-reduce) at the pin; all GPU ranks of a box live in one worker process (ADR 0069, accepted for that part 2026-11-15; ADR 0017 had one per device).
+5. **Phase 8, backend parity:** own builders on HIP, Vulkan and Metal, with parity tests.
+6. **libllama stays** as the parity reference and as the fallback for model families without an own builder.
+
+### ggml patch queue (private)
+
+Each patch has an ADR and tests on every backend it touches. Nothing is upstreamed for now (ADR 0011); every rebase is ours, so out-of-tree code is preferred wherever it works. The queue is `patches/series`; origins and licenses are in `docs/sources.md`.
+
+| Patch | Why | Needed in | Worth upstreaming later |
+| --- | --- | --- | --- |
+| `0001` MSVC AVX-512 VBMI score | One-line build fix so the MSVC AVX-512 VBMI variant gets its score (ADR 0052) | Phase 2 follow-up (in the queue) | |
+| `0002` iqk AVX-512 Q4_K/Q6_K decode kernels | Copied iqk kernels for CPU expert decode (ADR 0053) | Phase 2 follow-up (in the queue) | |
+| `0003` CPU registry threadpool pause | Exposes `ggml_threadpool_pause` through the CPU registry for the loadable-module build (ADR 0061) | Phase 2 follow-up (in the queue) | |
+| `0004` CUDA `mul_mat_id` skips id -1 | Expert parallel without computing foreign experts; matches the CPU kernel (ADR 0070) | Phase 5 (in the queue) | High: it aligns CUDA with existing CPU semantics |
+| `0005` `ggml_graph_view_new` | Executor ranges as views of the rank graph, so CUDA fuses inside them (ADR 0075) | Phase 5 (in the queue) | |
+| All-reduce as a graph op (dropped) | Not needed: the pin has ggml's comm API (NCCL, a two-GPU internal all-reduce), called between subgraphs (ADR 0069) | | |
+| Attention over chunked or paged KV (not needed) | ADR 0067 step 1 chose chunked KV on unmodified attention, no patch (2026-11-14) | | |
+| Attention returning log-sum-exp | Merge partial attention for context parallel | Phase 9 | Medium |
+| Batched multi-LoRA matmul | Many adapters in one batch | Phase 9 | Medium |
+
+No patch needed: expert slot remapping (inside the own builder), KV pack, unpack and head re-layout (small out-of-tree kernels).
+
+### Timing without perturbing what is measured
+
+Timing events inside a captured CUDA graph do not give usable per-op times, and disabling graphs changes the fixed per-op cost. So: production steps record whole-step time with graphs on; calibration runs record per-op times with graphs off; the cost model keeps c0 for both modes; deep profiling uses CUPTI or rocprof from outside, in profiling mode only. No timing patch.
+
+### Kernel coverage
+
+| Feature | Kernel | Status |
+| --- | --- | --- |
+| Quantized weights, layer split, mixed GPUs | Quantized matmul per backend | ggml today |
+| Pipeline across vendors | Activation copies between backends | ggml, if the Phase 0 multi-backend spike passes |
+| RAM and NVMe tiers, CPU computing cold experts | Copies plus CPU kernels | ggml today |
+| MoE and expert parallel | Grouped expert matmul | ggml today; expert parallel needs the own executor and patch 0004 (ADR 0070) |
+| Tensor parallel | Sliced matmul plus all-reduce | ggml's comm API at the pin plus own executor (ADR 0069) |
+| Quantized KV, multimodal | Various | ggml and llama.cpp today |
+| Speculative decoding | Batched verification with masks | ggml today |
+| Paged KV | Attention over scattered blocks | Patch, only if needed |
+| Context parallel | Attention with log-sum-exp | Patch |
+| Many LoRAs per batch | Batched multi-LoRA | Patch |
+| Peak NVIDIA throughput at high concurrency | Marlin, FlashInfer, CUTLASS-class kernels | Not pursued; vLLM or SGLang only as an external process behind the gateway |
+
+## Memory tiers and expert streaming
+
+Every byte of weights and KV lives in one of four tiers, and the planner places it so that the slowest tier delivers as few bytes per token as possible; across nodes, activations travel to the experts instead of experts to the compute.
+
+| Tier | Typical bandwidth | Holds |
+| --- | --- | --- |
+| VRAM | hundreds of GB/s to a few TB/s | Dense layers, hot experts, active KV |
+| RAM | tens to about 100 GB/s per node | Warm experts, overflow KV, prefix cache |
+| NVMe | a few GB/s per drive | Cold experts, cold KV, model files |
+| Remote node | link bandwidth plus latency per hop | Experts and KV that live on another machine |
+
+The bandwidths are orders of magnitude for planning; the profiler measures the real ones. The paths between tiers are links in the hardware graph too: NVMe to RAM and RAM to VRAM both cross the PCIe root complex, and on consumer boards a second GPU and the NVMe often share lanes.
+
+### Per-device memory budget
+
+The planner works with a measured reserve per device: CUDA context, cuBLAS workspaces, graph pools, fragmentation, and the desktop compositor on Windows are measured at startup and subtracted before planning. While libllama allocates its own buffers (Phase 1), the budget is checked after loading, not guaranteed; from Phase 2 the own builder allocates from per-device arenas sized by the plan, with headroom.
+
+### Expert streaming on ggml
+
+The design follows Colibri, ported to ggml through the own graph builder (Phase 2):
+
+1. Experts are read by file offset from GGUF; in current conversions each expert is a contiguous slab of its layer's stacked tensor, three slabs per expert (gate, up, down). Older GGUFs with per-expert tensors are repacked once at import.
+2. GGUF aligns tensors to 32 bytes, while O\_DIRECT needs sector or page alignment: reads cover the aligned enclosing range into bounce buffers, or an import step writes a 4 KiB-aligned expert file. Windows uses FILE\_FLAG\_NO\_BUFFERING with overlapped I/O or IoRing, sector-aligned.
+3. Each MoE layer has a slot tensor with K slots per tier (VRAM, RAM) and a table from expert to slot. The builder reads the router's top-k, remaps it to slots and loads misses.
+4. **One segment per MoE layer, whole-step graphs once hit rates allow** (ADR 0030). A layer only runs without the host when all its top-k experts are resident; at top-8 of 128 and an 80% per-expert hit rate that is about 17% of layers, so a whole step almost never would. The step therefore runs as one segment per MoE layer: the host reads the router's top-k, remaps to slots, starts loads for misses, and the next segment (a CUDA graph each) follows. The next layer's likely experts are prefetched from the hot set and from routing correlations between layers. A device-side slot table with one miss check per step comes only when the measured per-layer full-hit rate makes it pay. Hit rates are first-class metrics.
+5. Expert-aware cache instead of the OS page cache: pinned hot set from measured routing frequencies, LRU per layer, deep I/O queues (256-expert models have small slabs, so IOPS matter as much as bandwidth).
+6. Streamed experts are computed where it is cheapest: on the GPU after upload at larger batch, on the CPU where they sit at batch 1.
+7. **Routing profiles:** hot sets differ by workload (code versus chat), so the planner keeps one profile per workload class and switches the pinned set when traffic changes.
+
+### Levers from Strata and llama.cpp's expert cache
+
+Read on 2026-11-05 from their docs and pull requests; their numbers are self-reported, on other models and hardware, and none is measured here yet. Each lever needs a paired run before it changes a default (Rule 3).
+
+| Lever | Source and claim | Where it fits |
+|---|---|---|
+| Low-bit KV: int8, or 8-bit keys with 4-bit values | Strata: each freed GB holds about 700 more experts on its model | The builder's KV is F16; a smaller one leaves VRAM for expert slots and a draft model |
+| KV partly in RAM, only the most-read part in VRAM | Strata: 50.9 to 62.6 tok/s at 262K | Long contexts; needs a plan option and a streamed-KV path |
+| CPU and GPU expert work overlapping within a layer | Strata's core design | Check first whether the builder's segments overlap them at all |

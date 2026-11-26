@@ -48,7 +48,7 @@ def text(r):
 def session_s(tmp_path, scenario="", second_scenario=None):
     """The two invocations of the driver; returns (first result, second result or None, results dir)."""
     try:
-        r1, out = run_s(tmp_path, "gates setup dryrun budget plan linkgate fetch calib predict", scenario)
+        r1, out = run_s(tmp_path, "gates bulk setup dryrun budget plan linkgate fetch calib predict", scenario)
         if r1.returncode != 0 or not (out / "predictions" / "FROZEN.sha256").exists():
             return r1, None, out
         r2, out = run_s(tmp_path, "judged aalast linkend summary", second_scenario if second_scenario is not None else scenario,
@@ -106,7 +106,7 @@ def test_case_s_no_plan_on_both_nodes_stops_at_the_pick(tmp_path):
 @needs_posix
 def test_case_s_refuses_to_judge_on_a_frozen_hash_that_does_not_match_or_a_changed_file(tmp_path):
     try:
-        r1, out = run_s(tmp_path, "gates setup dryrun budget plan linkgate fetch calib predict")
+        r1, out = run_s(tmp_path, "gates bulk setup dryrun budget plan linkgate fetch calib predict")
         assert r1.returncode == 0, text(r1)[-2500:]
         r2, _ = run_s(tmp_path, "judged", FROZEN_SHA="0" * 64)
         assert r2.returncode != 0 and "is not the frozen hash" in text(r2)
@@ -251,7 +251,7 @@ def test_case_s_no_covering_plan_aborts_at_the_plan_before_the_gate_and_the_down
 @needs_posix
 def test_case_s_a_download_without_a_dry_run_is_refused_before_anything_is_fetched(tmp_path):
     try:
-        r1, out = run_s(tmp_path, "gates setup budget plan linkgate fetch")  # no dryrun stage
+        r1, out = run_s(tmp_path, "gates bulk setup budget plan linkgate fetch")  # no dryrun stage
         assert r1.returncode != 0 and "no dry run passed on both boxes" in text(r1), text(r1)[-1500:]
         assert not (out / "dryrun.json").exists() and not (out / "plans" / "repick.json").exists()
         assert "fetch done" not in text(r1)
@@ -317,3 +317,37 @@ def test_case_s_on_a_card_over_24_gib_the_peak_after_the_warm_request_must_stay_
     else:
         assert v["verdict"] == "no verdict" and "rounds_clean" in failed_rules(v)
         assert "peak GPU memory" in v["rounds"][0]["unclean_reasons"][0]
+
+
+@needs_posix
+def test_case_s_a_download_without_the_bulk_screen_is_refused_before_anything_is_fetched(tmp_path):
+    try:
+        r1, out = run_s(tmp_path, "gates setup dryrun budget plan linkgate fetch")  # no bulk stage
+        assert r1.returncode != 0 and "the bulk screen has not passed" in text(r1), text(r1)[-1500:]
+        assert "fetch done" not in text(r1)
+    finally:
+        kill_all(tmp_path)
+
+
+@needs_posix
+def test_case_s_the_bulk_screen_runs_both_directions_and_writes_its_verdict(tmp_path):
+    try:
+        r1, out = run_s(tmp_path, "gates bulk", BULK_MIB="2", BULK_REPEATS="3")
+        assert r1.returncode == 0, text(r1)[-1500:]
+        runs = json.loads((out / "link" / "bulk-runs.json").read_text())
+        assert len(runs["a->b"]) == 3 and len(runs["b->a"]) == 3 and runs["mib"] == 2
+        assert json.loads((out / "link" / "bulk.json").read_text())["pass"] is True
+    finally:
+        kill_all(tmp_path)
+
+
+@needs_posix
+def test_case_s_the_older_box_without_the_time_for_the_stages_after_the_download_aborts_before_it(tmp_path):
+    try:
+        # 2 h 40 min old: the stages from fetch to the end need about 88 min padded, the cap is 180
+        r1, out = run_s(tmp_path, "gates bulk setup dryrun budget plan linkgate fetch", LB_AGE_S=str(160 * 60))
+        t = text(r1)
+        assert r1.returncode != 0 and "CLOCK SHORT" in t and "the older box lacks the time" in t, t[-1500:]
+        assert "fetch done" not in t and not (out / "env" / "a" / "env-plan.json").exists()
+    finally:
+        kill_all(tmp_path)
