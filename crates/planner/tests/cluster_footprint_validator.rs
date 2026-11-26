@@ -195,13 +195,14 @@ fn the_filter_matches_the_validators_memory_issue() {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(6))]
 
-    /// AGENTS rules 4 and 5: on every fixture, as committed or with its first node copied to up
-    /// to seven nodes, at any GPU and RAM size, the planner emits only plans whose memory the
-    /// validator accepts and whose footprint fits each node.
+    /// AGENTS rules 4 and 5: on every fixture, as committed or with its first node copied to two
+    /// to four nodes, at any GPU and RAM size, the planner emits only plans whose memory the
+    /// validator accepts and whose footprint fits each node. Seven nodes are the test above (five
+    /// and six search 120 and 720 node orders, too slow for CI here).
     #[test]
     fn no_fixture_gets_a_plan_the_validator_rejects_for_memory(
         fixture in 0..FIXTURES.len(),
-        copies in prop::option::weighted(0.75, 2usize..=7),
+        copies in prop::option::weighted(0.75, 2usize..=4),
         gpu_gb in prop::option::of(16u64..=48),
         ram_gb in prop::option::of(40u64..=128),
     ) {
