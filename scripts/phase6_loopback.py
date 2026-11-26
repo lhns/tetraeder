@@ -585,6 +585,7 @@ def main() -> int:
         ap.add_argument("--node", action="append", default=[])
         ap.add_argument("--swap-link")
         ap.add_argument("--ram-budget", action="append", default=[])
+        ap.add_argument("--gpu-cap-gib", type=float)  # the fake graphs are 3090s already (24 GiB), so the cap changes nothing
         ap.add_argument("-o", "--out", required=True)
         return fake_merge(ap.parse_args(argv[2:]))
     if argv[:2] in (["cluster", "probe"], ["cluster", "profile"]):

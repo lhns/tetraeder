@@ -3057,6 +3057,7 @@ nodes:
   headline: ''
   depends_on:
   - bench-phase6-rehearsal
+  - bench-phase6-exit-s-2
   - cluster-remote-kv
   - bench-235b-segment-confirm-2
   - planner-costmodel-v6-rest
@@ -4627,7 +4628,7 @@ nodes:
   folded: []
   overview: false
   plain: 'cluster profile and cluster merge take --gpu-cap-gib and fill the compute and bandwidth of an A6000, A40, L40 or L40S from a committed class table (an unknown card gets the lowest prior and a note), so such a node plans against 24 GiB and a Case S pair with one gets its covering pick. The driver script still has to pass the flag.'
-  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). ADR 0091 History 2026-11-26. Open hand-off: scripts/phase6_exit_s.sh must pass --gpu-cap-gib 24 to cluster profile and cluster merge and copy their note lines into env.'
+  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). ADR 0091 History 2026-11-26. Wired 2026-11-26: scripts/phase6_exit_s.sh passes --gpu-cap-gib GPU_CAP_GIB (default 24) to every cluster profile and merge; the cap and prior notes are in the graph notes of the committed plans/hw-plan.json.'
 - id: bench-phase6-clock-offset
   title: Case F clock offset between the boxes is 2 to 6 s uncertain
   track: bench
@@ -4831,3 +4832,68 @@ nodes:
   folded: []
   overview: false
   plain: 'The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured.'
+- id: cluster-case-s-pair-finder
+  title: Case S box pair finder
+  track: cluster
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - scripts/phase6_pair_finder.py
+  - tests/test_phase6_pair_finder.py
+  verdict_quote: '3 pair(s); top 3 by plannable, bulk rate, datacenter, price'
+  headline: 'read-only finder lists Case S pairs from live Vast offers under every host rule and runs the real planner on each'
+  depends_on:
+  - cluster-case-s-checks
+  replaced_by: []
+  lane: ci
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'A read-only script lists pairs of Vast offers that meet every Case S rule (RAM, cores, disk, network, price with traffic, skip list, different hosts), ranks them by bulk rate and counts what each rule excludes; with the real planner it found 38 covering candidates on a 3090 plus A40 pair (2026-11-26, 14:20 UTC). Boxes are created only once it lists a pair.'
+  notes: 'RAM floor 61.7 GB for the listing (57.1 GB of node b plus 4.6 GB box use); judged boxes need 64 GB (advisor row 2026-11-26). The offer field gpu_max_power_w is not yet a rule; the power gate on the box decides.'
+- id: cluster-case-s-flow
+  title: Case S full dry run and clock
+  track: cluster
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - scripts/phase6_exit_s.sh
+  - scripts/phase6_bulk.py
+  - scripts/phase6_clock.py
+  - scripts/phase6_report_box.sh
+  verdict_quote: 'P6_LOOPBACK_S bulk screen, link gate, re-measured budget and re-pick, predict --judged with the freeze, 3 judged rounds with the early A/A and the A/A last, end probe and summary'
+  headline: 'every judged stage runs on the tiny model before the download; bulk screen after the gates; pre-download clock check'
+  depends_on:
+  - cluster-case-s-checks
+  replaced_by: []
+  lane: ci
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'The Case S driver runs every judged stage on the tiny model on the boxes before the 142 GB download, screens the link with 64 MiB each way right after the gates (fail when the frozen prediction would move over 0.08), checks before the download that the older box can finish under its cap, and runs the single-node reference and the second-prompt prediction as report-only stages. CI runs the same stages with the real binaries. The clock is mostly estimates: 149 min nominal, 170 padded.'
+  notes: 'One-off (user, 2026-11-26): the boxes of the next judged Case S session may run 4 h (taxameter.toml max_box_hours 4 until its results are committed).'
+- id: bench-phase6-exit-s-2
+  title: Phase 6 exit Case S, rerun
+  track: bench
+  kind: session
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-case-s-pair-finder
+  - cluster-case-s-flow
+  - cluster-profile-gpu-cap
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26).'
+  notes: 'Worst case about 12.5 USD of 16.13 (two attempts, 4 h, 1.56 USD/h).'

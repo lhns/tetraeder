@@ -97,6 +97,7 @@ LOOPBACK="${LOOPBACK:-0}"
 lb_fake=0
 [ "$LOOPBACK" = fake ] && { LOOPBACK=1; lb_fake=1; }
 TINY="${TINY:-0}" # the tiny sharded MoE of tests/fixtures instead of the 235B (the dry run); the real loopback is always tiny
+GPU_CAP_GIB="${GPU_CAP_GIB:-24}" # every GPU is planned against 24 GiB (ADR 0091 answer 9, ADR 0092 owner answer 5); cluster profile and merge record it in hw.notes
 [ "$LOOPBACK" = 1 ] && [ "$lb_fake" = 0 ] && TINY=1
 say() { echo "[$(date +%T)] $*"; }
 die() { say "FATAL: $*"; exit 1; }
@@ -334,14 +335,14 @@ st_linkgate() {
   probe_link gate1 || die "the first full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
   gate_time gate1
   # the plan's graph with the fitted rates of both nodes and only the link curves swapped: what differs between the two prices is the link
-  bx a 300 "$(tet) cluster merge $P/hw-plan.json --node a=$P/fitted-gate.toml --node b=$P/fitted-gate.toml --swap-link $P/probe-gate1.json -o $P/hw-gate1.json" | tail -n 1
+  bx a 300 "$(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $P/hw-plan.json --node a=$P/fitted-gate.toml --node b=$P/fitted-gate.toml --swap-link $P/probe-gate1.json -o $P/hw-gate1.json" | tail -n 1
   get a hw-gate1.json "$out/link/gate/hw-gate1.json"
   gate_price hw-gate1.json predict-gate1.json
   say "link gate: waiting $gate_wait s for the second probe"
   sleep "$gate_wait"
   probe_link gate2 || die "the second full probe failed (a truncated probe is no fallback): the pair is aborted, destroy both boxes"
   gate_time gate2
-  bx a 300 "$(tet) cluster merge $P/hw-plan.json --node a=$P/fitted-gate.toml --node b=$P/fitted-gate.toml --swap-link $P/probe-gate2.json -o $P/hw-gate2.json" | tail -n 1
+  bx a 300 "$(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $P/hw-plan.json --node a=$P/fitted-gate.toml --node b=$P/fitted-gate.toml --swap-link $P/probe-gate2.json -o $P/hw-gate2.json" | tail -n 1
   get a hw-gate2.json "$out/link/gate/hw-gate2.json"
   gate_price hw-gate2.json predict-gate2.json
   summ gate "$out" || die "the link gate failed: destroy both boxes, nothing was downloaded (the 142 GB model comes only after this gate)"
@@ -421,7 +422,7 @@ json.dump(d, open(p, "w"), indent=2)
 EOF
   say "RAM budgets: a $ra B, b $rb B (the plan was made on $(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/a/env-plan.json") and $(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/b/env-plan.json"))"
   # the plan's graph with the new budgets (the first one stays as hw-plan-first.json), the covering pick again: it must be the judged plan
-  bx a 300 "cp -n $P/hw-plan.json $P/hw-plan-first.json; $(tet) cluster merge $P/hw-plan-first.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 1
+  bx a 300 "cp -n $P/hw-plan.json $P/hw-plan-first.json; $(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $P/hw-plan-first.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 1
   get a hw-plan.json "$out/plans/hw-plan.json"
   get a hw-plan-first.json "$out/plans/hw-plan-first.json"
   if [ "$TINY" = 1 ]; then
@@ -561,14 +562,14 @@ st_plan() {
   # the cluster graph carries each node's measured RAM budget on its CPU (ADR 0092 section 4); discovery names the models volume nvme0
   ra=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/a/env.json")
   rb=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["ram_budget"]["ram_budget_bytes"])' "$out/env/b/env.json")
-  bx a 300 "$(tet) cluster profile $cl --probe $P/probe-plan.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 2
+  bx a 300 "$(tet) cluster profile --gpu-cap-gib $GPU_CAP_GIB $cl --probe $P/probe-plan.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 2
   if [ "$LOOPBACK" = 1 ] && [ "$lb_fake" = 0 ]; then
     # the third stand-in of the real loopback (with the made-up RAM budget and throttle line): a runner has no GPU, so `cluster profile` found none
     # and the pinned plan's VRAM slots cannot be priced; the committed two-3090 graph, the real probe's link and the budgets go in its place
     say "loopback: the committed two-3090 cluster graph in place of the runner's (no GPU), the real probe's link in it"
     python3 -I scripts/phase6_tiny_graph.py crates/costmodel/fixtures/cluster/cluster_two_3090_lan.toml "$out/plans/hw-standin.json"
     put a "$out/plans/hw-standin.json" hw-standin.json
-    bx a 300 "$(tet) cluster merge $P/hw-standin.json --swap-link $P/probe-plan.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 2
+    bx a 300 "$(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $P/hw-standin.json --swap-link $P/probe-plan.json --ram-budget a=$ra --ram-budget b=$rb -o $P/hw-plan.json" | tail -n 2
   fi
   get a probe-plan.json "$out/link/probe-plan.json"
   get a hw-plan.json "$out/plans/hw-plan.json"
@@ -626,7 +627,7 @@ st_calib() {
   summ layout-same "$out/layout.json" "$out/layout-model.json" || die "the model's layout is not the committed one the plan was made on: the pick is for another model"
   say "the start link probe, swapped into the plan's graph as link/hw.json"
   probe_link start
-  bx a 300 "$(tet) cluster merge $(p6dir a)/hw-plan.json --swap-link $(p6dir a)/probe-start.json -o $(p6dir a)/hw.json" | tail -n 1
+  bx a 300 "$(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $(p6dir a)/hw-plan.json --swap-link $(p6dir a)/probe-start.json -o $(p6dir a)/hw.json" | tail -n 1
   get a hw.json "$out/link/hw.json"
   say "node a: the whole-model trace, hidden rows entering layer $(end_of a)"
   scbox a c1 "trace" > /dev/null
@@ -691,7 +692,7 @@ merge_fitted() {
   P=$(p6dir a)
   put a "$out/calib/a/fitted.toml" fitted-a.toml
   put a "$out/calib/b/fitted.toml" fitted-b.toml
-  bx a 300 "$(tet) cluster merge $P/hw.json --node a=$P/fitted-a.toml --node b=$P/fitted-b.toml -o $P/hw-cluster.json" | tail -n 2
+  bx a 300 "$(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $P/hw.json --node a=$P/fitted-a.toml --node b=$P/fitted-b.toml -o $P/hw-cluster.json" | tail -n 2
   get a hw-cluster.json "$out/predictions/hw-cluster.json"
 }
 
@@ -859,7 +860,7 @@ st_linkend() {
   need_spans
   probe_link end
   # the frozen plan priced again with the end probe's curves: only the link differs from the frozen graph
-  bx a 300 "$(tet) cluster merge $(p6dir a)/hw-cluster.json --swap-link $(p6dir a)/probe-end.json -o $(p6dir a)/hw-cluster-end.json" | tail -n 1
+  bx a 300 "$(tet) cluster merge --gpu-cap-gib $GPU_CAP_GIB $(p6dir a)/hw-cluster.json --swap-link $(p6dir a)/probe-end.json -o $(p6dir a)/hw-cluster-end.json" | tail -n 1
   get a hw-cluster-end.json "$out/predictions/hw-cluster-end.json"
   price hw-cluster-end.json predict-cluster-end.json > "$out/predictions/predict-end.log" 2>&1 || { cat "$out/predictions/predict-end.log"; die "the end-priced prediction was refused"; }
   tail -n 2 "$out/predictions/predict-end.log"

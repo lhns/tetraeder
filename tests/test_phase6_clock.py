@@ -1,8 +1,11 @@
 """The clock of a Case S session (scripts/phase6_clock.py): the stages after the download must fit the 3 h cap of the older box. Hardware: none."""
 
+import os
 import pathlib
 import subprocess
 import sys
+
+os.environ["P6_BOX_HOURS"] = "3"  # the tests are written against the standing 3 h cap, whatever a one-off sets in taxameter.toml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
