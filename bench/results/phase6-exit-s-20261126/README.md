@@ -1,0 +1,16 @@
+# Session phase6-exit-s-20261126 (pair 1): aborted at the plan stage, nothing downloaded
+
+- Status: null, no verdict. Case S pair 1 ended at the `plan` stage ("no covering plan that computes on both nodes"), before the link gate and the 142 GB download. No judged round ran, no attempt reached the download (0 of 2 used).
+- Rule: ADR 0091 Case S, ADR 0092 rerun rules; scripts/phase6_exit_s.sh at origin/main 55f27c4c plus the dry-run fix below.
+- Boxes (taxameter, `sc_offers.sh create --ports 7000`, disk_gb 230, `provision --models ,`, both `cuda: ok`):
+  - a: box 62646852, host 79766 (Virginia, US), RTX A6000 (48 GB), AMD EPYC 7542 (1 socket, 64 threads), memory.max 259.5 GB, 0.543 USD/h; created 07:19:01, destroyed 08:28:58 (1 h 10 min).
+  - b: box 62646930, host 79466 (Quebec, CA), RTX 3090, Intel Xeon W-2133 (6 cores, 12 threads), memory.max 129.3 GB, 0.409 USD/h; created 07:19:48, destroyed 08:29:00 (1 h 09 min).
+  - Cost about 1.1 USD for both (rent only, the download did not start).
+- Gates (`gates/`): both boxes pass power, idle, one NUMA node, co-tenant (a 3.09 outside cores against 4.8, b 0.05 against 4.0).
+- Setup: build 11 min on a, 17 min on b (6 cores); certificates, cluster.toml, daemons ok.
+- Dry run (mandatory): the first attempt (`-dryrun`) failed on a script bug, the round's box flags read `gates/<n>/cotenant.json` from the dry run's own results dir, which has no gates stage; fixed (copy of this session's gates into the dry run's dir before it runs). The second attempt (`-dryrun2`, fresh name so the old DONE lines of the log were not matched) passed on both boxes (`dryrun.json`).
+- Budget (balloon, EMULATE_RAM_GB 64): a 59.77 GB, b 61.06 GB (`env/`).
+- Plan: `tetraeder-plan candidates --cluster --covering` on the discovered graph refused: node a's A6000 is in the graph at 51.5 GB with no compute or bandwidth prior (the RTX 3090 has them), and the cluster profile has no 24 GiB cap (ADR 0091 answer 9 plans an A-class card against 24 GiB; `sc_box.sh` has `--gpu-bytes`, `cluster profile` and `cluster merge` have no such option). Scratch tests on copies of the graph on box a: capacity set to 24 GiB alone: still no covering plan (cuts 54 to 58 fail on node a's RAM); capacity and the 3090's compute and bandwidth copied onto a/gpu0: 40 candidates (pp about 13 tok/s uncalibrated, so not a pick to judge). Copying priors is not a driver fix, so an A-class node is a gap, not an option: node `bench-phase6-exit-aclass-planning` suggested.
+- Link, not the gate (the gate stage never ran): the plan stage's probes (20 repeats) and the dry run's probes at 64 MiB: a to b 5.0 s and 6.9 s, b to a 1.9 s, 2.8 s, 4.1 s and 8.5 s across four probes in 70 min (about 3 to 4.5x spread); small frames 9.6 to 14.5 ms. By the rehearsal's rule this link would likely fail the gate on fitted rates; unconfirmed.
+- Decision: destroy both after fetch (advisor): a 1 h 05 min box age left no room for the remaining stages (about 1 h 45 min at best) and the planner could not pick. Pair 2 needs two RTX 3090 hosts with one socket, at least 80 GB container RAM and 12 or more real cores within 0.90 USD/h all-in.
+- Files: `env/`, `gates/`, `link/probe-plan.json`, `plans/hw-plan.json` (discovered graph), `dryrun.json`; the `-n<a|b>`, `-dryrun*` dirs are the boxes' own result dirs.

@@ -1,0 +1,2 @@
+index, name, driver_version, memory.total [MiB], compute_cap, power.limit [W], power.default_limit [W], clocks.max.sm [MHz], pci.bus_id
+0, NVIDIA GeForce RTX 3090, 580.95.05, 24576 MiB, 8.6, 350.00 W, 350.00 W, 2100 MHz, 00000000:65:00.0

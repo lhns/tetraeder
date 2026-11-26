@@ -768,6 +768,8 @@ st_dryrun() {
     say "loopback (stand-in tools): the dry run is the stand-in, no nested session"
   else
     say "dry run on the tiny sharded MoE, real binaries on both boxes: results $rn"
+    # the dry run has no gates stage of its own; the round's box flags read the co-tenant reading of this session's gates (same boxes)
+    mkdir -p "$rr/$rn/gates" && cp -r "$out/gates/." "$rr/$rn/gates/"
     env TINY=1 EMULATE_RAM_GB=0 RESULTS_NAME="$rn" STAGES="${DRYRUN_STAGES:-budget plan fetch calib merge judged}" bash "$repo/scripts/phase6_exit_s.sh" \
       || die "the dry run failed: fix it before the 142 GB download"
   fi

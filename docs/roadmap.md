@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 51 rated nodes are confirmed by the owner.
+0 of 52 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `bench-235b-segment-confirm-2`, `planner-ep-prefill-recheck`, `bench-phase6-exit-f`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `bench-235b-segment-confirm-2`, `planner-ep-prefill-recheck`, `bench-phase6-exit-f`, `bench-phase6-exit-s`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -353,6 +353,7 @@ flowchart TB
 | KV cache on another machine | ○ next | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
+| Cap a node's GPU memory | ○ next | The cluster profile cannot plan an A6000 or A40 node against 24 GiB, and an unknown card has no compute prior, so those cards (allowed by ADR 0091 answer 9) cannot join a Case S pair. |
 | Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
 | Second cold request through a split plan returns an empty stream | ⚠ open | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Not confirmed, because the leader log of that window was not kept. Hardened with a bulk deadline (120 s) for snapshots, restores and prefill steps, a loopback eviction test and logging; the node stays open until a box run shows it. |
 <!-- END GENERATED: plain-words -->
@@ -371,6 +372,7 @@ flowchart TB
 
 - `planner-footprint-validator-gap`: Planner footprint against the validator
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
+- `cluster-profile-gpu-cap`: Cap a node's GPU memory
 
 **box-later**
 
@@ -422,7 +424,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 153 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 154 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -861,6 +863,7 @@ Generated on 2026-11-26.
 - `cluster-step-tokens-from-plan`: Replica step size from the plan (✔ fixed). The replica now sets its scheduler step tokens from the plan's micro-batches times its ubatch (an explicit --step-tokens still wins), so pipelined prefill runs the flow shop the planner priced; the Case S pick of 4 micro-batches at ubatch 2048 steps 8192 tokens.
 - `ops-review-phase6-serving`: Review the cluster serving code (✔ done · unrated). A read-only review of Phase 6 steps 3 to 5 and cluster-integration found 9 issues; 7 are fixed (per-IP handshake cap and TLS deadline, leader-only segment use, single-use prefix grants, request frame caps, snapshot checks, tokened prefix relay, bounded outbox, key required for a public cluster head) and 2 partly (snapshots served whole, no per-peer rate limit beyond grants; probe frames stay at 64 MiB for the link probe).
 - `planner-costmodel-v6-rest`: Cost model 6 remaining parts (✔ done · unrated). The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test.
+- `bench-phase6-exit-s`: Phase 6 exit Case S, judged (✔ done · mixed). Two attempts to rent a pair for the judged Case S ended before the 142 GB download: the planner could not pick on a pair with an RTX A6000, and the next pair lost one host to a capped GPU and found no partner. About 1.7 USD spent, nothing measured.
 - `bench-phase6-loopback-f-flake`: Case F loopback fault timing flake (✔ fixed). The real Case F loopback in CI failed once with fault hit nothing in flight on B (daemon trial 1) and the fake loopback once with B not in service after 30 s; both passed on rerun; cause was the trigger reading in-flight in a separate call and counting near-finished requests; fixed by gating /fire on a freshly admitted request with ignore_eos in the loopback.
 - `cluster-case-s-checks`: Case S checks, peak GPU memory rule and bit-identical judged prediction (✔ done · unrated). The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured.
 
@@ -895,7 +898,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 55 nodes (42 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 56 nodes (43 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 35 nodes (29 done, 3 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 36 nodes (29 done, 4 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

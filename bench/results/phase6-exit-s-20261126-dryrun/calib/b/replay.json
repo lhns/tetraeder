@@ -1,0 +1,311 @@
+{
+  "tool": "tetraeder-bench replay",
+  "adr": "0050 (c)",
+  "replay_version": 2,
+  "trace": {
+    "fnv1a64": "d5609e6c2618ebfd",
+    "file": "routing.trace",
+    "header": {
+      "format": "tetraeder-routing",
+      "version": 1,
+      "model": "tiny-00001-of-00003.gguf",
+      "n_layer": 8,
+      "n_expert": 8,
+      "n_used": 2,
+      "id_bytes": 1,
+      "vram_slots": 4,
+      "ram_slots": 4,
+      "prefetch_depth": 1,
+      "hot_source": "first_prefill",
+      "ubatch": 16,
+      "prompt_hash": "64c7fec2a5b92146",
+      "expert_bytes": [
+        12288,
+        12288,
+        12288,
+        12288,
+        12288,
+        12288,
+        12288,
+        12288
+      ]
+    },
+    "records": 161,
+    "has_predictions": true
+  },
+  "scope": {
+    "layers": [
+      4,
+      8
+    ],
+    "warm": 1
+  },
+  "grid": {
+    "vram_slots": [
+      4
+    ],
+    "ram_slots": [
+      8
+    ],
+    "policies": [
+      "lru"
+    ],
+    "vram_policies": [
+      "static"
+    ]
+  },
+  "outcomes": [
+    {
+      "vram_slots": 4,
+      "ram_slots": 8,
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "steps": 4,
+        "tokens": 64,
+        "pairs": 512,
+        "vram_share": 0.732421875,
+        "full_hit_share": 0.0625,
+        "ram_lookups": 42,
+        "ram_hits": 42,
+        "ram_hit_rate": 1.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "disk_bytes_per_token": 0.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "prefetch_bytes_per_token": 0.0,
+        "wasted_bytes_per_token": 0.0,
+        "prefetch_issued": 0,
+        "prefetch_used": 0,
+        "prefetch_wasted": 0,
+        "layers": [
+          {
+            "layer": 4,
+            "pairs": 128,
+            "vram_share": 0.640625,
+            "full_hit_share": 0.0,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 5,
+            "pairs": 128,
+            "vram_share": 0.7421875,
+            "full_hit_share": 0.0,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 6,
+            "pairs": 128,
+            "vram_share": 0.859375,
+            "full_hit_share": 0.0,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 7,
+            "pairs": 128,
+            "vram_share": 0.6875,
+            "full_hit_share": 0.25,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          }
+        ]
+      },
+      "decode": {
+        "steps": 16,
+        "tokens": 16,
+        "pairs": 128,
+        "vram_share": 0.625,
+        "full_hit_share": 0.359375,
+        "ram_lookups": 48,
+        "ram_hits": 48,
+        "ram_hit_rate": 1.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "disk_bytes_per_token": 0.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "prefetch_bytes_per_token": 0.0,
+        "wasted_bytes_per_token": 0.0,
+        "prefetch_issued": 0,
+        "prefetch_used": 0,
+        "prefetch_wasted": 0,
+        "layers": [
+          {
+            "layer": 4,
+            "pairs": 32,
+            "vram_share": 0.46875,
+            "full_hit_share": 0.1875,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 5,
+            "pairs": 32,
+            "vram_share": 0.71875,
+            "full_hit_share": 0.5,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 6,
+            "pairs": 32,
+            "vram_share": 0.8125,
+            "full_hit_share": 0.625,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 7,
+            "pairs": 32,
+            "vram_share": 0.5,
+            "full_hit_share": 0.125,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "vram_slots": 4,
+      "ram_slots": 8,
+      "policy": "lru",
+      "prefetch": false,
+      "prefill": {
+        "steps": 4,
+        "tokens": 64,
+        "pairs": 512,
+        "vram_share": 0.732421875,
+        "full_hit_share": 0.0625,
+        "ram_lookups": 42,
+        "ram_hits": 42,
+        "ram_hit_rate": 1.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "disk_bytes_per_token": 0.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "prefetch_bytes_per_token": 0.0,
+        "wasted_bytes_per_token": 0.0,
+        "prefetch_issued": 0,
+        "prefetch_used": 0,
+        "prefetch_wasted": 0,
+        "layers": [
+          {
+            "layer": 4,
+            "pairs": 128,
+            "vram_share": 0.640625,
+            "full_hit_share": 0.0,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 5,
+            "pairs": 128,
+            "vram_share": 0.7421875,
+            "full_hit_share": 0.0,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 6,
+            "pairs": 128,
+            "vram_share": 0.859375,
+            "full_hit_share": 0.0,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 7,
+            "pairs": 128,
+            "vram_share": 0.6875,
+            "full_hit_share": 0.25,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          }
+        ]
+      },
+      "decode": {
+        "steps": 16,
+        "tokens": 16,
+        "pairs": 128,
+        "vram_share": 0.625,
+        "full_hit_share": 0.359375,
+        "ram_lookups": 48,
+        "ram_hits": 48,
+        "ram_hit_rate": 1.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "disk_bytes_per_token": 0.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "prefetch_bytes_per_token": 0.0,
+        "wasted_bytes_per_token": 0.0,
+        "prefetch_issued": 0,
+        "prefetch_used": 0,
+        "prefetch_wasted": 0,
+        "layers": [
+          {
+            "layer": 4,
+            "pairs": 32,
+            "vram_share": 0.46875,
+            "full_hit_share": 0.1875,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 5,
+            "pairs": 32,
+            "vram_share": 0.71875,
+            "full_hit_share": 0.5,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 6,
+            "pairs": 32,
+            "vram_share": 0.8125,
+            "full_hit_share": 0.625,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          },
+          {
+            "layer": 7,
+            "pairs": 32,
+            "vram_share": 0.5,
+            "full_hit_share": 0.125,
+            "ram_hit_rate": 1.0,
+            "sync_miss_bytes_per_token": 0.0,
+            "prefetch_bytes_per_token": 0.0,
+            "disk_bytes_per_token": 0.0
+          }
+        ]
+      }
+    }
+  ]
+}

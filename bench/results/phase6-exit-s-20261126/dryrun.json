@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "name": "phase6-exit-s-20261126-dryrun2",
+  "nodes": [
+    "a",
+    "b"
+  ],
+  "boxes": {
+    "a": "62646852",
+    "b": "62646930"
+  },
+  "t": 1795677331.0669255,
+  "stand_in": false
+}

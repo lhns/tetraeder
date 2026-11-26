@@ -1,0 +1,145 @@
+{
+  "runs": [
+    {
+      "engine": "tetraeder",
+      "prompt": {
+        "tokens": 64,
+        "fnv1a64": "64c7fec2a5b92146"
+      },
+      "prefill_tokens": 64,
+      "prefill_s": 0.080489835,
+      "prefill_tok_s": 795.1314597675595,
+      "decode_tokens": 16,
+      "decode_s": 0.570987786,
+      "decode_tok_s": 28.021615159382762,
+      "step_tokens": 32,
+      "warm_requests": [
+        {
+          "prefill_s": 0.47900307,
+          "prefill_tok_s": 133.61083468629963,
+          "decode_s": 0.518311099
+        }
+      ],
+      "decode_fed": [
+        64,
+        14,
+        44,
+        155,
+        14,
+        29,
+        120,
+        76,
+        0,
+        14,
+        199,
+        3,
+        14,
+        17,
+        29,
+        14
+      ],
+      "first_top": [
+        [
+          64,
+          9.70545768737793
+        ],
+        [
+          44,
+          9.476691246032715
+        ],
+        [
+          245,
+          8.356958389282227
+        ],
+        [
+          170,
+          7.305249214172363
+        ],
+        [
+          180,
+          7.168439865112305
+        ],
+        [
+          223,
+          7.1410980224609375
+        ],
+        [
+          114,
+          7.017049789428711
+        ],
+        [
+          231,
+          6.965667724609375
+        ],
+        [
+          17,
+          6.744582176208496
+        ],
+        [
+          81,
+          6.482079029083252
+        ]
+      ],
+      "segments": [
+        {
+          "node": "a",
+          "layers": [
+            0,
+            4
+          ],
+          "prefill": {
+            "prefill_steps": 4,
+            "prefill_own_s": 0.019906824000000017,
+            "prefill_wall_s": 0.033059163,
+            "prefill_hop_s": 0.013152338999999985,
+            "decode_steps": 0,
+            "decode_own_s": 0.0,
+            "decode_wall_s": 0.0,
+            "decode_hop_s": 0.0
+          },
+          "decode": {
+            "prefill_steps": 0,
+            "prefill_own_s": 0.0,
+            "prefill_wall_s": 0.0,
+            "prefill_hop_s": 0.0,
+            "decode_steps": 16,
+            "decode_own_s": 0.06941762299999998,
+            "decode_wall_s": 0.07824632900000003,
+            "decode_hop_s": 0.008828706000000047
+          },
+          "prefill_io_bytes": 0,
+          "pair_share": 0.578125
+        },
+        {
+          "node": "b",
+          "layers": [
+            4,
+            8
+          ],
+          "prefill": {
+            "prefill_steps": 4,
+            "prefill_own_s": 0.02498380499999997,
+            "prefill_wall_s": 0.11390497499999996,
+            "prefill_hop_s": 0.08892117,
+            "decode_steps": 0,
+            "decode_own_s": 0.0,
+            "decode_wall_s": 0.0,
+            "decode_hop_s": 0.0
+          },
+          "decode": {
+            "prefill_steps": 0,
+            "prefill_own_s": 0.0,
+            "prefill_wall_s": 0.0,
+            "prefill_hop_s": 0.0,
+            "decode_steps": 16,
+            "decode_own_s": 0.13477718100000002,
+            "decode_wall_s": 0.492672757,
+            "decode_hop_s": 0.357895576
+          },
+          "prefill_io_bytes": 0,
+          "pair_share": 0.59375
+        }
+      ]
+    }
+  ]
+}

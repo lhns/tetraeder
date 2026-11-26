@@ -1,0 +1,6 @@
+host 2c20940d2ff9 date 2026-11-26T06:59:58+00:00
+memory.max 129341849600
+cpu.max 1152000 100000
+cpu quota (cores) 11, threads 11, nproc 12
+TETRAEDER_CUDA_ARCHS 86
+commit unknown

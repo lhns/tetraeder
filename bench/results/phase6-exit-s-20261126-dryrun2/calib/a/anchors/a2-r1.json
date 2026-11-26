@@ -1,0 +1,510 @@
+{
+  "env": {
+    "available_parallelism": 15,
+    "ggml_system_info": "CUDA : ARCHS = 860 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16,q8_0-q4_0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | REPACK = 1 |",
+    "gpu_devices_visible": 1,
+    "os": "linux",
+    "cpu_model": "AMD EPYC 7542 32-Core Processor",
+    "cpu_avx512_flags": [],
+    "thp_mode": "madvise",
+    "smt_siblings": [
+      [
+        0,
+        32
+      ],
+      [
+        1,
+        33
+      ],
+      [
+        2,
+        34
+      ],
+      [
+        3,
+        35
+      ],
+      [
+        4,
+        36
+      ],
+      [
+        5,
+        37
+      ],
+      [
+        6,
+        38
+      ],
+      [
+        7,
+        39
+      ],
+      [
+        8,
+        40
+      ],
+      [
+        9,
+        41
+      ],
+      [
+        10,
+        42
+      ],
+      [
+        11,
+        43
+      ],
+      [
+        12,
+        44
+      ],
+      [
+        13,
+        45
+      ],
+      [
+        14,
+        46
+      ],
+      [
+        15,
+        47
+      ],
+      [
+        16,
+        48
+      ],
+      [
+        17,
+        49
+      ],
+      [
+        18,
+        50
+      ],
+      [
+        19,
+        51
+      ],
+      [
+        20,
+        52
+      ],
+      [
+        21,
+        53
+      ],
+      [
+        22,
+        54
+      ],
+      [
+        23,
+        55
+      ],
+      [
+        24,
+        56
+      ],
+      [
+        25,
+        57
+      ],
+      [
+        26,
+        58
+      ],
+      [
+        27,
+        59
+      ],
+      [
+        28,
+        60
+      ],
+      [
+        29,
+        61
+      ],
+      [
+        30,
+        62
+      ],
+      [
+        31,
+        63
+      ]
+    ],
+    "disk_curve": null
+  },
+  "expert_bytes_per_layer": [
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288
+  ],
+  "io_backend": null,
+  "machine": "vast 2d214125bb69 segment-confirm a2-r1",
+  "model": {
+    "path": "/root/p6/tiny/tiny-00001-of-00003.gguf"
+  },
+  "options": {
+    "admit_share": null,
+    "cpu_poll": null,
+    "cpu_poll_auto": null,
+    "cpu_quota_detected": null,
+    "expert_slot_bytes": null,
+    "expert_slots": 4,
+    "gpu": true,
+    "io_chunk_bytes": 0,
+    "io_service": false,
+    "io_workers": 0,
+    "kv": "f16/f16",
+    "kv_rotation": false,
+    "n_ctx": 80,
+    "op_offload": true,
+    "overlap": false,
+    "pool_pause": false,
+    "prefetch": true,
+    "prefetch_depth": 1,
+    "prefetch_threads": null,
+    "ram_hugepages": false,
+    "ram_policy": "lru",
+    "ram_slot_bytes": null,
+    "ram_slots": 8,
+    "refresh_hot": false,
+    "threads": 15,
+    "urgent_first": false
+  },
+  "prompt": {
+    "fnv1a64": "64c7fec2a5b92146",
+    "tokens": 64
+  },
+  "provenance": {
+    "cpu_quota": 15.36,
+    "cpu_variant": "avx2",
+    "engine_commit": null,
+    "engine_dirty": null,
+    "host_id": "2d214125bb69",
+    "session": null,
+    "threads": 15
+  },
+  "runs": [
+    {
+      "decode_fed": [
+        36,
+        72,
+        21,
+        30,
+        242,
+        184,
+        181,
+        86,
+        78,
+        118,
+        60,
+        41,
+        156,
+        98,
+        124,
+        226
+      ],
+      "decode_io": {
+        "admit_ms_per_token": 0.0,
+        "admitted": 0,
+        "admitted_bytes": 0,
+        "batches": 0,
+        "bytes": 0,
+        "bytes_per_s": 0.0,
+        "bytes_per_token": 0.0,
+        "experts_read": 0,
+        "read_ms_per_token": 0.0,
+        "read_s": 0.0,
+        "uploads": 0,
+        "waited_read_gb_s": 0.0
+      },
+      "decode_layers": {
+        "first_layer": 0,
+        "full_hit_rate": [
+          0.4375,
+          0.4375
+        ],
+        "full_hit_rate_mean": 0.4375,
+        "pairs_layers": [
+          32,
+          32
+        ],
+        "ram_hit_rate": [
+          1.0,
+          1.0
+        ],
+        "ram_hit_rate_mean": 1.0,
+        "vram_pair_share": 0.6875,
+        "vram_pair_share_layers": [
+          0.71875,
+          0.65625
+        ]
+      },
+      "decode_profile_per_token": {
+        "alloc_ms": 0.1237105,
+        "build_ms": 0.0428135625,
+        "compute_ms": 0.688524625,
+        "copy_ms": 0.0,
+        "cpu_landed_ms": 0.0,
+        "cpu_pairs": 1.25,
+        "cpu_ready_ms": 0.0,
+        "graphs": 3.0,
+        "inputs_ms": 0.03789525,
+        "read_wait_ms": 0.0,
+        "readback_ms": 0.0265928125,
+        "seg_compute_cpu_ms": 0.3296524375,
+        "seg_compute_gpu_ms": 0.34833343749999995,
+        "seg_pairs": 1.25,
+        "segs_cpu": 1.125,
+        "segs_gpu": 1.875,
+        "streamer_ms": 0.014463750000000001,
+        "total_ms": 0.934252375
+      },
+      "decode_tok_s": 1068.7887110261186,
+      "decode_tokens": 16,
+      "decode_windows": [
+        {
+          "end_unix_s": 1795677024.4303322,
+          "start_unix_s": 1795677024.415362,
+          "tokens": 16
+        }
+      ],
+      "engine": "tetraeder",
+      "first_top": null,
+      "greedy": null,
+      "hot_refresh_s": 0.0,
+      "load_s": 0.150201122,
+      "max_splits": 5,
+      "memory": [
+        {
+          "capacity": 88064,
+          "device": "CUDA0",
+          "kind": "weights",
+          "tier": "vram",
+          "used": 88064
+        },
+        {
+          "capacity": 98304,
+          "device": "CUDA0",
+          "kind": "slots",
+          "tier": "vram",
+          "used": 98304
+        },
+        {
+          "capacity": 65536,
+          "device": "CUDA0",
+          "kind": "kv",
+          "tier": "vram",
+          "used": 65536
+        },
+        {
+          "capacity": 196608,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 98304
+        },
+        {
+          "capacity": 385024,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 385024
+        },
+        {
+          "capacity": 16777216,
+          "device": "host",
+          "kind": "staging",
+          "tier": "ram",
+          "used": 16777216
+        },
+        {
+          "capacity": 15232,
+          "device": "CUDA0",
+          "kind": "workspace",
+          "tier": "vram",
+          "used": 15232
+        },
+        {
+          "capacity": 49152,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 49152
+        }
+      ],
+      "peak_rss_bytes": 568885248,
+      "prefill_io": {
+        "admit_ms_per_token": 0.0,
+        "admitted": 0,
+        "admitted_bytes": 0,
+        "batches": 0,
+        "bytes": 0,
+        "bytes_per_s": 0.0,
+        "bytes_per_token": 0.0,
+        "experts_read": 0,
+        "read_ms_per_token": 0.0,
+        "read_s": 0.0,
+        "uploads": 0,
+        "waited_read_gb_s": 0.0
+      },
+      "prefill_profile_per_ubatch": {
+        "alloc_ms": 0.155074,
+        "build_ms": 0.049159999999999995,
+        "compute_ms": 1.0820755,
+        "copy_ms": 0.0,
+        "cpu_landed_ms": 0.0,
+        "cpu_pairs": 16.25,
+        "cpu_ready_ms": 0.0,
+        "graphs": 3.0,
+        "inputs_ms": 0.050262,
+        "read_wait_ms": 0.0,
+        "readback_ms": 0.0304775,
+        "seg_compute_cpu_ms": 0.81051975,
+        "seg_compute_gpu_ms": 0.26074575,
+        "seg_pairs": 16.25,
+        "segs_cpu": 2.0,
+        "segs_gpu": 1.0,
+        "streamer_ms": 0.0177375,
+        "total_ms": 1.385079
+      },
+      "prefill_s": 0.005547326,
+      "prefill_tok_s": 11537.090122340025,
+      "prefill_tokens": 64,
+      "request_log": [
+        "warm0:reset",
+        "warm0:prefill",
+        "warm0:decode",
+        "discard_routing",
+        "timed:reset",
+        "timed:prefill",
+        "timed:decode"
+      ],
+      "rss_bytes": 568885248,
+      "segment": {
+        "hidden_in": null,
+        "hidden_out": null,
+        "layers": [
+          0,
+          2
+        ],
+        "segments": [
+          {
+            "embed": true,
+            "head": false,
+            "layers": [
+              0,
+              2
+            ]
+          }
+        ]
+      },
+      "ubatch": 16,
+      "ubatch_s": [
+        0.001373401,
+        0.001364232,
+        0.001415211,
+        0.001392392
+      ],
+      "warm": {
+        "covering": true,
+        "prefix_reuse": false,
+        "prompt_cache": false,
+        "requests": 1,
+        "timed_prefill_disk_bytes": 0,
+        "unclean": false
+      },
+      "warm_prefill": {
+        "decode_s": 0.039804527,
+        "io": {
+          "admit_ms_per_token": 0.0,
+          "admitted": 0,
+          "admitted_bytes": 0,
+          "batches": 3,
+          "bytes": 196608,
+          "bytes_per_s": 1023596.0260995954,
+          "bytes_per_token": 3072.0,
+          "experts_read": 16,
+          "read_ms_per_token": 0.03974021875,
+          "read_s": 0.002543374,
+          "uploads": 8,
+          "waited_read_gb_s": 0.07730204051783182
+        },
+        "prefill_s": 0.192075775,
+        "prefill_tok_s": 333.2018314126287
+      },
+      "warm_requests": [
+        {
+          "decode_s": 0.039804527,
+          "io": {
+            "admit_ms_per_token": 0.0,
+            "admitted": 0,
+            "admitted_bytes": 0,
+            "batches": 3,
+            "bytes": 196608,
+            "bytes_per_s": 1023596.0260995954,
+            "bytes_per_token": 3072.0,
+            "experts_read": 16,
+            "read_ms_per_token": 0.03974021875,
+            "read_s": 0.002543374,
+            "uploads": 8,
+            "waited_read_gb_s": 0.07730204051783182
+          },
+          "prefill_s": 0.192075775,
+          "prefill_tok_s": 333.2018314126287
+        }
+      ]
+    }
+  ],
+  "slot_bytes_all_layers": 98304,
+  "host": {
+    "prefill": {
+      "seconds": 0.005547285079956055,
+      "tokens": 64,
+      "samples": 0,
+      "error": "too few samples"
+    },
+    "decode": {
+      "seconds": 0.01497030258178711,
+      "tokens": 16,
+      "samples": 0,
+      "error": "too few samples"
+    },
+    "decode_windows": [
+      {
+        "seconds": 0.01497030258178711,
+        "tokens": 16,
+        "samples": 0,
+        "error": "too few samples"
+      }
+    ]
+  },
+  "host_windows": {
+    "prefill": [
+      1795677024.4098146,
+      1795677024.415362,
+      64
+    ],
+    "decode": [
+      1795677024.415362,
+      1795677024.4303322,
+      16
+    ],
+    "threads": 15
+  },
+  "cotenant_ok": null,
+  "cotenant_reason": "no host CPU counters for the decode phase",
+  "balloon_ok": true,
+  "exit_ubatch": 16
+}

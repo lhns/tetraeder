@@ -1,0 +1,522 @@
+{
+  "devices": [
+    {
+      "id": "a/cpu0",
+      "kind": "cpu",
+      "name": "AMD EPYC 7542 32-Core Processor",
+      "tier": "ram",
+      "node": "a",
+      "capacity_bytes": 255733669888,
+      "bandwidth_bytes_per_s": {
+        "samples": 0,
+        "source": "prior",
+        "spread": 0.0,
+        "value": 40000000000.0
+      },
+      "compute": {
+        "c0_eager_s": 4.03693791375256e-6,
+        "c0_graph_s": 4.03693791375256e-6,
+        "flops_per_s": 600000000000.0
+      },
+      "cores": 32,
+      "threads": 15,
+      "numa_nodes": 1,
+      "copy_bytes_per_s": 12453990000.0,
+      "thread_curve": [
+        {
+          "bytes_per_s": 45180909901.36193,
+          "flops_per_s": 500273865355.3079,
+          "threads": 15
+        }
+      ]
+    },
+    {
+      "id": "a/nvme0",
+      "kind": "disk",
+      "name": "overlay",
+      "tier": "nvme",
+      "node": "a",
+      "capacity_bytes": 2000000000000,
+      "bandwidth_bytes_per_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 927023000.0
+      },
+      "mount": "/",
+      "media": "ssd",
+      "queue_chunk_bytes": 1048576,
+      "queue_curve": [
+        {
+          "bytes_per_s": 172662000.0,
+          "depth": 1
+        },
+        {
+          "bytes_per_s": 316635100.0,
+          "depth": 2
+        },
+        {
+          "bytes_per_s": 543554900.0,
+          "depth": 4
+        },
+        {
+          "bytes_per_s": 757012200.0,
+          "depth": 8
+        },
+        {
+          "bytes_per_s": 927023000.0,
+          "depth": 16
+        },
+        {
+          "bytes_per_s": 963321100.0,
+          "depth": 32
+        }
+      ]
+    },
+    {
+      "id": "a/disk1",
+      "kind": "disk",
+      "name": "/dev/nvme0n1p3",
+      "tier": "nvme",
+      "node": "a",
+      "capacity_bytes": 3963361968128,
+      "bandwidth_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "mount": "/etc/hostname",
+      "media": "ssd"
+    },
+    {
+      "id": "a/disk2",
+      "kind": "disk",
+      "name": "/dev/nvme0n1p2",
+      "tier": "nvme",
+      "node": "a",
+      "capacity_bytes": 33501757440,
+      "bandwidth_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "mount": "/usr/bin/nvidia-cuda-mps-control",
+      "media": "ssd"
+    },
+    {
+      "id": "a/gpu0",
+      "kind": "gpu",
+      "name": "NVIDIA RTX A6000",
+      "tier": "vram",
+      "node": "a",
+      "capacity_bytes": 51527024640,
+      "pcie": {
+        "gen_current": 4,
+        "gen_max": 4,
+        "width_current": 16,
+        "width_max": 16
+      },
+      "index": 0,
+      "bandwidth_bytes_per_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 797192906913.3015
+      },
+      "compute": {
+        "c0_eager_s": 0.000015,
+        "c0_graph_s": 0.000015567904288718483,
+        "flops_per_s": 40000000000000.0
+      }
+    },
+    {
+      "id": "b/cpu0",
+      "kind": "cpu",
+      "name": "Intel(R) Xeon(R) W-2133 CPU @ 3.60GHz",
+      "tier": "ram",
+      "node": "b",
+      "capacity_bytes": 126564331520,
+      "bandwidth_bytes_per_s": {
+        "samples": 0,
+        "source": "prior",
+        "spread": 0.0,
+        "value": 40000000000.0
+      },
+      "compute": {
+        "c0_eager_s": 2.4783415365406645e-6,
+        "c0_graph_s": 2.4783415365406645e-6,
+        "flops_per_s": 600000000000.0
+      },
+      "cores": 6,
+      "threads": 11,
+      "numa_nodes": 1,
+      "copy_bytes_per_s": 14460950000.0,
+      "thread_curve": [
+        {
+          "bytes_per_s": 48116129228.23919,
+          "flops_per_s": 436026532988.04095,
+          "threads": 11
+        }
+      ]
+    },
+    {
+      "id": "b/nvme0",
+      "kind": "disk",
+      "name": "overlay",
+      "tier": "nvme",
+      "node": "b",
+      "capacity_bytes": 2000000000000,
+      "bandwidth_bytes_per_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 1468910000.0
+      },
+      "mount": "/",
+      "media": "ssd",
+      "queue_chunk_bytes": 1048576,
+      "queue_curve": [
+        {
+          "bytes_per_s": 185504500.0,
+          "depth": 1
+        },
+        {
+          "bytes_per_s": 430603400.0,
+          "depth": 2
+        },
+        {
+          "bytes_per_s": 725636200.0,
+          "depth": 4
+        },
+        {
+          "bytes_per_s": 1186627000.0,
+          "depth": 8
+        },
+        {
+          "bytes_per_s": 1468910000.0,
+          "depth": 16
+        },
+        {
+          "bytes_per_s": 617095500.0,
+          "depth": 32
+        }
+      ]
+    },
+    {
+      "id": "b/disk1",
+      "kind": "disk",
+      "name": "/dev/md0",
+      "tier": "nvme",
+      "node": "b",
+      "capacity_bytes": 2046898339840,
+      "bandwidth_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "mount": "/etc/hostname",
+      "media": "ssd"
+    },
+    {
+      "id": "b/disk2",
+      "kind": "disk",
+      "name": "/dev/sda2",
+      "tier": "nvme",
+      "node": "b",
+      "capacity_bytes": 982240026624,
+      "bandwidth_bytes_per_s": {
+        "value": 150000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "mount": "/usr/bin/nvidia-cuda-mps-control",
+      "media": "hdd"
+    },
+    {
+      "id": "b/gpu0",
+      "kind": "gpu",
+      "name": "NVIDIA GeForce RTX 3090",
+      "tier": "vram",
+      "node": "b",
+      "capacity_bytes": 25769803776,
+      "bandwidth_bytes_per_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 797223470033.0673
+      },
+      "compute": {
+        "c0_eager_s": 0.000015,
+        "c0_graph_s": 0.000015844374938183354,
+        "flops_per_s": 40000000000000.0
+      },
+      "pcie": {
+        "gen_current": 4,
+        "gen_max": 4,
+        "width_current": 16,
+        "width_max": 16
+      },
+      "index": 0
+    }
+  ],
+  "links": [
+    {
+      "id": "a/storage-nvme0",
+      "a": "a/nvme0",
+      "b": "a/cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "samples": 0,
+        "source": "prior",
+        "spread": 0.0,
+        "value": 0.0001
+      },
+      "beta_bytes_per_s": {
+        "samples": 0,
+        "source": "prior",
+        "spread": 0.0,
+        "value": 5000000000.0
+      }
+    },
+    {
+      "id": "a/storage-disk1",
+      "a": "a/disk1",
+      "b": "a/cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.0001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "a/storage-disk2",
+      "a": "a/disk2",
+      "b": "a/cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.0001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "a/pcie-gpu0",
+      "a": "a/gpu0",
+      "b": "a/cpu0",
+      "kind": "pcie",
+      "alpha_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 9.832405599315571e-6
+      },
+      "beta_bytes_per_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 13095231871.926266
+      }
+    },
+    {
+      "id": "b/storage-nvme0",
+      "a": "b/nvme0",
+      "b": "b/cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "samples": 0,
+        "source": "prior",
+        "spread": 0.0,
+        "value": 0.0001
+      },
+      "beta_bytes_per_s": {
+        "samples": 0,
+        "source": "prior",
+        "spread": 0.0,
+        "value": 5000000000.0
+      }
+    },
+    {
+      "id": "b/storage-disk1",
+      "a": "b/disk1",
+      "b": "b/cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.0001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "b/storage-disk2",
+      "a": "b/disk2",
+      "b": "b/cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.01,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 150000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "b/pcie-gpu0",
+      "a": "b/gpu0",
+      "b": "b/cpu0",
+      "kind": "pcie",
+      "alpha_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 9.160351217032224e-6
+      },
+      "beta_bytes_per_s": {
+        "samples": 0,
+        "source": "measured",
+        "spread": 0.0,
+        "value": 11428860210.59657
+      }
+    },
+    {
+      "id": "net-a-b",
+      "a": "a/cpu0",
+      "b": "b/cpu0",
+      "kind": "network",
+      "alpha_s": {
+        "value": 0.01326235275,
+        "spread": 0.0,
+        "samples": 10,
+        "source": "measured"
+      },
+      "beta_bytes_per_s": {
+        "value": 9859317.49567935,
+        "spread": 0.0,
+        "samples": 10,
+        "source": "measured"
+      }
+    }
+  ],
+  "lane_groups": [],
+  "notes": [
+    "a: gpu0: PCIe link is gen1 x16 now, max gen4 x16 (may be idle power saving)",
+    "a: pcie topology: 1 GPUs from NVML but 5 PCI display devices, not matched",
+    "b: gpu0: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)"
+  ],
+  "collectives": [
+    {
+      "op": "copy",
+      "ranks": [
+        "a/cpu0",
+        "b/cpu0"
+      ],
+      "comm": "tls",
+      "points": [
+        [
+          4096.0,
+          0.014508952
+        ],
+        [
+          16384.0,
+          0.017411566999999996
+        ],
+        [
+          65536.0,
+          0.033692445999999994
+        ],
+        [
+          262144.0,
+          0.060023904
+        ],
+        [
+          1048576.0,
+          0.185867851
+        ],
+        [
+          4194304.0,
+          0.430167316
+        ],
+        [
+          16777216.0,
+          1.238837208
+        ],
+        [
+          67108864.0,
+          6.343820187
+        ]
+      ]
+    },
+    {
+      "op": "copy",
+      "ranks": [
+        "b/cpu0",
+        "a/cpu0"
+      ],
+      "comm": "tls",
+      "points": [
+        [
+          4096.0,
+          0.0120157535
+        ],
+        [
+          16384.0,
+          0.0120828705
+        ],
+        [
+          65536.0,
+          0.0121374675
+        ],
+        [
+          262144.0,
+          0.014335572499999998
+        ],
+        [
+          1048576.0,
+          0.0257059365
+        ],
+        [
+          4194304.0,
+          0.0839724405
+        ],
+        [
+          16777216.0,
+          1.6708625085000002
+        ],
+        [
+          67108864.0,
+          6.608698610499999
+        ]
+      ]
+    }
+  ]
+}

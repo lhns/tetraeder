@@ -1,0 +1,110 @@
+{
+  "tool": "tetraeder-bench disk-curve",
+  "adr": "0056",
+  "file": "/root/p6/tiny/tiny-00001-of-00003.gguf",
+  "chunk_bytes": 16384,
+  "seconds": 1.0,
+  "load_threads": 0,
+  "buffered": false,
+  "provenance": {
+    "host_id": "2d214125bb69",
+    "hostname": "2d214125bb69",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 7542 32-Core Processor",
+    "cpus": 15,
+    "cpu_quota": 15.36,
+    "ram_gb": 503.6,
+    "gpus": [
+      {
+        "name": "NVIDIA RTX A6000",
+        "driver": "610.57.04",
+        "memory_mb": 49140.0,
+        "clocks_sm_mhz": 210.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_max_sm_mhz": 2100.0,
+        "throttle_reasons": "0x0000000000000001",
+        "power_w": 17.06,
+        "temperature_c": 23.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": null,
+    "cuda_env": "ok",
+    "started_utc": "2026-11-26T06:51:20Z",
+    "cpu_backend": null
+  },
+  "points": [
+    {
+      "depth": 1,
+      "chunks": 10346,
+      "bytes_per_s": 169500839.99973527,
+      "p50_ms": 0.085499,
+      "p99_ms": 0.14685800000000002
+    },
+    {
+      "depth": 2,
+      "chunks": 18301,
+      "bytes_per_s": 299833014.8862252,
+      "p50_ms": 0.10342900000000001,
+      "p99_ms": 0.216298
+    },
+    {
+      "depth": 4,
+      "chunks": 31606,
+      "bytes_per_s": 517751898.97887826,
+      "p50_ms": 0.11011,
+      "p99_ms": 0.261378
+    },
+    {
+      "depth": 8,
+      "chunks": 44501,
+      "bytes_per_s": 728719695.7874726,
+      "p50_ms": 0.154938,
+      "p99_ms": 0.398077
+    },
+    {
+      "depth": 16,
+      "chunks": 56001,
+      "bytes_per_s": 917493499.6054746,
+      "p50_ms": 0.251688,
+      "p99_ms": 0.681875
+    },
+    {
+      "depth": 32,
+      "chunks": 59212,
+      "bytes_per_s": 970126360.8331006,
+      "p50_ms": 0.499456,
+      "p99_ms": 1.341659
+    }
+  ],
+  "queue_chunk_bytes": 16384,
+  "copy_bytes_per_s": 12879356140.280846,
+  "queue_curve": [
+    {
+      "depth": 1,
+      "bytes_per_s": 169500839.99973527
+    },
+    {
+      "depth": 2,
+      "bytes_per_s": 299833014.8862252
+    },
+    {
+      "depth": 4,
+      "bytes_per_s": 517751898.97887826
+    },
+    {
+      "depth": 8,
+      "bytes_per_s": 728719695.7874726
+    },
+    {
+      "depth": 16,
+      "bytes_per_s": 917493499.6054746
+    },
+    {
+      "depth": 32,
+      "bytes_per_s": 970126360.8331006
+    }
+  ]
+}

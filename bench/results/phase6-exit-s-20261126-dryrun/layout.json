@@ -1,0 +1,68 @@
+{
+  "model": "tiny-qwen3moe",
+  "arch": "qwen3moe",
+  "n_layer": 8,
+  "n_embd": 64,
+  "n_vocab": 260,
+  "n_head": 4,
+  "n_head_kv": 2,
+  "head_dim": 16,
+  "n_expert": 8,
+  "n_expert_used": 2,
+  "n_ff": 0,
+  "n_ff_exp": 32,
+  "layers": [
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    },
+    {
+      "attn_bytes": 24960,
+      "ffn_bytes": 2304,
+      "expert_bytes": 98304
+    }
+  ],
+  "embed_bytes": 33280,
+  "output_bytes": 33536,
+  "tensor_types": {
+    "F16": {
+      "count": 58,
+      "bytes": 1049600
+    },
+    "F32": {
+      "count": 41,
+      "bytes": 21760
+    }
+  }
+}

@@ -1,0 +1,414 @@
+{
+  "env": {
+    "available_parallelism": 11,
+    "ggml_system_info": "CUDA : ARCHS = 860 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16,q8_0-q4_0 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | LLAMAFILE = 1 | REPACK = 1 |",
+    "gpu_devices_visible": 1,
+    "os": "linux",
+    "cpu_model": "Intel(R) Xeon(R) W-2133 CPU @ 3.60GHz",
+    "cpu_avx512_flags": [
+      "avx512bw",
+      "avx512cd",
+      "avx512dq",
+      "avx512f",
+      "avx512vl"
+    ],
+    "thp_mode": "madvise",
+    "smt_siblings": [
+      [
+        0,
+        6
+      ],
+      [
+        1,
+        7
+      ],
+      [
+        2,
+        8
+      ],
+      [
+        3,
+        9
+      ],
+      [
+        4,
+        10
+      ],
+      [
+        5,
+        11
+      ]
+    ],
+    "disk_curve": null
+  },
+  "expert_bytes_per_layer": [
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288,
+    12288
+  ],
+  "io_backend": null,
+  "machine": "vast 2c20940d2ff9 segment-confirm a2-r1",
+  "model": {
+    "path": "/root/p6/tiny/tiny-00001-of-00003.gguf"
+  },
+  "options": {
+    "admit_share": null,
+    "cpu_poll": null,
+    "cpu_poll_auto": null,
+    "cpu_quota_detected": null,
+    "expert_slot_bytes": null,
+    "expert_slots": 4,
+    "gpu": true,
+    "io_chunk_bytes": 0,
+    "io_service": false,
+    "io_workers": 0,
+    "kv": "f16/f16",
+    "kv_rotation": false,
+    "n_ctx": 80,
+    "op_offload": true,
+    "overlap": false,
+    "pool_pause": false,
+    "prefetch": true,
+    "prefetch_depth": 1,
+    "prefetch_threads": null,
+    "ram_hugepages": false,
+    "ram_policy": "lru",
+    "ram_slot_bytes": null,
+    "ram_slots": 8,
+    "refresh_hot": false,
+    "threads": 11,
+    "urgent_first": false
+  },
+  "prompt": {
+    "fnv1a64": "64c7fec2a5b92146",
+    "tokens": 64
+  },
+  "provenance": {
+    "cpu_quota": 11.52,
+    "cpu_variant": "avx512",
+    "engine_commit": null,
+    "engine_dirty": null,
+    "host_id": "2c20940d2ff9",
+    "session": null,
+    "threads": 11
+  },
+  "runs": [
+    {
+      "decode_fed": [
+        36,
+        72,
+        21,
+        30,
+        242,
+        184,
+        181,
+        86,
+        78,
+        118,
+        60,
+        41,
+        156,
+        98,
+        124,
+        226
+      ],
+      "decode_io": {
+        "admit_ms_per_token": 0.0,
+        "admitted": 0,
+        "admitted_bytes": 0,
+        "batches": 0,
+        "bytes": 0,
+        "bytes_per_s": 0.0,
+        "bytes_per_token": 0.0,
+        "experts_read": 0,
+        "read_ms_per_token": 0.0,
+        "read_s": 0.0,
+        "uploads": 0,
+        "waited_read_gb_s": 0.0
+      },
+      "decode_layers": {
+        "first_layer": 4,
+        "full_hit_rate": [
+          0.1875,
+          0.5
+        ],
+        "full_hit_rate_mean": 0.34375,
+        "pairs_layers": [
+          32,
+          32
+        ],
+        "ram_hit_rate": [
+          1.0,
+          1.0
+        ],
+        "ram_hit_rate_mean": 1.0,
+        "vram_pair_share": 0.59375,
+        "vram_pair_share_layers": [
+          0.46875,
+          0.71875
+        ]
+      },
+      "decode_profile_per_token": {
+        "alloc_ms": 0.16358975,
+        "build_ms": 0.041071625,
+        "compute_ms": 0.615502625,
+        "copy_ms": 0.0,
+        "cpu_landed_ms": 0.0,
+        "cpu_pairs": 1.625,
+        "cpu_ready_ms": 0.0,
+        "graphs": 3.0,
+        "inputs_ms": 0.03459425,
+        "read_wait_ms": 0.0,
+        "readback_ms": 0.023645875,
+        "seg_compute_cpu_ms": 0.37309706249999997,
+        "seg_compute_gpu_ms": 0.23418943750000001,
+        "seg_pairs": 1.625,
+        "segs_cpu": 1.3125,
+        "segs_gpu": 1.6875,
+        "streamer_ms": 0.0137970625,
+        "total_ms": 0.892548125
+      },
+      "decode_tok_s": 1118.2817824069673,
+      "decode_tokens": 16,
+      "decode_windows": [
+        {
+          "end_unix_s": 1795676108.1208425,
+          "start_unix_s": 1795676108.1065347,
+          "tokens": 16
+        }
+      ],
+      "engine": "tetraeder",
+      "first_top": null,
+      "greedy": null,
+      "hot_refresh_s": 0.0,
+      "load_s": 0.163035429,
+      "max_splits": 5,
+      "memory": [
+        {
+          "capacity": 54784,
+          "device": "CUDA0",
+          "kind": "weights",
+          "tier": "vram",
+          "used": 54784
+        },
+        {
+          "capacity": 98304,
+          "device": "CUDA0",
+          "kind": "slots",
+          "tier": "vram",
+          "used": 98304
+        },
+        {
+          "capacity": 65536,
+          "device": "CUDA0",
+          "kind": "kv",
+          "tier": "vram",
+          "used": 65536
+        },
+        {
+          "capacity": 196608,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 98304
+        },
+        {
+          "capacity": 344064,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 344064
+        },
+        {
+          "capacity": 16777216,
+          "device": "host",
+          "kind": "staging",
+          "tier": "ram",
+          "used": 16777216
+        },
+        {
+          "capacity": 15744,
+          "device": "CUDA0",
+          "kind": "workspace",
+          "tier": "vram",
+          "used": 15744
+        },
+        {
+          "capacity": 49152,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 49152
+        }
+      ],
+      "peak_rss_bytes": 517115904,
+      "prefill_io": {
+        "admit_ms_per_token": 0.0,
+        "admitted": 0,
+        "admitted_bytes": 0,
+        "batches": 0,
+        "bytes": 0,
+        "bytes_per_s": 0.0,
+        "bytes_per_token": 0.0,
+        "experts_read": 0,
+        "read_ms_per_token": 0.0,
+        "read_s": 0.0,
+        "uploads": 0,
+        "waited_read_gb_s": 0.0
+      },
+      "prefill_profile_per_ubatch": {
+        "alloc_ms": 0.19086099999999998,
+        "build_ms": 0.043896000000000004,
+        "compute_ms": 1.01918975,
+        "copy_ms": 0.0,
+        "cpu_landed_ms": 0.0,
+        "cpu_pairs": 19.75,
+        "cpu_ready_ms": 0.0,
+        "graphs": 3.0,
+        "inputs_ms": 0.04582275,
+        "read_wait_ms": 0.0,
+        "readback_ms": 0.025614500000000002,
+        "seg_compute_cpu_ms": 0.7401985,
+        "seg_compute_gpu_ms": 0.27025875,
+        "seg_pairs": 19.75,
+        "segs_cpu": 2.0,
+        "segs_gpu": 1.0,
+        "streamer_ms": 0.019541000000000003,
+        "total_ms": 1.34532275
+      },
+      "prefill_s": 0.005390084,
+      "prefill_tok_s": 11873.655401288737,
+      "prefill_tokens": 64,
+      "request_log": [
+        "warm0:reset",
+        "warm0:prefill",
+        "warm0:decode",
+        "discard_routing",
+        "timed:reset",
+        "timed:prefill",
+        "timed:decode"
+      ],
+      "rss_bytes": 517115904,
+      "segment": {
+        "hidden_in": {
+          "file": "/root/tetraeder/runs/sc/hidden.bin"
+        },
+        "hidden_out": null,
+        "layers": [
+          4,
+          6
+        ],
+        "segments": [
+          {
+            "embed": false,
+            "head": false,
+            "layers": [
+              4,
+              6
+            ]
+          }
+        ]
+      },
+      "ubatch": 16,
+      "ubatch_s": [
+        0.001322428,
+        0.001392273,
+        0.001406075,
+        0.001267124
+      ],
+      "warm": {
+        "covering": true,
+        "prefix_reuse": false,
+        "prompt_cache": false,
+        "requests": 1,
+        "timed_prefill_disk_bytes": 0,
+        "unclean": false
+      },
+      "warm_prefill": {
+        "decode_s": 0.03491614,
+        "io": {
+          "admit_ms_per_token": 0.0,
+          "admitted": 0,
+          "admitted_bytes": 0,
+          "batches": 5,
+          "bytes": 196608,
+          "bytes_per_s": 1050486.9562292185,
+          "bytes_per_token": 3072.0,
+          "experts_read": 16,
+          "read_ms_per_token": 0.045793125000000004,
+          "read_s": 0.00293076,
+          "uploads": 8,
+          "waited_read_gb_s": 0.06708430577734104
+        },
+        "prefill_s": 0.187158916,
+        "prefill_tok_s": 341.9553893975321
+      },
+      "warm_requests": [
+        {
+          "decode_s": 0.03491614,
+          "io": {
+            "admit_ms_per_token": 0.0,
+            "admitted": 0,
+            "admitted_bytes": 0,
+            "batches": 5,
+            "bytes": 196608,
+            "bytes_per_s": 1050486.9562292185,
+            "bytes_per_token": 3072.0,
+            "experts_read": 16,
+            "read_ms_per_token": 0.045793125000000004,
+            "read_s": 0.00293076,
+            "uploads": 8,
+            "waited_read_gb_s": 0.06708430577734104
+          },
+          "prefill_s": 0.187158916,
+          "prefill_tok_s": 341.9553893975321
+        }
+      ]
+    }
+  ],
+  "slot_bytes_all_layers": 98304,
+  "host": {
+    "prefill": {
+      "seconds": 0.005390167236328125,
+      "tokens": 64,
+      "samples": 0,
+      "error": "too few samples"
+    },
+    "decode": {
+      "seconds": 0.014307737350463867,
+      "tokens": 16,
+      "samples": 0,
+      "error": "too few samples"
+    },
+    "decode_windows": [
+      {
+        "seconds": 0.014307737350463867,
+        "tokens": 16,
+        "samples": 0,
+        "error": "too few samples"
+      }
+    ]
+  },
+  "host_windows": {
+    "prefill": [
+      1795676108.1011446,
+      1795676108.1065347,
+      64
+    ],
+    "decode": [
+      1795676108.1065347,
+      1795676108.1208425,
+      16
+    ],
+    "threads": 11
+  },
+  "cotenant_ok": null,
+  "cotenant_reason": "no host CPU counters for the decode phase",
+  "balloon_ok": true,
+  "exit_ubatch": 16
+}
