@@ -4981,18 +4981,19 @@ nodes:
   title: Replay expected-uses expert ranking
   track: memory
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: dead-end
+  evidence:
+  - bench/results/replay-expected-uses-20261126/README.md
+  verdict_quote: 'No: gexp:512 reads 11.91 MB of synchronous misses per token at 26 slots against 11.80 for gfreq:1 (1.009x); the best of the sweep, gexp:64, is 0.971x; the bar was 0.90x.'
+  headline: 'expected-uses ranking ties gfreq:1 in the replay at 26 slots; not ported'
   depends_on:
   - memory-ram-freq
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
-  plain: 'Add Magnitude''s expert ranking (expected uses within a tier turnover from routing history and router lookahead) as a policy in the offline replay and compare it with gfreq and glru on the saved 235B trace; port into the engine only if it wins (rule 3).'
+  plain: 'Magnitude''s expected-uses ranking (decayed routing counts plus router lookahead), tried as a policy in the offline replay on the saved 235B trace, reads about the same synchronous miss bytes as gfreq:1 at 26 slots (1% more, 3% fewer at the best horizon), so it is not ported to the engine.'
   notes: 'Reference: docs/plan.md references, Magnitude row. No box time; needs the trace in bench/traces. Advisor 2026-11-26: the comparison touches no judged path, a port waits for the Case S verdict.'
