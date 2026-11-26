@@ -598,10 +598,7 @@ impl<'a, 't> Sim<'a, 't> {
                     used: 0,
                 }),
             }),
-            (
-                Policy::GlobalLru | Policy::GlobalFreq { .. } | Policy::GlobalExpected { .. },
-                _,
-            ) => {
+            (Policy::GlobalLru | Policy::GlobalFreq { .. } | Policy::GlobalExpected { .. }, _) => {
                 Ram::Global(GlobalSlots::new(&h.expert_bytes, h.n_expert, budget))
             }
             _ => Ram::Slots(SlotCache::new(

@@ -54,7 +54,8 @@ impl Expected {
     pub fn advance(&mut self, now: u32) {
         self.now = now;
         while self.decay.len() <= now as usize {
-            self.decay.push((-(self.decay.len() as f64) / self.horizon).exp());
+            self.decay
+                .push((-(self.decay.len() as f64) / self.horizon).exp());
         }
     }
 

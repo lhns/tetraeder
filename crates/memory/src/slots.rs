@@ -541,15 +541,16 @@ impl GlobalSlots {
         let mut free = self.budget - self.used;
         let mut victims: Vec<(u32, u32)> = Vec::new();
         while free < need {
+            let skip = |vl: u32, ve: u32| {
+                self.pinned[vl as usize][ve as usize]
+                    || (vl == layer && protect.contains(&ve))
+                    || victims.contains(&(vl, ve))
+            };
             let mut candidates = self
                 .order
                 .iter()
                 .map(|&(_, vl, ve)| (vl, ve))
-                .filter(|&(vl, ve)| {
-                    !self.pinned[vl as usize][ve as usize]
-                        && !(vl == layer && protect.contains(&ve))
-                        && !victims.contains(&(vl, ve))
-                });
+                .filter(|&(vl, ve)| !skip(vl, ve));
             let next = match rank {
                 None => candidates.next(),
                 Some(r) => candidates

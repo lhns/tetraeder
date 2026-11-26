@@ -701,7 +701,14 @@ fn global_frequency_core_helps_a_skewed_workload() {
 
 #[test]
 fn global_policy_names_parse_and_roundtrip() {
-    for s in ["glru", "gbelady", "gfreq:0.5", "gfreq:1", "gexp:512", "gexp:7"] {
+    for s in [
+        "glru",
+        "gbelady",
+        "gfreq:0.5",
+        "gfreq:1",
+        "gexp:512",
+        "gexp:7",
+    ] {
         let p = Policy::parse(s).unwrap();
         assert_eq!(p.name(), s);
         assert_eq!(Policy::parse(&p.name()).unwrap(), p);
@@ -874,7 +881,10 @@ fn expected_uses_keep_a_hot_expert_that_lru_evicts() {
         .collect();
     let t = decode_trace(header(1, 256, 2), &steps, None);
     let glru = replay(&t, &cfg(0, 3, Policy::GlobalLru, false));
-    let gexp = replay(&t, &cfg(0, 3, Policy::GlobalExpected { horizon: 64 }, false));
+    let gexp = replay(
+        &t,
+        &cfg(0, 3, Policy::GlobalExpected { horizon: 64 }, false),
+    );
     assert_eq!(glru.decode.ram_hits, 0);
     assert!(gexp.decode.ram_hits >= 12, "{}", gexp.decode.ram_hits);
 }
