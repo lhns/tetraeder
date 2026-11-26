@@ -1211,14 +1211,14 @@ cases:
     mode: exact
     engines: [auto]
     expect: pass
-  # no GET /slots route here (404)
-  - id: gap-slots-get
+  # status only: once a slot ran a task, llama-server adds that task's fields
+  - id: slots-get
     group: D
     row: "GET /slots, POST /slots/:id?action=save/restore/erase"
     endpoint: GET /slots
     mode: status
     engines: [auto]
-    expect: gap serving-parity-remaining
+    expect: pass
   # batches are rejected with 400 on /v1/completions here (the native /completion takes them)
   - id: gap-completions-prompt-array
     group: B

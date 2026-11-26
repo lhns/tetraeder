@@ -94,7 +94,7 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0086](0086-kv-format-auto.md) | Accepted | The planner picks the KV format: `--kv auto` tries F16, Q8_0, Q8_0/Q4_0 by fit |
 | [0087](0087-prefix-cache-disk-tier.md) | Accepted | Prefix cache disk tier: `--cache-disk`, spill on RAM eviction, restore on a later turn |
 | [0088](0088-request-fields-group-b.md) | Accepted | llama-server parity group B: EOS in the token count, raw log-probabilities, `n`, grammar and JSON schema, timings |
-| [0089](0089-endpoints-group-c.md) | Accepted | llama-server parity group C: health, metrics, props, tokenize, apply-template, native completion, infill, Responses, API keys |
+| [0089](0089-endpoints-group-c.md) | Accepted (item 5 in part superseded by 0093) | llama-server parity group C: health, metrics, props, tokenize, apply-template, native completion, infill, Responses, API keys |
 | [0090](0090-libllama-capabilities.md) | Accepted | llama-server parity group D: embeddings, rerank, KV cache types and offload, CPU-MoE, context shift, slot save and restore; the own builders refuse them |
 | [0091](0091-phase6-multi-node.md) | Accepted | Phase 6: nodes, the transport trait, plans across nodes as segments, replicas, failover and the exit test |
 | [0092](0092-costmodel-6-streamed-moe-segments.md) | Accepted | Cost model 6: routing as an input, the reader copy rate and the chunked offload copy for streamed MoE segments |

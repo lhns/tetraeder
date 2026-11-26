@@ -78,7 +78,7 @@ pub async fn props(State(gw): State<Arc<Gateway>>) -> Result<Json<Value>> {
         "model_alias": m.id,
         "model_path": m.path.unwrap_or_default(),
         "modalities": {"vision": false, "video": false, "audio": false},
-        "endpoint_slots": false,
+        "endpoint_slots": true,
         "endpoint_props": false,
         "endpoint_metrics": cfg.metrics,
         "ui": false,

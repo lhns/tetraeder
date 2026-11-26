@@ -150,6 +150,7 @@ pub fn router_with(gw: Arc<Gateway>, log: Option<Arc<RequestLog>>) -> Router {
         .route("/reranking", post(embeddings::rerank))
         .route("/v1/rerank", post(embeddings::rerank))
         .route("/v1/reranking", post(embeddings::rerank))
+        .route("/slots", get(slots::get_slots))
         .route("/slots/{id_slot}", post(slots::slot_action))
         .fallback(not_found)
         .layer(from_fn_with_state(Arc::clone(&gw), require_key))

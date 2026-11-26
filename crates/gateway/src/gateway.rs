@@ -1003,6 +1003,12 @@ impl Gateway {
         }
     }
 
+    /// Slots held by running requests (generation, embedding, rerank).
+    pub fn busy_slots(&self) -> usize {
+        self.parallel_slots()
+            .saturating_sub(self.admission.slots.available_permits())
+    }
+
     /// Requests waiting for a slot.
     pub fn queue_depth(&self) -> usize {
         self.admission.waiting.load(Ordering::SeqCst)
