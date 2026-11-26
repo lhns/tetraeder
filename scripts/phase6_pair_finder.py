@@ -3,17 +3,23 @@
 
 Reads the market (never creates or destroys a box), applies the static host rules to every offer, pairs the survivors on
 different hosts and ranks the pairs by expected bulk link rate, then price. Create both boxes together, and only when this
-lists a pair (exit 0); never hold one box for a partner.
+lists a plannable pair (exit 0); never hold one box for a partner.
 
-  uv run python scripts/phase6_pair_finder.py                       live: one `taxameter offers --json` call per GPU class
+  uv run python scripts/phase6_pair_finder.py                       live: --reads (3) searches per GPU class, merged
   uv run python scripts/phase6_pair_finder.py --offers-json F ...   offline: recorded offers (the tests; `--save-offers F` records)
   TETRAEDER_PLAN_BIN=target/release/tetraeder-plan                  also run `candidates --cluster --covering` per pair
 
+Data source. The brief named `taxameter offers --json`, but its JSON lacks RAM, disk, inet and datacenter, and offer ids
+rotate between two searches (the second read of the first version lost 11 of 26 offers). So each read is one search through
+taxameter's own provider (`VastProvider.offers`, the same query, blocklist replaced by SKIP_HOSTS below), which carries the
+rows; --reads searches are merged by machine and price because the market moves between them.
+
 Rules per offer, in this order (the first failing one is the one counted in "excluded"):
-  gpu_class    1 GPU of an allowed class: RTX 3090; with --allow-aclass also A40, RTX A6000, L40 (ADR 0091 answer 9). A-class
-               is off by default: the cluster profile has no 24 GiB cap or prior for it (node cluster-profile-gpu-cap), so a
-               pair with one cannot be planned (phase6-exit-s-20261126, pair 1).
+  gpu_class    1 GPU of RTX 3090, A40, RTX A6000, L40 or L40S (ADR 0091 answer 9; the per-class offer counts are printed, so a wrong
+               class name shows as 0). A pair with an A-class card is listed but `plannable: false` until the cluster profile can
+               cap and price it (node cluster-profile-gpu-cap; phase6-exit-s-20261126, pair 1); `--plan-aclass` lifts that.
   skip_host    host on the skip list below (docs/box-driver.md)
+  unknown      RAM, disk, inet or traffic price missing from the row: counted apart from the real rules
   cores        usable cores at least --min-cores (12)
   ram          container RAM at least the floor derived below
   disk         at least 230 GB
@@ -24,11 +30,14 @@ sockets (`lscpu` on the box). Pair rules: different hosts; then the covering pla
 
 RAM floor. The planner's host budget for the heavier node of the covering pick (node b, 47 layers: 32 VRAM + 96 RAM slots
 of 128 experts, ADR 0091) is 57.1 GB. The budget under the 64 GB balloon is `memory.max - memory.current + inactive_file - 1 GiB`
-with the balloon holding `memory.max - 64 GB` (balloon_guard.py), so it is 64 GB minus what the box itself uses: 4.6 GB at
-the 59.4 GB the committed pick was made on, 4.2 and 2.9 GB measured on 2026-11-26 (59.77 and 61.06 GB). A box whose real limit
+with the balloon holding `memory.max - 64 GB` (balloon_guard.py), so it is 64 GB minus what the box itself uses: at most
+4.55 GB over the four measured budgets (59.45, 60.47, 59.77, 61.06 GB), taken as 4.6 GB, the 59.4 GB the committed pick was
+made on. The rule log's "host margin 1.7 GB" does not reconcile with this (59.4 - 57.1 = 2.3 GB); no source for it was found.
+Below 64 GB the floor box has no margin over the estimate: the real planner test settles it. A box whose real limit
 is under 64 GB runs without the balloon on its own headroom, real limit minus the same use. The floor is the need plus the
 worst use: 57.1 + 4.6 = 61.7 GB, the same for both nodes since the pick may put either role on either box. From 64 GB up the
-balloon fixes the budget at 59.4 GB (2.3 GB over the need), so more RAM buys nothing.
+balloon fixes the budget at 59.4 GB (2.3 GB over the need), so more RAM buys nothing. Unit: the offer's `cpu_ram` is MB; it
+is read as 1e6 bytes (not MiB), the lower reading, so a 61.7 floor never accepts a box a MiB reading would let through.
 """
 
 import argparse
@@ -56,7 +65,7 @@ MAX_PRICE = 0.90
 DOWNLOAD_GB = 150
 SESSION_HOURS = 3.0  # max_box_hours: the traffic is priced over it as taxameter does
 CLASSES_3090 = ("RTX 3090",)
-CLASSES_A = ("A40", "RTX A6000", "L40")
+CLASSES_A = ("A40", "RTX A6000", "L40", "L40S")  # "L40" matches no offer on Vast (2026-11-26); L40S is the same Ada die
 LAYOUT = "bench/results/segment-confirm-20261125b/layout.json"
 GRAPH_TEMPLATE = "crates/costmodel/fixtures/cluster/cluster_two_3090_wan.toml"
 
@@ -75,7 +84,7 @@ SKIP_HOSTS = {
     "399360": "GPUs power capped", "203531": "never opened SSH", "611393": "GPUs below default power",
     "706255": "GPUs below default power", "397236": "stalled, then power capped",
 }  # fmt: skip
-RULES = ("gpu_class", "skip_host", "cores", "ram", "disk", "inet", "price")
+RULES = ("gpu_class", "skip_host", "unknown", "cores", "ram", "disk", "inet", "price")
 
 
 def num(x):
@@ -94,16 +103,18 @@ def all_in(o, download_gb=DOWNLOAD_GB, hours=SESSION_HOURS):
 
 def failing(o, a):
     """Every rule the offer fails, in RULES order."""
-    allowed = CLASSES_3090 + (CLASSES_A if a.allow_aclass else ())
     price = all_in(o, a.download_gb, a.session_hours)
+    ram, disk, inet = (num(o.get(k)) for k in ("ram_gb", "disk_gb", "inet_down_mbps"))
+    unknown = None in (ram, disk, inet, price)
     bad = {
-        "gpu_class": int(num(o.get("num_gpus")) or 1) != 1 or o.get("gpu_name") not in allowed,
+        "gpu_class": int(num(o.get("num_gpus")) or 1) != 1 or o.get("gpu_name") not in CLASSES_3090 + CLASSES_A,
         "skip_host": str(o.get("host_id")) in a.skip_hosts,
+        "unknown": unknown,
         "cores": (num(o.get("cpu_cores")) or 0) < a.min_cores,
-        "ram": (num(o.get("ram_gb")) or 0) < a.ram_floor_gb,  # unknown RAM cannot be shown to fit
-        "disk": (num(o.get("disk_gb")) or 0) < a.min_disk,
-        "inet": (num(o.get("inet_down_mbps")) or 0) < a.min_inet,
-        "price": price is None or price > a.max_price,
+        "ram": ram is not None and ram < a.ram_floor_gb,
+        "disk": disk is not None and disk < a.min_disk,
+        "inet": inet is not None and inet < a.min_inet,
+        "price": price is not None and price > a.max_price,
     }
     return [r for r in RULES if bad[r]]
 
@@ -121,7 +132,9 @@ def screen(offers, a):
         else:
             keep.append(o)
     counts["survivors"] = len(keep)
-    counts["no_provider_row"] = sum(1 for o in offers if o.get("ram_gb") is None)  # gone or rotated between the two reads: RAM unknown
+    counts["per_class"] = dict.fromkeys(CLASSES_3090 + CLASSES_A, 0)
+    for o in offers:
+        counts["per_class"][o.get("gpu_name")] = counts["per_class"].get(o.get("gpu_name"), 0) + 1
     return keep, counts
 
 
@@ -135,13 +148,13 @@ def bulk_mbps(x, y):
 
 
 def pair_key(p):
-    """Rank: bulk rate (500 Mbit/s buckets, capped at 4000: beyond it the path, not the access link, limits), then datacenter
+    """Rank: plannable pairs first, then bulk rate (500 Mbit/s buckets, capped at 4000: beyond it the path, not the access link, limits), then datacenter
     hosts (hosting_type 1), then price. RTT is not ranked: the covering pick is the same on every link of the committed fixtures."""
     bucket = int(min(p["bulk_mbps"], 4000) // 500)
-    return (-bucket, -p["datacenter"], p["price_per_h"])
+    return (not p["plannable"], -bucket, -p["datacenter"], p["price_per_h"])
 
 
-def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS):
+def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS, plan_aclass=False):
     pairs = []
     for x, y in itertools.combinations(survivors, 2):
         if str(x["host_id"]) == str(y["host_id"]):
@@ -152,19 +165,20 @@ def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS):
             "gpus": [x["gpu_name"], y["gpu_name"]], "locations": [x.get("location"), y.get("location")],
             "bulk_mbps": bulk_mbps(x, y), "datacenter": dc,
             "price_per_h": round(all_in(x, dl, hrs) + all_in(y, dl, hrs), 3),
+            "plannable": plan_aclass or not any(b["gpu_name"] in CLASSES_A for b in (x, y)),
             "boxes": [x, y],
         })  # fmt: skip
     pairs.sort(key=pair_key)
     return pairs
 
 
-def flags(o, a):
+def flags(o):
     """What the offer does not say and the gates on the box must (power limit, NUMA nodes, sockets)."""
     f = ["power limit unknown (gate on box)", "NUMA/sockets unknown (lscpu gate on box)"]
     if (num(o.get("ram_gb")) or 0) < BALLOON_GB:
         f.append("RAM under 64 GB: no balloon, measured headroom")
     if o.get("gpu_name") in CLASSES_A:
-        f.append("A-class: planned against 24 GiB, recorded as a deviation")
+        f.append("A-class: planned against 24 GiB with the 3090 prior, recorded as a deviation")
     return f
 
 
@@ -195,7 +209,7 @@ def run_plan(cmd, hw_text, layout, work):
     r = subprocess.run(
         [*cmd, "candidates", "--cluster", "--covering", "--hw", str(hw), "--layout", str(layout), "--plans-dir",
          str(work / "plans"), "--out", str(out), "--prompt", "2048"],
-        capture_output=True, text=True, timeout=300,
+        check=False, capture_output=True, text=True, timeout=300,
     )  # fmt: skip
     if r.returncode != 0 or not out.exists():
         return {"covering": False, "n": 0, "best": None, "error": (r.stderr or r.stdout).strip().splitlines()[-1:]}
@@ -205,50 +219,34 @@ def run_plan(cmd, hw_text, layout, work):
             "error": None}  # fmt: skip
 
 
-def fetch_class(cls, a):
-    """One `taxameter offers --json` call for a GPU class, enriched with the raw rows (RAM, disk, inet, datacenter). Reads only."""
-    cmd = ["uv", "run", "taxameter", "offers", "--json", "--gpu", cls, "--num-gpus", "1", "--min-disk", str(a.min_disk),
-           "--min-inet", "1", "--min-cpu-cores", "1", "--max-price", "5", "--download-gb", str(a.download_gb), "--top", "500"]  # fmt: skip
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, timeout=300)
-    if r.returncode != 0:
-        raise SystemExit(f"taxameter offers failed for {cls}: {r.stderr.strip()[-300:]}")
-    rows = json.loads(r.stdout)["offers"]
-    raws = raw_rows(cls, a)
-    for o in rows:
-        enrich(o, match_raw(o, raws))
-    return rows
+def row_from_provider(off):
+    """One normalized row from taxameter's Offer (its provider row in `.raw`). `cpu_ram` is MB, read as 1e6 bytes (the lower
+    reading, see the module docstring); fields the provider omits stay None and the `unknown` rule catches them."""
+    raw = off.raw
+    ram = num(raw.get("cpu_ram"))
+    return {
+        "id": off.id, "gpu_name": off.gpu_name, "num_gpus": off.num_gpus, "host_id": off.host_id, "machine_id": off.machine_id,
+        "location": off.location, "cpu_cores": off.cpu_cores, "price_per_h": off.price_per_h,
+        "inet_down_cost": off.inet_down_cost, "ram_gb": None if ram is None else ram / 1000,
+        "disk_gb": num(raw.get("disk_space")), "inet_down_mbps": num(raw.get("inet_down")),
+        "inet_up_mbps": num(raw.get("inet_up")), "hosting_type": raw.get("hosting_type"), "cpu_name": raw.get("cpu_name"),
+        "gpu_max_power_w": num(raw.get("gpu_max_power")),
+    }  # fmt: skip
 
 
-def match_raw(o, raws):
-    """The provider row of a listed offer. Offer ids rotate between two searches (taxameter ADR 0013), so a row is matched by
-    id, else by host and price (the same machine at the same price); no match leaves the fields unknown."""
-    for raw, off in raws:
-        if str(off.id) == str(o["id"]):
-            return raw
-    hits = [raw for raw, off in raws if str(off.host_id) == str(o["host_id"]) and abs(off.price_per_h - o["price_per_h"]) < 1e-6]
-    return hits[0] if hits else None
-
-
-def raw_rows(cls, a):
-    """The provider's own rows (raw, Offer) pairs, through the taxameter library with the CLI's filters (same read-only search)."""
+def fetch_class(provider, cls, a):
+    """`--reads` searches of one GPU class through taxameter's provider (read only), merged by machine, GPU and price: offer
+    ids rotate and offers appear and vanish between searches."""
     from taxameter.providers.base import OfferQuery
-    from taxameter.providers.vast import VastProvider
 
     q = OfferQuery(gpus=[cls], min_vram_gb=24, min_disk_gb=a.min_disk, min_reliability=a.min_reliability, min_inet_mbps=1,
-                   min_cuda=12.8, min_cpu_cores=1)  # fmt: skip
-    return [(o.raw, o) for o in VastProvider().offers(q)]
-
-
-def enrich(o, raw):
-    """Adds the fields the CLI JSON lacks; absent stays absent (the rules treat it as unknown)."""
-    if not raw:
-        return
-    ram = num(raw.get("cpu_ram"))
-    o["ram_gb"] = None if ram is None else ram / 1024  # MB, as taxameter reads it
-    for k, rk in (("disk_gb", "disk_space"), ("inet_down_mbps", "inet_down"), ("inet_up_mbps", "inet_up"),
-                  ("hosting_type", "hosting_type"), ("cpu_name", "cpu_name"), ("gpu_max_power_w", "gpu_max_power")):  # fmt: skip
-        if raw.get(rk) is not None:
-            o[k] = raw[rk]
+                   min_cuda=12.8, min_cpu_cores=1, num_gpus=1)  # fmt: skip
+    rows = {}
+    for _ in range(a.reads):
+        for off in provider.offers(q):
+            r = row_from_provider(off)
+            rows.setdefault((r["machine_id"] or r["host_id"], r["gpu_name"], round(r["price_per_h"], 4)), r)
+    return list(rows.values())
 
 
 def load_offers(files):
@@ -259,23 +257,28 @@ def load_offers(files):
     return rows
 
 
-def find(a, plan_cmd=None):
+def find(a, plan_cmd=None, provider=None):
     """The whole finder: (result dict). `plan_cmd` is the planner command prefix (a list) or None."""
     if a.offers_json:
         offers = load_offers(a.offers_json)
     else:
-        classes = CLASSES_3090 + (CLASSES_A if a.allow_aclass else ())
-        offers = [o for c in classes for o in fetch_class(c, a)]
+        if provider is None:
+            from taxameter.providers.vast import VastProvider
+
+            provider = VastProvider()
+        offers = [o for c in CLASSES_3090 + CLASSES_A for o in fetch_class(provider, c, a)]
         if a.save_offers:
             pathlib.Path(a.save_offers).write_text(json.dumps({"offers": offers}, indent=1), encoding="utf-8")
     survivors, counts = screen(offers, a)
-    pairs = make_pairs(survivors, a.download_gb, a.session_hours)
+    pairs = make_pairs(survivors, a.download_gb, a.session_hours, a.plan_aclass)
     counts["pairs_same_host_dropped"] = len(survivors) * (len(survivors) - 1) // 2 - len(pairs)
     counts["pairs_no_covering_plan"] = 0
     listed = []
     for p in pairs:
         x, y = p["boxes"]
-        p["flags"] = sorted(set(flags(x, a)) | set(flags(y, a)))
+        p["flags"] = sorted(set(flags(x)) | set(flags(y)))
+        if not p["plannable"]:
+            p["flags"].append("not plannable until cluster-profile-gpu-cap lands (A-class card): do not rent")
         if plan_cmd:
             with tempfile.TemporaryDirectory() as td:
                 p["plan"] = run_plan(plan_cmd, pair_graph(x, y), ROOT / a.layout, td)
@@ -288,25 +291,26 @@ def find(a, plan_cmd=None):
         listed.append(p)
     return {"rules": {"ram_floor_gb": a.ram_floor_gb, "min_cores": a.min_cores, "min_disk_gb": a.min_disk,
                       "min_inet_mbps": a.min_inet, "max_price_per_h": a.max_price, "download_gb": a.download_gb,
-                      "session_hours": a.session_hours, "allow_aclass": a.allow_aclass},
+                      "session_hours": a.session_hours, "plan_aclass": a.plan_aclass, "reads": a.reads},
             "counts": counts, "pairs": listed}  # fmt: skip
 
 
 def table(res, top):
     c = res["counts"]
-    out = [f"{c['offers']} offers, {c['survivors']} pass the static rules; excluded first by rule / failing the rule on its own:"]
+    out = [f"offers per class: {c['per_class']} (a class at 0 may be a wrong name)"]
+    out.append(f"{c['offers']} offers, {c['survivors']} pass the static rules; excluded first by rule / failing the rule on its own:")
     out += [f"  {r:<10} {c['excluded'][r]:>4} / {c['fails'][r]:>4}" for r in RULES]
-    out.append(f"  ({c['no_provider_row']} offers had no provider row on the second read, so RAM, disk and inet are unknown: counted under ram)")
     out.append(f"  pairs dropped for the same host: {c['pairs_same_host_dropped']}; for no covering plan: {c['pairs_no_covering_plan']}")
-    if not res["pairs"]:
-        out.append("NO PAIR: do not create any box (never hold one for a partner); retry later, never loosen a rule.")
-        return "\n".join(out)
-    out.append(f"{len(res['pairs'])} pair(s); top {min(top, len(res['pairs']))} by bulk rate, datacenter, price:")
-    out.append("  #  offers (a, b)        hosts           gpus                  bulk Mbit/s  dc  USD/h  plan")
+    if not any(p["plannable"] for p in res["pairs"]):
+        out.append(f"NO PLANNABLE PAIR ({len(res['pairs'])} listed with an A-class card): do not create any box (never hold one "
+                   "for a partner); retry later, never loosen a rule.")
+    if res["pairs"]:
+        out.append(f"{len(res['pairs'])} pair(s); top {min(top, len(res['pairs']))} by plannable, bulk rate, datacenter, price:")
+        out.append("  #  offers (a, b)        hosts           gpus                  bulk Mbit/s  dc  USD/h  plannable  plan")
     for i, p in enumerate(res["pairs"][:top], 1):
         plan = "not run" if p["plan"] is None else f"{p['plan']['n']} covering"
         out.append(f"  {i:<2} {p['a']:>9} {p['b']:>9}  {'/'.join(p['hosts']):<15} {'/'.join(p['gpus']):<21} "
-                   f"{p['bulk_mbps']:>10.0f} {p['datacenter']:>3}  {p['price_per_h']:.3f}  {plan}")  # fmt: skip
+                   f"{p['bulk_mbps']:>10.0f} {p['datacenter']:>3}  {p['price_per_h']:.3f}  {p['plannable']!s:<9}  {plan}")  # fmt: skip
     out.append("  unknown on every offer, gated on the box: power limit, NUMA nodes and sockets")
     return "\n".join(out)
 
@@ -314,10 +318,12 @@ def table(res, top):
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--offers-json", action="append", help="recorded offers (offline); repeatable")
-    p.add_argument("--save-offers", help="write the live offers, enriched, to this file (a fixture)")
+    p.add_argument("--save-offers", help="write the live offers, normalized, to this file (a fixture)")
     p.add_argument("--out", help="write the result JSON here")
     p.add_argument("--top", type=int, default=10)
-    p.add_argument("--allow-aclass", action="store_true", help="also A40, RTX A6000, L40 (the planner cannot place them yet)")
+    p.add_argument("--reads", type=int, default=3, help="searches per GPU class, merged")
+    p.add_argument("--plan-aclass", action="store_true",
+                   help="count pairs with an A-class card as plannable (once the cluster profile caps and prices them)")
     p.add_argument("--min-cores", type=float, default=MIN_CORES)
     p.add_argument("--min-disk", type=float, default=MIN_DISK_GB)
     p.add_argument("--min-inet", type=float, default=MIN_INET_MBPS)
@@ -341,7 +347,7 @@ def main(argv=None):
     print(table(res, a.top))
     if a.out:
         pathlib.Path(a.out).write_text(json.dumps(res, indent=1), encoding="utf-8")
-    return 0 if res["pairs"] else 1
+    return 0 if any(p["plannable"] for p in res["pairs"]) else 1
 
 
 if __name__ == "__main__":
