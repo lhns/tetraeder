@@ -72,13 +72,13 @@ if [ "$LOOPBACK" = 1 ]; then
   else
     # the tiny MoE fixture: 256 training positions, byte-level vocabulary (one character is one token), as in cluster_integration.rs
     trial_s="${TRIAL_S:-20}" fault_at="${FAULT_AT:-6}" stop_for="${STOP_FOR:-6}" restore_after="${RESTORE_AFTER:-4}"
-    rejoin_s="${REJOIN_S:-30}" down_ms="${NODE_DOWN_MS:-2000}" prompt_tokens="${PROMPT_TOKENS:-96}" max_tokens="${MAX_TOKENS:-120}"
-    load_extra="--ignore-eos" # the tiny model emits EOS early at temperature 0.7: a fixed length keeps requests in flight across the fault window
+    rejoin_s="${REJOIN_S:-30}" down_ms="${NODE_DOWN_MS:-2000}" prompt_tokens="${PROMPT_TOKENS:-96}" max_tokens="${MAX_TOKENS:-1000}"
+    load_extra="--ignore-eos" # the tiny model emits EOS early at temperature 0.7 and decodes 120 tokens in under 0.1 s: long fixed-length answers keep requests in flight across the fault window
     b_up_wait="${B_UP_WAIT_S:-90}"
     LB_BIN="${TETRAEDER_BIN:-$repo/target/debug/tetraeder}"
     case "$LB_BIN" in /* | ?:*) ;; *) LB_BIN="$repo/$LB_BIN" ;; esac
     export LB_BIN
-    LB_BOX_ENV="$LB_BOX_ENV THREADS=${THREADS:-2} PAR=4 CTX=2048"
+    LB_BOX_ENV="$LB_BOX_ENV THREADS=${THREADS:-2} PAR=4 CTX=8192"
     serve_extra="--chat-template-file $repo/tests/fixtures/chatml.jinja"
   fi
   export LB_BOX_ENV
