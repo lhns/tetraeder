@@ -24,8 +24,19 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import tomllib
+from pathlib import Path
 
-CAP_MIN = 180.0  # AGENTS.md: 3 h per box (max_box_hours)
+def _box_hours() -> float:
+    """taxameter.toml [policy] max_box_hours (3 h; a one-off in AGENTS.md may raise it for a session), 3 when unreadable."""
+    try:
+        with open(Path(__file__).resolve().parent.parent / "taxameter.toml", "rb") as f:
+            return float(tomllib.load(f)["policy"]["max_box_hours"])
+    except (OSError, KeyError, ValueError, tomllib.TOMLDecodeError):
+        return 3.0
+
+
+CAP_MIN = _box_hours() * 60  # AGENTS.md: the per-box cap (max_box_hours), the one the taxameter watchdog stops a box at
 PAD = 1.25  # multiplier of the assumed minutes
 
 # (stage, measured min, assumed min, optional, basis). The session's order.
