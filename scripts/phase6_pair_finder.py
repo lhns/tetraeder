@@ -74,6 +74,7 @@ SKIP_HOSTS = {
     "366851": "taxameter blocklist", "483833": "taxameter blocklist", "269862": "slow downloads (13d, 13e)",
     "36536": "GPU power capped (phase6-exit-s-20261126b)", "44173": "SSH rejected the key; two sockets",
     "568479": "two sockets", "546840": "two sockets; never finished the pull", "281790": "two sockets",
+    "682584": "A40, two sockets and two NUMA nodes (phase6-exit-s-20261126c)",
     "87485": "busy co-tenant", "213498": "SSH rejected the key", "109790": "stayed loading twice",
     "39788": "stayed loading", "151822": "stalled twice", "130210": "never finished the pull", "51345": "never finished the pull",
     "551866": "never finished the pull", "87657": "never finished the pull", "70221": "never finished the pull",
