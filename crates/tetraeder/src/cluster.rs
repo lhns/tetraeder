@@ -134,6 +134,11 @@ pub struct ProfileArgs {
     /// graph (ADR 0092 section 4).
     #[arg(long = "ram-budget", value_name = "ID=BYTES")]
     pub ram_budget: Vec<String>,
+    /// Cap every GPU's capacity at this many GiB and fill the priors of a card with no spec
+    /// (an A6000 or A40 planned as a 24 GiB card, ADR 0091 answer 9). Recorded in the graph's
+    /// notes.
+    #[arg(long, value_name = "GIB")]
+    pub gpu_cap_gib: Option<u64>,
     /// Output file (stdout when absent).
     #[arg(short, long)]
     pub out: Option<PathBuf>,
@@ -213,9 +218,16 @@ fn profile(a: &ProfileArgs) -> Result<()> {
     let (cfg, id) = a.cluster.load()?;
     let t = a.cluster.transport(&cfg, &id, None, SocketBuffers::Auto)?;
     let probe = a.probe.as_ref().map(read_probe).transpose()?;
-    let hw = client::profile_cluster(&t, &cfg, probe.as_ref()).map_err(anyhow::Error::msg)?;
+    let mut hw = client::profile_cluster(&t, &cfg, probe.as_ref()).map_err(anyhow::Error::msg)?;
     if probe.is_none() {
         eprintln!("no probe given: the graph has no network links; run `cluster probe` first");
+    }
+    for note in tetraeder_planner::prepare_cluster_gpus(
+        &mut hw,
+        &tetraeder_planner::Priors::builtin(),
+        a.gpu_cap_gib.map(|c| c << 30),
+    ) {
+        eprintln!("note: {note}");
     }
     let text = if a.ram_budget.is_empty() {
         hw.to_json()?

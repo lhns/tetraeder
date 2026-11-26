@@ -17,6 +17,7 @@ use tetraeder_plan::{Hints, Phase, Plan};
 use tetraeder_planner::layout::fixtures;
 use tetraeder_planner::{
     ClusterCandidate, Priors, enumerate_cluster, enumerate_cluster_covering, fill_from_priors,
+    prepare_cluster_gpus,
 };
 use tetraeder_profiler::{DeviceKind, HardwareGraph, LinkKind, Volume, add_disks};
 
@@ -876,4 +877,183 @@ fn a_covering_plan_with_four_micro_batches_pays_the_offload_copy_in_each() {
         );
     }
     assert_eq!(copying, 2, "both nodes' segments copy");
+}
+
+// ---- A-class cards under a per-node GPU cap (ADR 0091 History 2026-11-26, answer 9) -----------
+
+/// The A6000 reports 48 GiB (51.5 GB); the A40 is 48 GB.
+const CARD_48: u64 = 51_539_607_552;
+const CAP: u64 = 24 << 30;
+
+/// The discovered graph with node `node`'s GPU replaced by a card `cluster profile` has no spec
+/// for: its name and capacity, no compute, no bandwidth (what the A6000 box reported).
+fn with_bare_gpu(hw: &HardwareGraph, node: &str, name: &str, bytes: u64) -> HardwareGraph {
+    let mut hw = hw.clone();
+    let d = hw
+        .devices
+        .iter_mut()
+        .find(|d| d.id == format!("{node}/gpu0"))
+        .unwrap();
+    d.name = name.into();
+    d.capacity_bytes = bytes;
+    d.compute = None;
+    d.bandwidth_bytes_per_s = None;
+    hw
+}
+
+fn covering(hw: &HardwareGraph) -> Vec<ClusterCandidate> {
+    enumerate_cluster_covering(hw, &real_235b(), &Hints::default(), Phase(6)).0
+}
+
+fn check_pick(hw: &HardwareGraph, label: &str) {
+    let layout = real_235b();
+    let cands = covering(hw);
+    assert!(!cands.is_empty(), "{label}: no covering candidate");
+    let pick = &cands[0];
+    println!(
+        "gpu_cap_pick {label} candidates={} {}",
+        cands.len(),
+        show(pick, &layout)
+    );
+    assert_eq!(pick.plan.replicas[0].stages.len(), 2);
+    for s in segs(&pick.plan, &layout) {
+        assert!(s.v + s.r >= layout.n_expert, "{label}: {}", s.node);
+        assert!(s.gpu <= CAP / 100 * 99, "{label}: {} {}", s.node, s.gpu);
+    }
+}
+
+// hardware: none
+#[test]
+fn an_uncapped_unspecced_a6000_node_has_no_covering_plan() {
+    // What the plan stage of phase6-exit-s-20261126 found.
+    let base = discovered_at(true, MEASURED_RAM);
+    let hw = with_bare_gpu(&base, "b", "NVIDIA RTX A6000", CARD_48);
+    assert!(covering(&hw).is_empty());
+}
+
+// hardware: none
+#[test]
+fn a_3090_and_an_a6000_under_the_cap_have_a_covering_pick() {
+    let base = discovered_at(true, MEASURED_RAM);
+    let mut hw = with_bare_gpu(&base, "b", "NVIDIA RTX A6000", CARD_48);
+    let notes = prepare_cluster_gpus(&mut hw, &Priors::builtin(), Some(CAP));
+    let g = hw.device("b/gpu0").unwrap();
+    assert_eq!(g.capacity_bytes, CAP);
+    assert!(g.compute.is_some() && g.bandwidth_bytes_per_s.is_some());
+    // The 3090 is already at 24 GiB and keeps its numbers.
+    assert_eq!(hw.device("a/gpu0").unwrap(), base.device("a/gpu0").unwrap());
+    // The cap is in the graph.
+    assert!(
+        hw.notes
+            .iter()
+            .any(|n| n.contains("b/gpu0") && n.contains("capped")),
+        "{notes:?}"
+    );
+    hw.validate().unwrap();
+    check_pick(&hw, "3090+a6000");
+}
+
+// hardware: none
+#[test]
+fn an_a6000_head_and_a_3090_under_the_cap_have_a_covering_pick() {
+    // The orientation of phase6-exit-s-20261126: the A6000 on node a.
+    let base = discovered_at(true, MEASURED_RAM);
+    let mut hw = with_bare_gpu(&base, "a", "NVIDIA RTX A6000", CARD_48);
+    prepare_cluster_gpus(&mut hw, &Priors::builtin(), Some(CAP));
+    check_pick(&hw, "a6000+3090");
+}
+
+// hardware: none
+#[test]
+fn an_a40_pair_under_the_cap_has_a_covering_pick() {
+    let base = discovered_at(true, MEASURED_RAM);
+    let mut hw = with_bare_gpu(&base, "a", "NVIDIA A40", CARD_48);
+    hw = with_bare_gpu(&hw, "b", "NVIDIA A40", CARD_48);
+    prepare_cluster_gpus(&mut hw, &Priors::builtin(), Some(CAP));
+    for n in ["a", "b"] {
+        assert_eq!(hw.device(&format!("{n}/gpu0")).unwrap().capacity_bytes, CAP);
+    }
+    check_pick(&hw, "a40+a40");
+}
+
+// hardware: none
+#[test]
+fn the_gpu_class_table_covers_the_a_class_and_ada_cards() {
+    let p = Priors::builtin();
+    for (name, bw) in [
+        ("NVIDIA RTX A6000", 7.68e11),
+        ("NVIDIA A40", 6.96e11),
+        ("NVIDIA L40", 8.64e11),
+        ("NVIDIA L40S", 8.64e11),
+        ("NVIDIA GeForce RTX 3090", 9.36e11),
+        ("NVIDIA GeForce RTX 4090", 1.008e12),
+    ] {
+        let base = discovered_at(true, MEASURED_RAM);
+        let mut hw = with_bare_gpu(&base, "a", name, CARD_48);
+        let notes = prepare_cluster_gpus(&mut hw, &p, None);
+        let g = hw.device("a/gpu0").unwrap();
+        assert_eq!(g.bandwidth_bytes_per_s.unwrap().value, bw, "{name}");
+        assert!(g.compute.unwrap().flops_per_s > 0.0, "{name}");
+        assert!(!notes.iter().any(|n| n.contains("conservative")), "{name}");
+        // No cap asked: the capacity stays.
+        assert_eq!(g.capacity_bytes, CARD_48, "{name}");
+    }
+}
+
+// hardware: none
+#[test]
+fn an_a4000_is_not_an_a40_and_an_l4_is_not_an_l40() {
+    let p = Priors::builtin();
+    let min_bw = p
+        .gpu
+        .iter()
+        .map(|c| c.bandwidth_bytes_per_s)
+        .fold(f64::MAX, f64::min);
+    for name in ["NVIDIA RTX A4000", "NVIDIA L4"] {
+        let base = discovered_at(true, MEASURED_RAM);
+        let mut hw = with_bare_gpu(&base, "a", name, CARD_48);
+        let notes = prepare_cluster_gpus(&mut hw, &p, None);
+        let g = hw.device("a/gpu0").unwrap();
+        assert_eq!(g.bandwidth_bytes_per_s.unwrap().value, min_bw, "{name}");
+        assert!(notes.iter().any(|n| n.contains("conservative")), "{name}");
+    }
+}
+
+// hardware: none
+#[test]
+fn a_gpu_not_in_the_table_gets_the_most_conservative_prior_and_a_note() {
+    let p = Priors::builtin();
+    let base = discovered_at(true, MEASURED_RAM);
+    let mut hw = with_bare_gpu(&base, "a", "Mystery Card 9000", CARD_48);
+    let notes = prepare_cluster_gpus(&mut hw, &p, Some(CAP));
+    let g = hw.device("a/gpu0").unwrap();
+    let min_bw = p
+        .gpu
+        .iter()
+        .map(|c| c.bandwidth_bytes_per_s)
+        .fold(f64::MAX, f64::min);
+    let min_fl = p.gpu.iter().map(|c| c.flops_per_s).fold(f64::MAX, f64::min);
+    assert_eq!(g.bandwidth_bytes_per_s.unwrap().value, min_bw);
+    assert_eq!(g.compute.unwrap().flops_per_s, min_fl);
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("a/gpu0") && n.contains("conservative")),
+        "{notes:?}"
+    );
+    assert!(hw.notes.iter().any(|n| n.contains("conservative")));
+}
+
+// hardware: none
+#[test]
+fn without_a_cap_and_with_specced_gpus_the_graph_is_unchanged() {
+    // Single-node and 3090 graphs: nothing to fill, nothing to cap.
+    let base = discovered_at(true, MEASURED_RAM);
+    let mut hw = base.clone();
+    let notes = prepare_cluster_gpus(&mut hw, &Priors::builtin(), None);
+    assert_eq!(hw, base);
+    assert!(notes.is_empty());
+    // The cap at the cards' own size changes nothing either.
+    prepare_cluster_gpus(&mut hw, &Priors::builtin(), Some(CAP));
+    assert_eq!(hw, base);
 }

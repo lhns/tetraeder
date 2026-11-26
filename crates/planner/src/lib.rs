@@ -93,4 +93,6 @@ pub use serve::{
     predict_plan, predict_plan_for, predict_plan_tier, propose, regret, uniform_tier,
 };
 pub use timemodel::{IoShape, TimeModel, time_model};
-pub use whatif::{Change, Priors, WhatIf, apply, fill_from_priors, rank_purchases, what_if};
+pub use whatif::{
+    Change, Priors, WhatIf, apply, fill_from_priors, prepare_cluster_gpus, rank_purchases, what_if,
+};
