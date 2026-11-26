@@ -358,7 +358,9 @@ mod tests {
 
     #[test]
     fn without_a_cap_or_a_missing_prior_the_graph_is_left_alone() {
-        let mut hw = cluster();
+        let mut hw = json!({"devices": [
+            {"id": "a/cpu0", "kind": "cpu", "node": "a", "name": "cpu", "tier": "ram", "capacity_bytes": 100},
+        ]});
         let before = hw.clone();
         assert!(prepare_gpus(&mut hw, None).unwrap().is_empty());
         assert_eq!(hw, before);
