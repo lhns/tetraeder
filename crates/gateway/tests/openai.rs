@@ -75,7 +75,8 @@ async fn chat_continues_the_final_message() {
     let engine = FakeEngine::fixed("ok");
     let prompts = engine.prompts.clone();
     let (app, _) = app(engine);
-    let convo = json!([{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]);
+    let convo =
+        json!([{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]);
     let want = "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi";
     for extra in [
         json!({}),
@@ -120,6 +121,32 @@ async fn chat_continues_the_final_message() {
         assert_eq!(s, 400, "{v}");
         assert!(v["error"]["message"].as_str().unwrap().contains(msg), "{v}");
     }
+}
+
+/// On a thinking template the continued message's think block is reopened (reasoning) or
+/// closed (content) after the generation prompt. Pins the construction; not compared with
+/// llama-server, whose markers come from its template analysis (ADR 0093, open).
+#[tokio::test]
+async fn continuation_on_a_thinking_template() {
+    let engine = FakeEngine::with_template(Some(QWEN3.into()), |_| "ok".into());
+    let prompts = engine.prompts.clone();
+    let (app, _) = app(engine);
+    let convo = json!([{"role": "user", "content": "q"}, {"role": "assistant", "content": "Hi"}]);
+    let body = json!({"model": "fake", "messages": convo});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let p = prompts.lock().unwrap().pop().unwrap();
+    assert!(
+        p.ends_with("<|im_start|>assistant\n<think></think>Hi"),
+        "{p:?}"
+    );
+    let convo = json!([{"role": "user", "content": "q"},
+                       {"role": "assistant", "content": "", "reasoning_content": "hmm"}]);
+    let body = json!({"model": "fake", "messages": convo});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let p = prompts.lock().unwrap().pop().unwrap();
+    assert!(p.ends_with("<|im_start|>assistant\n<think>hmm"), "{p:?}");
 }
 
 #[tokio::test]
@@ -307,7 +334,8 @@ async fn response_format_becomes_llama_servers_grammar() {
     let engine = FakeEngine::fixed("Sure!");
     let params = engine.params.clone();
     let (app, _) = app(engine);
-    let schema = json!({"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]});
+    let schema =
+        json!({"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]});
     let want = concat!(
         "root ::= space space (\"```json\" space response-format space \"```\" | space response-format space)\n",
         "response-format ::= response-format-schema\n",
@@ -331,7 +359,8 @@ async fn response_format_becomes_llama_servers_grammar() {
         // the fake honours masks only: unconstrained output means no mask was set
         assert_eq!(v["choices"][0]["message"]["content"], "Sure!", "{format}");
     }
-    let body = json!({"model": "fake", "messages": user("json"), "response_format": {"type": "xml"}});
+    let body =
+        json!({"model": "fake", "messages": user("json"), "response_format": {"type": "xml"}});
     let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
     assert_eq!(s, 400, "{v}");
 }
@@ -627,7 +656,13 @@ async fn completion_prompt_batches_answer_prompt_major() {
     let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
     assert_eq!(s, 200, "{v}");
     assert_eq!(v["choices"].as_array().unwrap().len(), 1);
-    let (s, _, v) = post(&app, "/v1/completions", &json!({"model": "fake", "prompt": []}), false).await;
+    let (s, _, v) = post(
+        &app,
+        "/v1/completions",
+        &json!({"model": "fake", "prompt": []}),
+        false,
+    )
+    .await;
     assert_eq!(s, 400, "{v}");
 }
 
@@ -662,7 +697,8 @@ async fn completion_prompt_batch_longer_than_the_slots_finishes() {
 #[tokio::test]
 async fn input_tokens_count_the_chat_prompt() {
     let (app, _) = app(FakeEngine::fixed("ok"));
-    let want = json!({"input_tokens": chatml_user_tokens("count me"), "object": "response.input_tokens"});
+    let want =
+        json!({"input_tokens": chatml_user_tokens("count me"), "object": "response.input_tokens"});
     for path in [
         "/v1/chat/completions/input_tokens",
         "/chat/completions/input_tokens",

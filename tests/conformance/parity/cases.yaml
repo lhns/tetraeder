@@ -1165,24 +1165,55 @@ cases:
     expect: pass
 
   # ---- gaps found by the audit (node serving-parity-remaining); each flips to pass in the change that closes it ----
-  # not moe: llama-server answers 500 there when the cut output does not parse as its format, a check this does not copy
+  # a reply cut before its JSON ends: shape and finish only. llama-server answers the raw text there (auto, dense) or a 500
+  # (moe, "does not match the expected peg-native format", cause not established); here the JSON so far is the content
   - id: response-format-json-object
     group: B
     row: "response_format: json_object / json_schema"
     endpoint: POST /v1/chat/completions
     body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 16, "response_format": {"type": "json_object"}}
     value_paths: ["choices[0].finish_reason"]
-    mode: text
+    mode: shape
     engines: [auto, dense]
     expect: pass
+  # a closed object (bounded integer, no other keys): greedy reaches the end
   - id: response-format-json-schema
     group: B
     row: "response_format: json_object / json_schema"
     endpoint: POST /v1/chat/completions
-    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 24, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]}}}}
-    value_paths: ["choices[0].finish_reason"]
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 256, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"], "additionalProperties": false}}}}
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    premise: {finish_reason: stop}
     mode: text
-    engines: [auto, dense]
+    engines: [auto, dense, moe]
+    expect: pass
+  # a closed schema: every whitespace run of the grammar is bounded, so greedy reaches the end (and the closing fence, if any)
+  - id: response-format-closed-schema
+    group: B
+    row: "response_format: json_object / json_schema"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 128, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"enum": ["a"]}}}}
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    premise: {finish_reason: stop}
+    mode: text
+    engines: [auto, dense, moe]
+    expect: pass
+  - id: response-format-closed-schema-stream
+    group: B
+    row: "response_format: json_object / json_schema"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 128, "stream": true, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"enum": ["a"]}}}}
+    mode: stream
+    engines: [auto]
+    expect: pass
+  - id: responses-prefill-assistant
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/responses
+    body: {"input": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_output_tokens": 6}
+    value_paths: ["output[0].content[0].text", "output[0].type"]
+    mode: text
+    engines: [auto]
     expect: pass
   # the chatml fixture template renders no tools: llama-server builds no grammar and answers text, the mask here forces a call
   - id: gap-tool-choice-required

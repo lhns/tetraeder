@@ -822,7 +822,13 @@ impl Gateway {
         // output: no tools, no think block, no grammar of the request. Otherwise the token mask
         // keeps the think block and tool calls apart.
         let mut format = spec.format.clone();
-        if let (Some(f), Prompt::Chat { tools, tool_choice, .. }) = (&format, &spec.prompt)
+        let mut unfence = None;
+        if let (
+            Some(f),
+            Prompt::Chat {
+                tools, tool_choice, ..
+            },
+        ) = (&format, &spec.prompt)
             && !st.think
             && (tools.is_empty() || *tool_choice == ToolChoice::None)
             && extra.grammar.is_none()
@@ -834,6 +840,7 @@ impl Gateway {
             let g = response_format_grammar(&schema_grammar(&schema.to_string())?);
             extra.grammar = Some(GrammarSource::Gbnf(g));
             format = None;
+            unfence = Some(pump::Unfence::default());
         }
         let (parser, constraint) = self.output_setup(&st, &spec.prompt, &format, in_reasoning)?;
 
@@ -883,6 +890,7 @@ impl Gateway {
             prompt_tokens: n_prompt,
             vocab: Arc::clone(&st.vocab),
             parser,
+            unfence,
             single_call: matches!(
                 &spec.prompt,
                 Prompt::Chat { parallel_tool_calls: false, tools, tool_choice, .. }

@@ -24,6 +24,8 @@ pub(super) struct Run {
     pub(super) prompt_tokens: u32,
     pub(super) vocab: Arc<Vocab>,
     pub(super) parser: Option<OutputParser>,
+    /// A chat `response_format` on llama-server's grammar: only the JSON is content.
+    pub(super) unfence: Option<Unfence>,
     /// Parallel calls are off: generation ends after the first complete tool call.
     pub(super) single_call: bool,
     pub(super) stop: StopMatcher,
@@ -37,6 +39,55 @@ pub(super) struct Run {
     pub(super) _permit: OwnedSemaphorePermit,
 }
 
+/// What llama-server reports as the content of a `response_format` reply (ADR 0093): its
+/// grammar allows whitespace and a ```` ```json ```` fence around the JSON, and only the JSON is
+/// tagged as content. Leading whitespace and the fence are dropped as they come; whitespace and
+/// backticks after the JSON are held until more JSON follows (a JSON value never ends with
+/// either), so the end of the reply drops them.
+#[derive(Default)]
+pub(super) struct Unfence {
+    /// The text before the JSON, until the JSON starts.
+    lead: String,
+    started: bool,
+    held: String,
+}
+
+const FENCE: &str = "```json";
+
+fn is_space(c: char) -> bool {
+    matches!(c, ' ' | '\n' | '\t')
+}
+
+impl Unfence {
+    pub(super) fn push(&mut self, text: &str) -> String {
+        if !self.started {
+            self.lead.push_str(text);
+            let t = self.lead.trim_start_matches(is_space);
+            let t = match t.strip_prefix(FENCE) {
+                Some(rest) => rest.trim_start_matches(is_space),
+                None if FENCE.starts_with(t) => return String::new(),
+                None => t,
+            };
+            if t.is_empty() {
+                return String::new();
+            }
+            self.held = t.to_owned();
+            self.lead.clear();
+            self.started = true;
+        } else {
+            self.held.push_str(text);
+        }
+        match self.held.rfind(|c: char| !is_space(c) && c != '`') {
+            Some(i) => {
+                let end = i + self.held[i..].chars().next().map_or(1, char::len_utf8);
+                let rest = self.held.split_off(end);
+                std::mem::replace(&mut self.held, rest)
+            }
+            None => String::new(),
+        }
+    }
+}
+
 enum Outcome {
     Done(Finish),
     ClientGone,
@@ -45,6 +96,14 @@ enum Outcome {
 
 impl Run {
     fn segments(&mut self, text: &str, out: &mut Vec<Segment>) {
+        let unfenced;
+        let text = match self.unfence.as_mut() {
+            Some(u) => {
+                unfenced = u.push(text);
+                unfenced.as_str()
+            }
+            None => text,
+        };
         if text.is_empty() {
             return;
         }
@@ -322,5 +381,27 @@ impl Run {
             }
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Unfence;
+
+    // hardware: none
+    #[test]
+    fn unfence_keeps_only_the_json() {
+        let run = |pieces: &[&str]| {
+            let mut u = Unfence::default();
+            pieces.iter().map(|p| u.push(p)).collect::<String>()
+        };
+        assert_eq!(
+            run(&["\n\n", "```", "json", "\n\t ", "\"a\"", "\n\n", "``", "`"]),
+            "\"a\""
+        );
+        assert_eq!(run(&[" ", "{\"k\":", " 1", "}", " \n"]), "{\"k\": 1}");
+        assert_eq!(run(&["{\"k\": \"`", "x`\"}"]), "{\"k\": \"`x`\"}");
+        assert_eq!(run(&["``", "`js"]), "");
+        assert_eq!(run(&["``x"]), "``x");
     }
 }
