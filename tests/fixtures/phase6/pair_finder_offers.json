@@ -1,0 +1,17 @@
+{
+ "offers": [
+  {"id": "1", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "1001", "location": "A", "cpu_cores": 32, "price_per_h": 0.40, "inet_down_cost": 0.0026, "ram_gb": 125.0, "disk_gb": 500, "inet_down_mbps": 4000, "inet_up_mbps": 4000, "hosting_type": 1},
+  {"id": "2", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "1001", "location": "A", "cpu_cores": 32, "price_per_h": 0.41, "inet_down_cost": 0.0026, "ram_gb": 125.0, "disk_gb": 500, "inet_down_mbps": 4000, "inet_up_mbps": 4000, "hosting_type": 1},
+  {"id": "3", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "1002", "location": "B", "cpu_cores": 16, "price_per_h": 0.45, "inet_down_cost": 0.0026, "ram_gb": 62.0, "disk_gb": 400, "inet_down_mbps": 2600, "inet_up_mbps": 2600, "hosting_type": 0},
+  {"id": "4", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "1003", "location": "C", "cpu_cores": 12, "price_per_h": 0.35, "inet_down_cost": 0.0026, "ram_gb": 96.0, "disk_gb": 300, "inet_down_mbps": 1000, "inet_up_mbps": 1000, "hosting_type": 0},
+  {"id": "5", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "36536", "location": "D", "cpu_cores": 32, "price_per_h": 0.40, "inet_down_cost": 0.0026, "ram_gb": 200.0, "disk_gb": 500, "inet_down_mbps": 4000, "inet_up_mbps": 4000, "hosting_type": 1},
+  {"id": "6", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "2001", "location": "E", "cpu_cores": 8, "price_per_h": 0.30, "inet_down_cost": 0.0026, "ram_gb": 125.0, "disk_gb": 500, "inet_down_mbps": 4000, "inet_up_mbps": 4000},
+  {"id": "7", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "2002", "location": "F", "cpu_cores": 16, "price_per_h": 0.30, "inet_down_cost": 0.0026, "ram_gb": 59.0, "disk_gb": 500, "inet_down_mbps": 4000, "inet_up_mbps": 4000},
+  {"id": "8", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "2003", "location": "G", "cpu_cores": 16, "price_per_h": 0.30, "inet_down_cost": 0.0026, "ram_gb": 125.0, "disk_gb": 200, "inet_down_mbps": 4000, "inet_up_mbps": 4000},
+  {"id": "9", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "2004", "location": "H", "cpu_cores": 16, "price_per_h": 0.30, "inet_down_cost": 0.0026, "ram_gb": 125.0, "disk_gb": 500, "inet_down_mbps": 900, "inet_up_mbps": 900},
+  {"id": "10", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "2005", "location": "I", "cpu_cores": 16, "price_per_h": 0.40, "inet_down_cost": 0.026, "ram_gb": 125.0, "disk_gb": 500, "inet_down_mbps": 4000, "inet_up_mbps": 4000},
+  {"id": "11", "gpu_name": "RTX 3090", "num_gpus": 1, "host_id": "2006", "location": "J", "cpu_cores": 16, "price_per_h": 0.40, "ram_gb": null, "disk_gb": null, "inet_down_mbps": null},
+  {"id": "12", "gpu_name": "RTX A6000", "num_gpus": 1, "host_id": "3001", "location": "K", "cpu_cores": 32, "price_per_h": 0.50, "inet_down_cost": 0.0026, "ram_gb": 200.0, "disk_gb": 600, "inet_down_mbps": 3000, "inet_up_mbps": 3000, "hosting_type": 1},
+  {"id": "13", "gpu_name": "RTX 3090", "num_gpus": 2, "host_id": "3002", "location": "L", "cpu_cores": 32, "price_per_h": 0.60, "inet_down_cost": 0.0026, "ram_gb": 200.0, "disk_gb": 600, "inet_down_mbps": 3000, "inet_up_mbps": 3000}
+ ]
+}
