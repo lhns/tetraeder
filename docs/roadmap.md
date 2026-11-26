@@ -144,15 +144,15 @@ flowchart TB
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
+        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
+        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
+        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
+        memory_prefill_misses["memory · ⏸ Stream<br/>expert misses during<br/>prefill"]
         bench_phase6_exit("bench · ⛔ Phase 6<br/>exit: multi-node test")
         cluster_experts_nodes["cluster · ⏸ Experts on<br/>other machines"]
         multi_live_reshard["multi · ⛔ Reshard<br/>while serving"]
         planner_advisor_auto["planner · ⛔ Advisor<br/>applies safe changes<br/>itself"]
         bench_phase7_exit("bench · ⛔ Phase 7<br/>exit: day-long trace")
-        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
-        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
-        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
-        memory_prefill_misses["memory · ⏸ Stream<br/>expert misses during<br/>prefill"]
     end
     engine_libllama ~~~ memory_prefetch
     engine_moe_builder ~~~ memory_prefetch
@@ -197,18 +197,21 @@ flowchart TB
     cluster_pipeline_nodes ~~~ bench_30b_c4_gap
     cluster_failover ~~~ planner_cost_model_v5_host2
     cluster_failover ~~~ engine_dense_amx
-    bench_30b_c4_gap ~~~ bench_phase6_exit
-    planner_cost_model_v5_host2 ~~~ bench_phase6_exit
-    engine_dense_amx ~~~ bench_phase6_exit
+    bench_30b_c4_gap ~~~ engine_backend_parity
+    planner_cost_model_v5_host2 ~~~ engine_backend_parity
+    engine_dense_amx ~~~ engine_backend_parity
+    engine_backend_parity ~~~ bench_phase8_exit
+    engine_backend_parity ~~~ bench_phase9_exit
+    engine_backend_parity ~~~ memory_prefill_misses
+    bench_phase8_exit ~~~ bench_phase6_exit
+    bench_phase9_exit ~~~ bench_phase6_exit
+    memory_prefill_misses ~~~ bench_phase6_exit
     bench_phase6_exit ~~~ cluster_experts_nodes
     bench_phase6_exit ~~~ multi_live_reshard
     bench_phase6_exit ~~~ planner_advisor_auto
     cluster_experts_nodes ~~~ bench_phase7_exit
-    multi_live_reshard ~~~ engine_backend_parity
-    planner_advisor_auto ~~~ engine_backend_parity
-    bench_phase7_exit ~~~ bench_phase8_exit
-    engine_backend_parity ~~~ bench_phase9_exit
-    engine_backend_parity ~~~ memory_prefill_misses
+    multi_live_reshard ~~~ bench_phase7_exit
+    planner_advisor_auto ~~~ bench_phase7_exit
     memory_prefetch --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -230,13 +233,13 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
+    engine_backend_parity --> bench_phase8_exit
+    memory_io_service --> memory_prefill_misses
     bench_phase6_exit --> cluster_experts_nodes
     bench_phase6_exit --> multi_live_reshard
     bench_phase6_exit --> planner_advisor_auto
     planner_advisor_auto --> bench_phase7_exit
-    engine_backend_parity --> bench_phase8_exit
-    memory_io_service --> memory_prefill_misses
-    linkStyle 56,63,67 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 59,66,70 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -344,6 +347,7 @@ flowchart TB
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
+| Phase 6 exit Case S, rerun | ○ next | The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26). |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
@@ -383,6 +387,7 @@ flowchart TB
 - `cluster-remote-kv`: KV cache on another machine
 - `cluster-prefix-fetch-not-observed`: Prefix fetch between real processes not demonstrated
 - `cluster-second-cold-request-empty`: Second cold request through a split plan returns an empty stream
+- `bench-phase6-exit-s-2`: Phase 6 exit Case S, rerun
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -422,7 +427,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 154 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 156 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -864,6 +869,8 @@ Generated on 2026-11-26.
 - `bench-phase6-exit-s`: Phase 6 exit Case S, judged (✔ done · mixed). Two attempts to rent a pair for the judged Case S ended before the 142 GB download: the planner could not pick on a pair with an RTX A6000, and the next pair lost one host to a capped GPU and found no partner. About 1.7 USD spent, nothing measured.
 - `bench-phase6-loopback-f-flake`: Case F loopback fault timing flake (✔ fixed). The real Case F loopback in CI failed once with fault hit nothing in flight on B (daemon trial 1) and the fake loopback once with B not in service after 30 s; both passed on rerun; cause was the trigger reading in-flight in a separate call and counting near-finished requests; fixed by gating /fire on a freshly admitted request with ignore_eos in the loopback.
 - `cluster-case-s-checks`: Case S checks, peak GPU memory rule and bit-identical judged prediction (✔ done · unrated). The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured.
+- `cluster-case-s-flow`: Case S full dry run and clock (✔ done · unrated). The Case S driver runs every judged stage on the tiny model on the boxes before the 142 GB download, screens the link with 64 MiB each way right after the gates (fail when the frozen prediction would move over 0.08), checks before the download that the older box can finish under its cap, and runs the single-node reference and the second-prompt prediction as report-only stages. CI runs the same stages with the real binaries. The clock is mostly estimates: 149 min nominal, 170 padded.
+- `cluster-case-s-pair-finder`: Case S box pair finder (✔ done · unrated). A read-only script lists pairs of Vast offers that meet every Case S rule (RAM, cores, disk, network, price with traffic, skip list, different hosts), ranks them by bulk rate and counts what each rule excludes; with the real planner it found 38 covering candidates on a 3090 plus A40 pair (2026-11-26, 14:20 UTC). Boxes are created only once it lists a pair.
 
 </details>
 
@@ -902,7 +909,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 56 nodes (43 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 57 nodes (43 done, 3 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 36 nodes (30 done, 3 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 38 nodes (32 done, 3 next, 1 blocked, 2 parked)
 <!-- END GENERATED: tracks -->

@@ -36,12 +36,14 @@ flowchart TB
     cluster_probe_control_idle>"✔ cluster probe to 64<br/>MiB dies on the daemon<br/>control-idle limit"]
     cluster_case_s_ready["✔ Case S readiness,<br/>covering pick, stage<br/>order and a real-<br/>binary dry run"]
     cluster_case_s_checks["✔ Case S checks, peak<br/>GPU memory rule and<br/>bit-identical judged<br/>prediction"]
-    cluster_leader_move["⏸ Move a replica's<br/>leader"]
-    cluster_experts_nodes["⏸ Experts on other<br/>machines"]
-    cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
+    cluster_case_s_pair_finder["✔ Case S box pair<br/>finder"]
+    cluster_case_s_flow["✔ Case S full dry run<br/>and clock"]
     cluster_profile_gpu_cap["✔ Cap a node's GPU<br/>memory"]
     cluster_prefix_fetch_not_observed>"⚠ Prefix fetch between<br/>real processes not<br/>demonstrated"]
     cluster_second_cold_request_empty>"⚠ Second cold request<br/>through a split plan<br/>returns an empty<br/>stream"]
+    cluster_leader_move["⏸ Move a replica's<br/>leader"]
+    cluster_experts_nodes["⏸ Experts on other<br/>machines"]
+    cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
     cluster_transport_wan ~~~ cluster_transport
     cluster_transport_wan ~~~ cluster_planner
     cluster_transport ~~~ cluster_mtls
@@ -70,14 +72,15 @@ flowchart TB
     cluster_sharded_model_id ~~~ cluster_case_s_ready
     cluster_probe_control_idle ~~~ cluster_case_s_ready
     cluster_case_s_ready ~~~ cluster_case_s_checks
-    cluster_case_s_ready ~~~ cluster_leader_move
-    cluster_case_s_ready ~~~ cluster_experts_nodes
-    cluster_case_s_checks ~~~ cluster_replica_scaling
-    cluster_leader_move ~~~ cluster_profile_gpu_cap
-    cluster_experts_nodes ~~~ cluster_prefix_fetch_not_observed
-    cluster_replica_scaling ~~~ cluster_second_cold_request_empty
-    cluster_profile_gpu_cap ~~~ cluster_second_cold_request_empty
-    cluster_prefix_fetch_not_observed ~~~ cluster_second_cold_request_empty
+    cluster_case_s_checks ~~~ cluster_case_s_pair_finder
+    cluster_case_s_checks ~~~ cluster_case_s_flow
+    cluster_case_s_checks ~~~ cluster_profile_gpu_cap
+    cluster_case_s_pair_finder ~~~ cluster_prefix_fetch_not_observed
+    cluster_case_s_flow ~~~ cluster_second_cold_request_empty
+    cluster_profile_gpu_cap ~~~ cluster_leader_move
+    cluster_prefix_fetch_not_observed ~~~ cluster_experts_nodes
+    cluster_second_cold_request_empty ~~~ cluster_replica_scaling
+    cluster_leader_move ~~~ cluster_replica_scaling
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
     cluster_transport --> cluster_mtls
@@ -99,6 +102,8 @@ flowchart TB
     cluster_judged_round_cmd --> cluster_case_s_ready
     cluster_sharded_model_id --> cluster_case_s_ready
     cluster_case_s_ready --> cluster_case_s_checks
+    cluster_case_s_checks --> cluster_case_s_pair_finder
+    cluster_case_s_checks --> cluster_case_s_flow
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -113,12 +118,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound,cluster_sharded_model_id,cluster_case_s_ready,cluster_case_s_checks,cluster_profile_gpu_cap unrated
+    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound,cluster_sharded_model_id,cluster_case_s_ready,cluster_case_s_checks,cluster_case_s_pair_finder,cluster_case_s_flow,cluster_profile_gpu_cap unrated
     class cluster_remote_kv next
     class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan,cluster_head_led_plan_ignores_segments,cluster_probe_control_idle succ
+    class cluster_prefix_fetch_not_observed,cluster_second_cold_request_empty finding
     class cluster_leader_move,cluster_experts_nodes parked
     class cluster_replica_scaling blocked
-    class cluster_prefix_fetch_not_observed,cluster_second_cold_request_empty finding
 ```
 <!-- END GENERATED: track-cluster -->
 
@@ -163,6 +168,8 @@ flowchart TB
 | `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | a probe connection is cut after 300 s without a byte, not 30 s between frames | bench/results/phase6-rehearsal-2-20261125/README.md; crates/control/tests/probe_limits.rs |
 | `cluster-case-s-ready` | Case S readiness, covering pick, stage order and a real-binary dry run | tooling | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-judged-round-cmd, cluster-sharded-model-id |  |  | the judged Case S pick is a covering plan within the measured budgets, a refused pick costs no download, and the real binaries run the dry run | docs/adr/0091-phase6-multi-node.md; docs/notes/phase6-rule-changes.md; docs/box-driver.md; crates/planner/tests/cluster_discovered_ram_experts.rs; crates/planner/tests/tiny_case_s_plan.rs; crates/tetraeder/tests/model_split.rs; scripts/phase6_exit_s.sh; scripts/phase6_loopback_check_s.py; .github/workflows/ci.yml |
 | `cluster-case-s-checks` | Case S checks, peak GPU memory rule and bit-identical judged prediction | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-ready |  |  | the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing | docs/adr/0091-phase6-multi-node.md; docs/adr/0092-costmodel-6-streamed-moe-segments.md; scripts/phase6_exit_s.sh; crates/planner/tests/cluster_discovered_ram_experts.rs |
+| `cluster-case-s-pair-finder` | Case S box pair finder | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-checks |  |  | read-only finder lists Case S pairs from live Vast offers under every host rule and runs the real planner on each | scripts/phase6_pair_finder.py; tests/test_phase6_pair_finder.py |
+| `cluster-case-s-flow` | Case S full dry run and clock | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-checks |  |  | every judged stage runs on the tiny model before the download; bulk screen after the gates; pre-download clock check | scripts/phase6_exit_s.sh; scripts/phase6_bulk.py; scripts/phase6_clock.py; scripts/phase6_report_box.sh |
 
 ### Details per node
 
@@ -204,6 +211,8 @@ flowchart TB
 | `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | test a_bulk_probe_frame_on_a_slow_link_arrives_within_the_probe_limit ... ok and test the_old_limit_cuts_that_same_probe ... ok (local run 2026-11-25, MemTransport slow-link fault) | a probe connection is cut after 300 s without a byte, not 30 s between frames | Every byte received restarts the clock of another node probe connection and the limit is 300 s, so a 64 MiB frame on a slow link arrives; the MemTransport slow-link test fails with the old limit and passes with the new one. |  |  |  |  |  |
 | `cluster-case-s-ready` | Case S readiness, covering pick, stage order and a real-binary dry run | P6_LOOPBACK_S real binaries, tiny MoE in 3 shards under one id on 2 nodes, pinned head-led plan with covering slots 4+8; one real judged-round accepted by the summary round check (CI run 45704517742, step phase 6 Case S loopback) | the judged Case S pick is a covering plan within the measured budgets, a refused pick costs no download, and the real binaries run the dry run | On two 3090 nodes at 59.4 GB the planner now picks a covering 0..44 and 44..94 split at 32 + 96 slots; the driver measures the budget and plans before the link gate and the download, prices that pick in the gate, takes each node slots from it, and a CI step runs the real model split, model id, calibration, merge and one judged round on a tiny MoE (the same code is the dryrun stage on the boxes); no verdict was measured. |  |  |  |  |  |
 | `cluster-case-s-checks` | Case S checks, peak GPU memory rule and bit-identical judged prediction | P6_LOOPBACK_S one real judged-round accepted by the summary round check (CPU runner, wiring only) | the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing | The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured. |  |  |  |  |  |
+| `cluster-case-s-pair-finder` | Case S box pair finder | 3 pair(s); top 3 by plannable, bulk rate, datacenter, price | read-only finder lists Case S pairs from live Vast offers under every host rule and runs the real planner on each | A read-only script lists pairs of Vast offers that meet every Case S rule (RAM, cores, disk, network, price with traffic, skip list, different hosts), ranks them by bulk rate and counts what each rule excludes; with the real planner it found 38 covering candidates on a 3090 plus A40 pair (2026-11-26, 14:20 UTC). Boxes are created only once it lists a pair. | RAM floor 61.7 GB for the listing (57.1 GB of node b plus 4.6 GB box use); judged boxes need 64 GB (advisor row 2026-11-26). The offer field gpu_max_power_w is not yet a rule; the power gate on the box decides. |  |  |  |  |
+| `cluster-case-s-flow` | Case S full dry run and clock | P6_LOOPBACK_S bulk screen, link gate, re-measured budget and re-pick, predict --judged with the freeze, 3 judged rounds with the early A/A and the A/A last, end probe and summary | every judged stage runs on the tiny model before the download; bulk screen after the gates; pre-download clock check | The Case S driver runs every judged stage on the tiny model on the boxes before the 142 GB download, screens the link with 64 MiB each way right after the gates (fail when the frozen prediction would move over 0.08), checks before the download that the older box can finish under its cap, and runs the single-node reference and the second-prompt prediction as report-only stages. CI runs the same stages with the real binaries. The clock is mostly estimates: 149 min nominal, 170 padded. | One-off (user, 2026-11-26): the boxes of the next judged Case S session may run 4 h (taxameter.toml max_box_hours 4 until its results are committed). |  |  |  |  |
 
 ### Folded items per node
 

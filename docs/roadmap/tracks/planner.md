@@ -29,14 +29,14 @@ flowchart TB
     planner_costmodel_v6_rest["✔ Cost model 6<br/>remaining parts"]
     planner_cost_model_v5_host2[/"○ Cost model 5 second<br/>host"/]
     planner_footprint_validator_gap>"⚠ Planner footprint<br/>against the validator"]
-    planner_live_replan["⛔ Replan without<br/>draining"]
-    planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
-    planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
     planner_low_bit_formats["⏸ One and two bit<br/>formats"]
     planner_ep_split["○ Expert-parallel<br/>split on two GPUs"]
     planner_ram_slots_zero["⏸ Plan experts with no<br/>RAM tier"]
     planner_slot_campaign[/"⏸ Check planner's<br/>expert slot picks"/]
     planner_replan_part_b["⏸ Replanning in serve,<br/>part B"]
+    planner_live_replan["⛔ Replan without<br/>draining"]
+    planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
+    planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
     planner_plan_ir ~~~ planner_quality
     planner_plan_ir ~~~ planner_core
     planner_quality ~~~ planner_exit
@@ -60,15 +60,15 @@ flowchart TB
     planner_costmodel_stream_terms ~~~ planner_costmodel_v6_rest
     planner_costmodel_stream_terms ~~~ planner_cost_model_v5_host2
     planner_costmodel_stream_terms ~~~ planner_footprint_validator_gap
-    planner_costmodel_v6_rest ~~~ planner_live_replan
-    planner_cost_model_v5_host2 ~~~ planner_advisor_auto
-    planner_footprint_validator_gap ~~~ planner_split_layouts
-    planner_live_replan ~~~ planner_low_bit_formats
-    planner_advisor_auto ~~~ planner_ep_split
-    planner_split_layouts ~~~ planner_ram_slots_zero
+    planner_costmodel_v6_rest ~~~ planner_low_bit_formats
+    planner_cost_model_v5_host2 ~~~ planner_ep_split
+    planner_footprint_validator_gap ~~~ planner_ram_slots_zero
     planner_low_bit_formats ~~~ planner_slot_campaign
     planner_ep_split ~~~ planner_replan_part_b
-    planner_ram_slots_zero ~~~ planner_replan_part_b
+    planner_ram_slots_zero ~~~ planner_live_replan
+    planner_slot_campaign ~~~ planner_advisor_auto
+    planner_replan_part_b ~~~ planner_split_layouts
+    planner_live_replan ~~~ planner_split_layouts
     planner_plan_ir --> planner_quality
     planner_plan_ir --> planner_core
     planner_core --> planner_exit
@@ -107,8 +107,8 @@ flowchart TB
     class planner_core vsucc
     class planner_cost_model_v5_host2,planner_ep_split next
     class planner_footprint_validator_gap finding
-    class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
     class planner_low_bit_formats,planner_ram_slots_zero,planner_slot_campaign,planner_replan_part_b parked
+    class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
 ```
 <!-- END GENERATED: track-planner -->
 
