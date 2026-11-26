@@ -20,6 +20,7 @@ interruptible = false
 # hours; the nightly fetches about 25 GB (8B + 30B), an exit box about 160 GB (pass --download-gb 160 to create);
 # CPU-bound runs pass --min-cpu-cores 11
 expected_download_gb = 25
+expected_box_hours = 3  # traffic is priced over 3 h even while a one-off raises max_box_hours (the 0.90 cap check stays as strict)
 
 [image]
 name = "ghcr.io/lhns/tetraeder-box"
@@ -82,4 +83,4 @@ max_account_price_per_hour = 1.80  # raised 2026-11-13 by the user so two 0.90 b
 auto_replace = false  # an automatic replacement could start a second paid box
 disk_gb = 80
 nightly_wait_min = 170  # sum of the nightly.sh stage limits, phase2-baseline with gpu-moe and gap: 165
-max_box_hours = 3
+max_box_hours = 4  # one-off (user, 2026-11-26) for the next judged Case S pair only; back to 3 when its results are committed (AGENTS.md)

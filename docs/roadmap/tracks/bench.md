@@ -47,8 +47,6 @@ flowchart TB
     bench_phase6_loopback_f_flake>"✔ Case F loopback<br/>fault timing flake"]
     bench_phase6_exit_s("✔ Phase 6 exit Case S,<br/>judged")
     bench_30b_c4_gap[/"○ 30B concurrency-4<br/>gap"/]
-    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
-    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
@@ -56,6 +54,9 @@ flowchart TB
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
     bench_open_records("⏸ Box checks for open<br/>design records")
+    bench_phase6_exit_s_2("○ Phase 6 exit Case S,<br/>rerun")
+    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
+    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_harness ~~~ bench_phase2_exit
     bench_phase2_exit ~~~ bench_defect_tuned_cache
     bench_phase2_exit ~~~ bench_phase3b_proxy
@@ -98,15 +99,17 @@ flowchart TB
     bench_phase6_exit_f ~~~ bench_phase6_loopback_f_flake
     bench_phase6_clock_offset ~~~ bench_phase6_exit_s
     bench_phase6_serve_node_state ~~~ bench_30b_c4_gap
-    bench_phase6_loopback_f_flake ~~~ bench_phase6_exit
-    bench_phase6_exit_s ~~~ bench_phase7_exit
-    bench_30b_c4_gap ~~~ bench_phase8_exit
-    bench_phase6_exit ~~~ bench_phase9_exit
-    bench_phase7_exit ~~~ bench_spec_rerun
+    bench_phase6_loopback_f_flake ~~~ bench_phase8_exit
+    bench_phase6_exit_s ~~~ bench_phase9_exit
+    bench_30b_c4_gap ~~~ bench_spec_rerun
     bench_phase8_exit ~~~ bench_magnitude_q36
     bench_phase9_exit ~~~ bench_strata_pairing
     bench_spec_rerun ~~~ bench_d1_session
     bench_magnitude_q36 ~~~ bench_open_records
+    bench_strata_pairing ~~~ bench_phase6_exit_s_2
+    bench_d1_session ~~~ bench_phase6_exit_s_2
+    bench_open_records ~~~ bench_phase6_exit
+    bench_phase6_exit_s_2 ~~~ bench_phase7_exit
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -136,10 +139,10 @@ flowchart TB
     bench_v2_verdict --> bench_30b_c4_gap
     bench_v4a_verdict --> bench_30b_c4_gap
     bench_ab30b --> bench_30b_c4_gap
-    bench_phase6_rehearsal --> bench_phase6_exit
     bench_strata_q36 --> bench_magnitude_q36
     bench_ttft --> bench_open_records
-    linkStyle 52,63 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    bench_phase6_exit_s_2 --> bench_phase6_exit
+    linkStyle 54,65 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -160,9 +163,9 @@ flowchart TB
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b,bench_regression_gate,bench_235b_segment_confirm,bench_phase6_exit_s mixed
     class bench_v4b_verdict dead
     class bench_235b_stream_predict bad
-    class bench_30b_c4_gap,bench_magnitude_q36 next
-    class bench_phase6_exit,bench_phase7_exit blocked
+    class bench_30b_c4_gap,bench_magnitude_q36,bench_phase6_exit_s_2 next
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
+    class bench_phase6_exit,bench_phase7_exit blocked
 ```
 <!-- END GENERATED: track-bench -->
 
@@ -205,7 +208,7 @@ flowchart TB
 | `bench-235b-stream-predict` | Predict the 235B on one box | experiment | box | done | bad | 2026-11-24 | 2026-11-24 |  |  |  | e_pp +0.35 and e_tg -0.45 with every expert in RAM; +1.32 and -0.95 streamed from NVMe | bench/results/stream-predict-20261124/README.md; bench/results/stream-predict-20261124/errors.json; bench/results/stream-predict-20261124/predictions/FROZEN.sha256; bench/results/stream-predict-20261124/predictions/d2/FROZEN.sha256 |
 | `bench-phase6-rehearsal` | First two-box cluster session | session | cluster | done | unrated | 2026-11-25 | 2026-11-25 | cluster-pipeline-nodes, cluster-failover, cluster-join-leave, cluster-mtls, cluster-owner-phase6-design, bench-235b-stream-predict, bench-235b-segment-confirm-2, cluster-integration, ops-review-phase6-serving |  |  | two boxes, 30B split parity 8 of 8, three failovers clean, rejoin fails twice | bench/results/phase6-rehearsal-20261125/README.md; bench/results/phase6-rehearsal-20261125/a/caseF/result-worker.json; bench/results/phase6-rehearsal-20261125/a/caseF/result-daemon.json; bench/results/phase6-rehearsal-20261125/a/caseF/result-stop.json; bench/results/phase6-rehearsal-20261125/a/probe-auto.json |
 | `bench-phase6-loopback-f-flake` | Case F loopback fault timing flake | defect | ci | done | unrated | 2026-11-26 | 2026-11-26 | bench-phase6-exit-f |  |  | the fault trigger no longer reads B in flight in a separate call | scripts/phase6_trigger.py; scripts/phase6_exit_f.sh |
-| `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | bench-phase6-rehearsal, cluster-remote-kv, bench-235b-segment-confirm-2, planner-costmodel-v6-rest, cluster-pipeline-prefill, cluster-judged-round-cmd |  |  |  |  |
+| `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | bench-phase6-rehearsal, bench-phase6-exit-s-2, cluster-remote-kv, bench-235b-segment-confirm-2, planner-costmodel-v6-rest, cluster-pipeline-prefill, cluster-judged-round-cmd |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 | owner-decision | owner | blocked | n/a |  |  | bench-phase6-exit |  |  |  |  |
 | `bench-phase7-exit` | Phase 7 exit: day-long trace | session | cluster | blocked | unrated |  |  | planner-advisor-auto, cluster-replica-scaling, multi-live-reshard, multi-split-hardware, planner-split-layouts, planner-live-replan |  |  |  |  |
 | `bench-m4-report` | Report milestone M4 | owner-decision | owner | blocked | n/a |  |  | bench-phase7-exit |  |  |  |  |
@@ -227,6 +230,7 @@ flowchart TB
 | `bench-phase6-exit-s` | Phase 6 exit Case S, judged | session | box-later | done | mixed | 2026-11-26 | 2026-11-26 | bench-phase6-rehearsal-2 |  |  | no verdict: no usable pair; pair 1 stopped at the plan (A6000 not plannable against 24 GiB), pair 2 lost a host to a power cap | bench/results/phase6-exit-s-20261126/README.md; bench/results/phase6-exit-s-20261126b/README.md |
 | `bench-phase6-clock-offset` | Case F clock offset between the boxes is 2 to 6 s uncertain | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | the fault goes over a direct connection to B and the offset is read there, not through ssh | scripts/phase6_trigger.py; scripts/phase6_exit_f.sh; scripts/phase6_loopback_check.py; docs/box-driver.md |
 | `bench-phase6-serve-node-state` | phase6_box.sh serve lacks --node-state | defect | ci | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | serve passes --node-state and the head replica registers its prefix listener where the daemon looks | scripts/phase6_box.sh; scripts/phase6_loopback_check.py; .github/workflows/ci.yml; docs/box-driver.md |
+| `bench-phase6-exit-s-2` | Phase 6 exit Case S, rerun | session | cluster | next | unrated |  |  | cluster-case-s-pair-finder, cluster-case-s-flow, cluster-profile-gpu-cap |  |  |  |  |
 
 ### Details per node
 
@@ -288,6 +292,7 @@ flowchart TB
 | `bench-phase6-exit-s` | Phase 6 exit Case S, judged | Status: null, no verdict. No pair of boxes passed the gates and no second host qualified, so nothing reached the plan stage, the link gate or the download. | no verdict: no usable pair; pair 1 stopped at the plan (A6000 not plannable against 24 GiB), pair 2 lost a host to a power cap | Two attempts to rent a pair for the judged Case S ended before the 142 GB download: the planner could not pick on a pair with an RTX A6000, and the next pair lost one host to a capped GPU and found no partner. About 1.7 USD spent, nothing measured. | Pair 1: A6000 (host 79766) plus RTX 3090 (host 79466, 6 cores), gates and the mandatory dry run passed, then `tetraeder-plan candidates --cluster --covering` found no covering plan because the cluster graph holds the A6000 at 51.5 GB with no compute prior and `cluster profile` and `cluster merge` have no 24 GiB cap; with the cap alone still none, with the 3090 priors copied on 40 candidates (scratch copies, not a driver fix). Fixed on the branch: the dry run now copies the session gates (its round read a missing cotenant.json). Pair 2: host 36536 power limit 340 W against 390 W, host 44173 rejected the SSH key, no other single-socket 3090 host with 80 GB RAM and cheap traffic was on offer for 15 minutes. REFERENCE_CMD and SECOND_PREDICT_CMD have no committed values, so the single-node reference and the second-prompt report would not have run. Next: a per-node GPU capacity cap in cluster profile and merge (node cluster-profile-gpu-cap), then a new pair of RTX 3090 hosts. |  |  |  |  |
 | `bench-phase6-clock-offset` | Case F clock offset between the boxes is 2 to 6 s uncertain | P6_LOOPBACK_REAL fault time known within 0.059 s at most, clock rule ok (offset 0.0001 s, worst uncertainty 0.0004 s over 9 measurement(s) against 0.5) (CI run 45646670539, loopback on one machine) | the fault goes over a direct connection to B and the offset is read there, not through ssh | The load generator on A fires the fault on B through a small trigger service and the clock offset is measured over that connection; on loopback the fault time is known within 59 ms, a WAN pair is not yet measured, and attempts that hit nothing in flight on B are repeated. |  |  |  |  |  |
 | `bench-phase6-serve-node-state` | phase6_box.sh serve lacks --node-state | P6_LOOPBACK_REAL serve --node-state wired, prefix-head registered in the daemon's node-state (CI run 45646670539, step phase 6 loopback) | serve passes --node-state and the head replica registers its prefix listener where the daemon looks | The serve stage now passes --node-state, and a CI step runs a real head and two real daemons through the box commands and checks that the head registered its prefix listener in the daemon directory; the prefix fetch itself is still open (cluster-prefix-fetch-not-observed). |  |  |  |  |  |
+| `bench-phase6-exit-s-2` | Phase 6 exit Case S, rerun |  |  | The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26). | Worst case about 12.5 USD of 16.13 (two attempts, 4 h, 1.56 USD/h). |  |  |  |  |
 
 ### Folded items per node
 

@@ -22,10 +22,24 @@ destroyed before the download. The report-only runs (+2.6 and +7 min padded) nee
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
+import tomllib
+from pathlib import Path
 
-CAP_MIN = 180.0  # AGENTS.md: 3 h per box (max_box_hours)
+def _box_hours() -> float:
+    """P6_BOX_HOURS (tests), else taxameter.toml [policy] max_box_hours (3 h; a one-off in AGENTS.md may raise it), 3 when unreadable."""
+    if os.environ.get("P6_BOX_HOURS"):
+        return float(os.environ["P6_BOX_HOURS"])
+    try:
+        with open(Path(__file__).resolve().parent.parent / "taxameter.toml", "rb") as f:
+            return float(tomllib.load(f)["policy"]["max_box_hours"])
+    except (OSError, KeyError, ValueError, tomllib.TOMLDecodeError):
+        return 3.0
+
+
+CAP_MIN = _box_hours() * 60  # AGENTS.md: the per-box cap (max_box_hours), the one the taxameter watchdog stops a box at
 PAD = 1.25  # multiplier of the assumed minutes
 
 # (stage, measured min, assumed min, optional, basis). The session's order.

@@ -345,7 +345,7 @@ def test_case_s_the_bulk_screen_runs_both_directions_and_writes_its_verdict(tmp_
 def test_case_s_the_older_box_without_the_time_for_the_stages_after_the_download_aborts_before_it(tmp_path):
     try:
         # 2 h 40 min old: the stages from fetch to the end need about 88 min padded, the cap is 180
-        r1, out = run_s(tmp_path, "gates bulk setup dryrun budget plan linkgate fetch", LB_AGE_S=str(160 * 60))
+        r1, out = run_s(tmp_path, "gates bulk setup dryrun budget plan linkgate fetch", LB_AGE_S=str(160 * 60), P6_BOX_HOURS="3")
         t = text(r1)
         assert r1.returncode != 0 and "CLOCK SHORT" in t and "the older box lacks the time" in t, t[-1500:]
         assert "fetch done" not in t and not (out / "env" / "a" / "env-plan.json").exists()
