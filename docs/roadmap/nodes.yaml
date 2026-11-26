@@ -3069,7 +3069,7 @@ nodes:
   folded: []
   overview: true
   plain: 'The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load.'
-  notes: 'Rules fixed in ADR 0091 before any measurement. Case S, Qwen3-235B-A22B Q4_K_M over two one-GPU nodes of 24 GB VRAM and a 64 GB RAM budget each, pp2048 and tg128 within 15% of the frozen prediction. Case F, two replicas of Qwen3-30B-A3B with node B killed, killed whole and stopped, three trials each. Case F result (2026-11-25, node bench-phase6-exit-f): pass, nine of nine valid trials, worst in-flight error delay 2.09 s, worst rejoin 3.82 s; Case S is still open.'
+  notes: 'Rules fixed in ADR 0091 before any measurement. Case S, Qwen3-235B-A22B Q4_K_M over two one-GPU nodes of 24 GB VRAM and a 64 GB RAM budget each, pp2048 and tg128 within 15% of the frozen prediction. Case F, two replicas of Qwen3-30B-A3B with node B killed, killed whole and stopped, three trials each. Case F result (2026-11-25, node bench-phase6-exit-f): pass, nine of nine valid trials, worst in-flight error delay 2.09 s, worst rejoin 3.82 s; Case S session of 2026-11-26 (node bench-phase6-exit-s): no verdict, no pair of boxes reached the download (pair 1 A6000 plus 3090 stopped at the plan stage, pair 2 lost its Japan host to a power cap and found no partner), so Case S is still open and the exit stays undecided.'
 - id: bench-m3-report
   title: Report milestone M3
   track: bench
@@ -4586,6 +4586,46 @@ nodes:
   overview: false
   plain: 'Two rented RTX 3090 boxes (about 25 ms apart) ran the judged Case F: three fault modes, three valid trials each, every pass rule held; one attempt hit no request in flight and was repeated.'
 
+- id: bench-phase6-exit-s
+  title: Phase 6 exit Case S, judged
+  track: bench
+  kind: session
+  state: done
+  outcome: mixed
+  evidence:
+  - bench/results/phase6-exit-s-20261126/README.md
+  - bench/results/phase6-exit-s-20261126b/README.md
+  verdict_quote: 'Status: null, no verdict. No pair of boxes passed the gates and no second host qualified, so nothing reached the plan stage, the link gate or the download.'
+  headline: 'no verdict: no usable pair; pair 1 stopped at the plan (A6000 not plannable against 24 GiB), pair 2 lost a host to a power cap'
+  depends_on:
+  - bench-phase6-rehearsal-2
+  replaced_by: []
+  lane: box-later
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'Two attempts to rent a pair for the judged Case S ended before the 142 GB download: the planner could not pick on a pair with an RTX A6000, and the next pair lost one host to a capped GPU and found no partner. About 1.7 USD spent, nothing measured.'
+  notes: 'Pair 1: A6000 (host 79766) plus RTX 3090 (host 79466, 6 cores), gates and the mandatory dry run passed, then `tetraeder-plan candidates --cluster --covering` found no covering plan because the cluster graph holds the A6000 at 51.5 GB with no compute prior and `cluster profile` and `cluster merge` have no 24 GiB cap; with the cap alone still none, with the 3090 priors copied on 40 candidates (scratch copies, not a driver fix). Fixed on the branch: the dry run now copies the session gates (its round read a missing cotenant.json). Pair 2: host 36536 power limit 340 W against 390 W, host 44173 rejected the SSH key, no other single-socket 3090 host with 80 GB RAM and cheap traffic was on offer for 15 minutes. REFERENCE_CMD and SECOND_PREDICT_CMD have no committed values, so the single-node reference and the second-prompt report would not have run. Next: a per-node GPU capacity cap in cluster profile and merge (node cluster-profile-gpu-cap), then a new pair of RTX 3090 hosts.'
+- id: cluster-profile-gpu-cap
+  title: Cap a node's GPU memory
+  track: cluster
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-exit-s
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The cluster profile cannot plan an A6000 or A40 node against 24 GiB, and an unknown card has no compute prior, so those cards (allowed by ADR 0091 answer 9) cannot join a Case S pair.'
+  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). Needs a per-node option on cluster profile and merge (capacity and the 3090 prior), an ADR line and a planner test.'
 - id: bench-phase6-clock-offset
   title: Case F clock offset between the boxes is 2 to 6 s uncertain
   track: bench
