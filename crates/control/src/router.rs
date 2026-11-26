@@ -176,6 +176,16 @@ impl Router {
         }
     }
 
+    /// Replica `r` was asked for the prefix `tokens` and held no idle sequence or cache entry
+    /// with it: every entry there that starts with it is gone, except those a request still
+    /// computes.
+    pub fn prefix_gone(&mut self, r: ReplicaId, tokens: &[TokenId]) {
+        if let Some(x) = self.replicas.get_mut(r.0 as usize) {
+            x.entries
+                .retain(|e| e.live.is_some() || !e.tokens.starts_with(tokens));
+        }
+    }
+
     fn remember(x: &mut Replica, tokens: Vec<TokenId>, live: Option<ReqId>) {
         if let Some(e) = x.entries.iter_mut().find(|e| e.tokens == tokens) {
             e.live = e.live.or(live);
@@ -409,6 +419,27 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// cluster-short-prefix-dropped: a holder that answered `gone` no longer holds the prefix,
+    /// so it stops being an affinity target or a fetch candidate for it; a request still
+    /// computing that prefix there keeps its entry.
+    #[test]
+    fn a_prefix_the_holder_lost_is_forgotten_but_a_live_one_kept() {
+        let mut r = up2();
+        let p: Vec<u32> = (0..10).collect();
+        r.submit(0, p.clone());
+        r.done(0);
+        let mut longer = p.clone();
+        longer.extend([60, 61]);
+        r.submit(1, longer.clone()); // affinity: on 0, live
+        assert_eq!(r.holds(ReplicaId(0), &p), 10);
+        r.prefix_gone(ReplicaId(0), &p[..8]);
+        assert_eq!(r.holds(ReplicaId(0), &p), 10, "the live request keeps it");
+        r.done(1);
+        r.prefix_gone(ReplicaId(0), &p[..8]);
+        assert_eq!(r.holds(ReplicaId(0), &longer), 0);
+        assert_eq!(r.holds(ReplicaId(1), &longer), 0);
     }
 
     #[test]
