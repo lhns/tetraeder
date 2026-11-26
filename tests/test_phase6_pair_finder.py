@@ -50,18 +50,20 @@ def test_price_includes_traffic_over_the_session():
     assert pf.all_in({"price_per_h": 0.4}) is None  # unknown traffic cannot be shown to fit
 
 
-def test_aclass_pairs_are_listed_but_not_plannable_without_the_flag():
+def test_aclass_pairs_are_plannable_and_the_old_listing_needs_the_flag():
+    # A-class nodes are capped and priced since cluster-profile-gpu-cap (2026-11-26)
     res = pf.find(args())
     aclass = [p for p in res["pairs"] if "RTX A6000" in p["gpus"]]
-    assert len(aclass) == 4 and not any(p["plannable"] for p in aclass)
-    assert all("not plannable" in " ".join(p["flags"]) for p in aclass)
-    assert all(p["plannable"] for p in pf.find(args("--plan-aclass"))["pairs"])
+    assert len(aclass) == 4 and all(p["plannable"] for p in aclass)
+    old = [p for p in pf.find(args("--no-plan-aclass"))["pairs"] if "RTX A6000" in p["gpus"]]
+    assert not any(p["plannable"] for p in old)
+    assert all("not plannable" in " ".join(p["flags"]) for p in old)
 
 
 def test_pairs_need_different_hosts_and_rank_by_bulk_then_price():
     a = args()
     keep, _ = pf.screen(pf.load_offers([FIXTURE]), a)
-    pairs = pf.make_pairs(keep)
+    pairs = pf.make_pairs(keep, plan_aclass=False)
     plain = [p for p in pairs if p["plannable"]]
     assert [(p["a"], p["b"]) for p in plain] == [("1", "3"), ("2", "3"), ("1", "4"), ("2", "4"), ("3", "4")]
     assert pairs[: len(plain)] == plain  # A-class pairs come after every plannable one
@@ -73,7 +75,7 @@ def test_pairs_need_different_hosts_and_rank_by_bulk_then_price():
 
 
 def test_no_plan_binary_reports_the_static_pass(capsys):
-    res = pf.find(args())
+    res = pf.find(args("--no-plan-aclass"))
     assert len(res["pairs"]) == 9 and res["counts"]["pairs_same_host_dropped"] == 1
     assert all("covering plan not run" in " ".join(p["flags"]) for p in res["pairs"])
     assert any("power limit unknown" in f for f in res["pairs"][0]["flags"])
@@ -107,7 +109,7 @@ out.write_text(json.dumps({"candidates": [{"id": "c0", "notes": ["pick"]}]}))
 def test_pair_without_covering_plan_is_dropped(tmp_path):
     stub = tmp_path / "plan_stub.py"
     stub.write_text(STUB)
-    res = pf.find(args(), [sys.executable, str(stub)])
+    res = pf.find(args("--no-plan-aclass"), [sys.executable, str(stub)])
     # offer 3 has 62 GB: a budget of 57.4 GB, under the stub's 58 GB covering need
     assert [(p["a"], p["b"]) for p in res["pairs"]] == [("1", "4"), ("2", "4"), ("1", "12"), ("2", "12"), ("4", "12")]
     assert res["counts"]["pairs_no_covering_plan"] == 4

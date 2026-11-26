@@ -16,8 +16,8 @@ rows; --reads searches are merged by machine and price because the market moves 
 
 Rules per offer, in this order (the first failing one is the one counted in "excluded"):
   gpu_class    1 GPU of RTX 3090, A40, RTX A6000, L40 or L40S (ADR 0091 answer 9; the per-class offer counts are printed, so a wrong
-               class name shows as 0). A pair with an A-class card is listed but `plannable: false` until the cluster profile can
-               cap and price it (node cluster-profile-gpu-cap; phase6-exit-s-20261126, pair 1); `--plan-aclass` lifts that.
+               class name shows as 0). A pair with an A-class card is plannable since the cluster profile caps and prices it at
+               24 GiB (node cluster-profile-gpu-cap, done 2026-11-26); `--no-plan-aclass` restores the old listing.
   skip_host    host on the skip list below (docs/box-driver.md)
   unknown      RAM, disk, inet or traffic price missing from the row: counted apart from the real rules
   cores        usable cores at least --min-cores (12)
@@ -154,7 +154,7 @@ def pair_key(p):
     return (not p["plannable"], -bucket, -p["datacenter"], p["price_per_h"])
 
 
-def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS, plan_aclass=False):
+def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS, plan_aclass=True):
     pairs = []
     for x, y in itertools.combinations(survivors, 2):
         if str(x["host_id"]) == str(y["host_id"]):
@@ -189,7 +189,7 @@ def ram_budget_gb(ram_gb):
 
 def pair_graph(x, y, template=None):
     """Two-node graph from the committed WAN fixture (3090 prior, the measured WAN link) with each node's RAM budget and
-    thread count from its offer. The GPU-class priors of the Rust lane are not landed: A-class nodes use the 3090 prior."""
+    thread count from its offer. A-class nodes get their class prior from crates/planner/priors.toml (cluster-profile-gpu-cap)."""
     text = pathlib.Path(template or ROOT / GRAPH_TEMPLATE).read_text(encoding="utf-8")
     for node, o in (("a", x), ("b", y)):
         cap = int(ram_budget_gb(num(o["ram_gb"])) * 1e9)
@@ -322,8 +322,8 @@ def parse_args(argv=None):
     p.add_argument("--out", help="write the result JSON here")
     p.add_argument("--top", type=int, default=10)
     p.add_argument("--reads", type=int, default=3, help="searches per GPU class, merged")
-    p.add_argument("--plan-aclass", action="store_true",
-                   help="count pairs with an A-class card as plannable (once the cluster profile caps and prices them)")
+    p.add_argument("--no-plan-aclass", dest="plan_aclass", action="store_false",
+                   help="list pairs with an A-class card as not plannable (they are plannable since cluster-profile-gpu-cap)")
     p.add_argument("--min-cores", type=float, default=MIN_CORES)
     p.add_argument("--min-disk", type=float, default=MIN_DISK_GB)
     p.add_argument("--min-inet", type=float, default=MIN_INET_MBPS)
