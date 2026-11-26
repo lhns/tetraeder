@@ -1,0 +1,196 @@
+{
+ "rules": {
+  "ram_floor_gb": 61.7,
+  "min_cores": 12,
+  "min_disk_gb": 230,
+  "min_inet_mbps": 1000,
+  "max_price_per_h": 0.9,
+  "download_gb": 150,
+  "session_hours": 3.0,
+  "plan_aclass": true,
+  "reads": 3
+ },
+ "counts": {
+  "offers": 34,
+  "excluded": {
+   "gpu_class": 0,
+   "skip_host": 6,
+   "unknown": 0,
+   "cores": 8,
+   "ram": 7,
+   "disk": 0,
+   "inet": 7,
+   "price": 3
+  },
+  "fails": {
+   "gpu_class": 0,
+   "skip_host": 6,
+   "unknown": 0,
+   "cores": 8,
+   "ram": 16,
+   "disk": 0,
+   "inet": 25,
+   "price": 14
+  },
+  "survivors": 3,
+  "per_class": {
+   "RTX 3090": 25,
+   "A40": 3,
+   "RTX A6000": 2,
+   "L40": 1,
+   "L40S": 3
+  },
+  "pairs_same_host_dropped": 1,
+  "pairs_no_covering_plan": 0
+ },
+ "pairs": [
+  {
+   "a": "48414826",
+   "b": "51338031",
+   "hosts": [
+    "45726",
+    "682584"
+   ],
+   "gpus": [
+    "RTX 3090",
+    "A40"
+   ],
+   "locations": [
+    "Japan, JP",
+    "Belgium, BE"
+   ],
+   "bulk_mbps": 1536.8,
+   "datacenter": 0,
+   "price_per_h": 1.45,
+   "plannable": true,
+   "boxes": [
+    {
+     "id": "48414826",
+     "gpu_name": "RTX 3090",
+     "num_gpus": 1,
+     "host_id": "45726",
+     "machine_id": "7543",
+     "location": "Japan, JP",
+     "cpu_cores": 16.0,
+     "price_per_h": 0.3838888888888889,
+     "inet_down_cost": 0.006510416666666667,
+     "ram_gb": 64.365,
+     "disk_gb": 707.0901748948753,
+     "inet_down_mbps": 1780.4,
+     "inet_up_mbps": 1698.2,
+     "hosting_type": 0,
+     "cpu_name": "AMD Ryzen 9 5950X 16-Core Processor",
+     "gpu_max_power_w": 390.0
+    },
+    {
+     "id": "51338031",
+     "gpu_name": "A40",
+     "num_gpus": 1,
+     "host_id": "682584",
+     "machine_id": "151326",
+     "location": "Belgium, BE",
+     "cpu_cores": 64.0,
+     "price_per_h": 0.6105555555555555,
+     "inet_down_cost": 0.0026041666666666665,
+     "ram_gb": 512.984,
+     "disk_gb": 230.0,
+     "inet_down_mbps": 7039.3,
+     "inet_up_mbps": 1536.8,
+     "hosting_type": 0,
+     "cpu_name": "AMD EPYC 7662 64-Core Processor",
+     "gpu_max_power_w": 300.0
+    }
+   ],
+   "flags": [
+    "A-class: the finder prices it with the 3090 prior; on the boxes cluster profile and merge cap it at 24 GiB and use its class prior",
+    "NUMA/sockets unknown (lscpu gate on box)",
+    "power limit unknown (gate on box)"
+   ],
+   "plan": {
+    "covering": true,
+    "n": 38,
+    "best": {
+     "id": "c00",
+     "notes": [
+      "a>b, cuts [48], head Leader, ubatch 2048, micro 1: pp 207.6 tg 3.62 tok/s"
+     ]
+    },
+    "error": null
+   }
+  },
+  {
+   "a": "48414826",
+   "b": "56026376",
+   "hosts": [
+    "45726",
+    "682584"
+   ],
+   "gpus": [
+    "RTX 3090",
+    "A40"
+   ],
+   "locations": [
+    "Japan, JP",
+    "Belgium, BE"
+   ],
+   "bulk_mbps": 1517.6,
+   "datacenter": 0,
+   "price_per_h": 1.582,
+   "plannable": true,
+   "boxes": [
+    {
+     "id": "48414826",
+     "gpu_name": "RTX 3090",
+     "num_gpus": 1,
+     "host_id": "45726",
+     "machine_id": "7543",
+     "location": "Japan, JP",
+     "cpu_cores": 16.0,
+     "price_per_h": 0.3838888888888889,
+     "inet_down_cost": 0.006510416666666667,
+     "ram_gb": 64.365,
+     "disk_gb": 707.0901748948753,
+     "inet_down_mbps": 1780.4,
+     "inet_up_mbps": 1698.2,
+     "hosting_type": 0,
+     "cpu_name": "AMD Ryzen 9 5950X 16-Core Processor",
+     "gpu_max_power_w": 390.0
+    },
+    {
+     "id": "56026376",
+     "gpu_name": "A40",
+     "num_gpus": 1,
+     "host_id": "682584",
+     "machine_id": "154113",
+     "location": "Belgium, BE",
+     "cpu_cores": 64.0,
+     "price_per_h": 0.6772222222222223,
+     "inet_down_cost": 0.00390625,
+     "ram_gb": 512.984,
+     "disk_gb": 2802.641026974456,
+     "inet_down_mbps": 7909.1,
+     "inet_up_mbps": 1517.6,
+     "hosting_type": 0,
+     "cpu_name": "AMD EPYC 7662 64-Core Processor",
+     "gpu_max_power_w": 300.0
+    }
+   ],
+   "flags": [
+    "A-class: the finder prices it with the 3090 prior; on the boxes cluster profile and merge cap it at 24 GiB and use its class prior",
+    "NUMA/sockets unknown (lscpu gate on box)",
+    "power limit unknown (gate on box)"
+   ],
+   "plan": {
+    "covering": true,
+    "n": 38,
+    "best": {
+     "id": "c00",
+     "notes": [
+      "a>b, cuts [48], head Leader, ubatch 2048, micro 1: pp 207.6 tg 3.62 tok/s"
+     ]
+    },
+    "error": null
+   }
+  }
+ ]
+}
