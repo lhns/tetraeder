@@ -12,7 +12,7 @@
 
 use serde_json::Value;
 use std::collections::BTreeMap;
-use tetraeder_profiler::HardwareGraph;
+use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
 const KEEP: [&str; 8] = [
     "id",
@@ -53,6 +53,26 @@ pub fn set_ram_budgets(hw: &mut Value, ram: &BTreeMap<String, u64>) -> Result<()
         }
     }
     Ok(())
+}
+
+/// Fills the GPU priors a discovered card lacks and caps each GPU's capacity at `cap_gib` GiB
+/// (a 48 GB A-class card planned as a 24 GiB one, ADR 0091 answer 9). The changes are noted in
+/// the graph's `notes` and returned.
+pub fn prepare_gpus(hw: &mut Value, cap_gib: Option<u64>) -> Result<Vec<String>, String> {
+    let mut g = check_reads(hw)?;
+    let unfilled = g.devices.iter().any(|d| {
+        d.kind == DeviceKind::Gpu && (d.compute.is_none() || d.bandwidth_bytes_per_s.is_none())
+    });
+    if cap_gib.is_none() && !unfilled {
+        // Nothing to do: the graph is left as it came.
+        return Ok(Vec::new());
+    }
+    let cap = cap_gib.map(|c| c << 30);
+    let notes =
+        tetraeder_planner::prepare_cluster_gpus(&mut g, &tetraeder_planner::Priors::builtin(), cap);
+    *hw = serde_json::from_str(&g.to_json().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    Ok(notes)
 }
 
 /// Puts each fitted node graph into the cluster graph (the rule in the module docs); returns
@@ -334,5 +354,42 @@ mod tests {
         assert_eq!(c.points.len(), 6);
         assert_eq!(c.points[0].0, 4096.0);
         assert!((c.points[5].1 - 1.981).abs() < 0.01, "{:?}", c.points);
+    }
+
+    #[test]
+    fn without_a_cap_or_a_missing_prior_the_graph_is_left_alone() {
+        let mut hw = json!({"devices": [
+            {"id": "a/cpu0", "kind": "cpu", "node": "a", "name": "cpu", "tier": "ram", "capacity_bytes": 100},
+        ]});
+        let before = hw.clone();
+        assert!(prepare_gpus(&mut hw, None).unwrap().is_empty());
+        assert_eq!(hw, before);
+    }
+
+    #[test]
+    fn gpu_cap_and_prior_reach_the_json_graph() {
+        let mut hw = json!({"devices": [
+            {"id": "a/gpu0", "kind": "gpu", "node": "a", "name": "NVIDIA RTX A6000", "tier": "vram", "capacity_bytes": 51539607552u64},
+            {"id": "b/gpu0", "kind": "gpu", "node": "b", "name": "Odd Card", "tier": "vram", "capacity_bytes": 8u64 << 30},
+        ]});
+        let notes = prepare_gpus(&mut hw, Some(24)).unwrap();
+        let d = |i: usize| &hw["devices"][i];
+        assert_eq!(d(0)["capacity_bytes"], 24u64 << 30);
+        assert_eq!(d(0)["bandwidth_bytes_per_s"]["value"], 7.68e11);
+        // A smaller card keeps its size; an unknown one gets the conservative prior and a note.
+        assert_eq!(d(1)["capacity_bytes"], 8u64 << 30);
+        assert!(d(1)["compute"]["flops_per_s"].as_f64().unwrap() > 0.0);
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("b/gpu0") && n.contains("conservative"))
+        );
+        assert!(
+            hw["notes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n.as_str().unwrap().contains("capped"))
+        );
     }
 }

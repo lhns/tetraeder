@@ -141,11 +141,19 @@ pub fn fill_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> 
             ));
         }
     }
+    notes.extend(fill_gpus_from_priors(hw, priors));
+    notes
+}
+
+/// The GPU part of [`fill_from_priors`].
+fn fill_gpus_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> {
+    let mut notes = Vec::new();
     for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Gpu) {
         if d.compute.is_some() && d.bandwidth_bytes_per_s.is_some() {
             continue;
         }
-        let lower = d.name.to_lowercase();
+        // A trailing space lets a `match_name` end at a word end ("a40 " is not an A4000).
+        let lower = format!("{} ", d.name.to_lowercase());
         let class = priors
             .gpu
             .iter()
@@ -164,6 +172,65 @@ pub fn fill_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> 
         d.bandwidth_bytes_per_s
             .get_or_insert(Measurement::prior(c.bandwidth_bytes_per_s));
     }
+    notes
+}
+
+/// What `tetraeder cluster profile` and `cluster merge` do to the GPUs of a merged graph
+/// (ADR 0091 answer 9): fill the compute and bandwidth a card lacks from its class, give a card
+/// with no class the most conservative prior of the table (the lowest bandwidth and the lowest
+/// compute of any class), and cap every GPU's capacity at `cap_bytes` when given (a 48 GB card
+/// planned as a 24 GiB one). Each change is noted in the returned list and in `hw.notes`.
+pub fn prepare_cluster_gpus(
+    hw: &mut HardwareGraph,
+    priors: &Priors,
+    cap_bytes: Option<u64>,
+) -> Vec<String> {
+    let mut notes: Vec<String> = fill_gpus_from_priors(hw, priors)
+        .into_iter()
+        .filter(|n| !n.contains("no prior for GPU"))
+        .collect();
+    let low_bw = priors
+        .gpu
+        .iter()
+        .map(|c| c.bandwidth_bytes_per_s)
+        .fold(f64::INFINITY, f64::min);
+    let low = priors
+        .gpu
+        .iter()
+        .min_by(|a, b| a.flops_per_s.total_cmp(&b.flops_per_s));
+    for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Gpu) {
+        if d.compute.is_none()
+            && let Some(c) = low
+        {
+            d.compute = Some(ComputeSpec {
+                flops_per_s: c.flops_per_s,
+                c0_graph_s: c.c0_graph_s,
+                c0_eager_s: c.c0_eager_s,
+                expert_flops_per_s: None,
+            });
+            notes.push(format!(
+                "{}: no prior for GPU `{}`; compute is the most conservative class prior ({:e} flop/s)",
+                d.id, d.name, c.flops_per_s
+            ));
+        }
+        if d.bandwidth_bytes_per_s.is_none() && low_bw.is_finite() {
+            d.bandwidth_bytes_per_s = Some(Measurement::prior(low_bw));
+            notes.push(format!(
+                "{}: no prior for GPU `{}`; bandwidth is the most conservative class prior ({low_bw:e} B/s)",
+                d.id, d.name
+            ));
+        }
+        if let Some(cap) = cap_bytes
+            && d.capacity_bytes > cap
+        {
+            notes.push(format!(
+                "{}: capacity capped from {} to {cap} bytes",
+                d.id, d.capacity_bytes
+            ));
+            d.capacity_bytes = cap;
+        }
+    }
+    hw.notes.extend(notes.iter().cloned());
     notes
 }
 

@@ -4611,10 +4611,12 @@ nodes:
   title: Cap a node's GPU memory
   track: cluster
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - crates/planner/tests/cluster_discovered_ram_experts.rs
+  - bench/results/phase6-exit-s-20261126/README.md
+  verdict_quote: 'test a_3090_and_an_a6000_under_the_cap_have_a_covering_pick ... ok and test an_a40_pair_under_the_cap_has_a_covering_pick ... ok (CI run 45804826091, 38 covering candidates each)'
   headline: ''
   depends_on:
   - bench-phase6-exit-s
@@ -4624,8 +4626,8 @@ nodes:
   end: ''
   folded: []
   overview: false
-  plain: 'The cluster profile cannot plan an A6000 or A40 node against 24 GiB, and an unknown card has no compute prior, so those cards (allowed by ADR 0091 answer 9) cannot join a Case S pair.'
-  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). Needs a per-node option on cluster profile and merge (capacity and the 3090 prior), an ADR line and a planner test.'
+  plain: 'cluster profile and cluster merge take --gpu-cap-gib and fill the compute and bandwidth of an A6000, A40, L40 or L40S from a committed class table (an unknown card gets the lowest prior and a note), so such a node plans against 24 GiB and a Case S pair with one gets its covering pick. The driver script still has to pass the flag.'
+  notes: 'Evidence: bench/results/phase6-exit-s-20261126/README.md (plan stage). ADR 0091 History 2026-11-26. Open hand-off: scripts/phase6_exit_s.sh must pass --gpu-cap-gib 24 to cluster profile and cluster merge and copy their note lines into env.'
 - id: bench-phase6-clock-offset
   title: Case F clock offset between the boxes is 2 to 6 s uncertain
   track: bench

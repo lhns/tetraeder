@@ -30,6 +30,11 @@ pub struct MergeArgs {
     /// A node's measured RAM budget in bytes, as `ID=BYTES` (the CPU's capacity).
     #[arg(long = "ram-budget", value_name = "ID=BYTES")]
     pub ram_budget: Vec<String>,
+    /// Cap every GPU's capacity at this many GiB and fill the priors of a card with no spec
+    /// (an A6000 or A40 planned as a 24 GiB card, ADR 0091 answer 9). Recorded in the graph's
+    /// notes.
+    #[arg(long, value_name = "GIB")]
+    pub gpu_cap_gib: Option<u64>,
     #[arg(short, long)]
     pub out: PathBuf,
 }
@@ -95,6 +100,9 @@ pub fn merge(a: &MergeArgs) -> Result<()> {
     if !a.ram_budget.is_empty() {
         hw_merge::set_ram_budgets(&mut hw, &id_values(&a.ram_budget)?)
             .map_err(anyhow::Error::msg)?;
+    }
+    for note in hw_merge::prepare_gpus(&mut hw, a.gpu_cap_gib).map_err(anyhow::Error::msg)? {
+        println!("note: {note}");
     }
     let mut fitted = BTreeMap::new();
     for spec in &a.nodes {

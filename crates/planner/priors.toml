@@ -59,6 +59,65 @@ pcie_gen = 4
 pcie_width = 16
 price_eur = 8000.0
 
+# Workstation and data-center cards (spec sheets, dense FP16 tensor). `match_name` lets a discovered
+# device name find its class; L40S precedes L40 because the first match wins.
+
+[[gpu]]
+class = "rtx_a6000"
+aliases = ["a6000", "rtxa6000"]
+match_name = ["rtx a6000 "]
+name = "NVIDIA RTX A6000"
+capacity_bytes = 51539607552
+bandwidth_bytes_per_s = 7.68e11
+flops_per_s = 1.548e14
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 4500.0
+
+[[gpu]]
+class = "a40"
+aliases = ["a40"]
+match_name = ["a40 "]
+name = "NVIDIA A40"
+capacity_bytes = 48318382080
+bandwidth_bytes_per_s = 6.96e11
+flops_per_s = 1.497e14
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 4500.0
+
+[[gpu]]
+class = "l40s"
+aliases = ["l40s "]
+match_name = ["l40s"]
+name = "NVIDIA L40S"
+capacity_bytes = 48318382080
+bandwidth_bytes_per_s = 8.64e11
+flops_per_s = 3.62e14
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 8000.0
+
+[[gpu]]
+class = "l40"
+aliases = ["l40 "]
+match_name = ["l40"]
+name = "NVIDIA L40"
+capacity_bytes = 48318382080
+bandwidth_bytes_per_s = 8.64e11
+flops_per_s = 1.81e14
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 7000.0
+
 # Generic RAM: capacity is added per GB; bandwidth is per channel, times the channel count.
 [[ram]]
 class = "ddr4"
