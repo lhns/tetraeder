@@ -124,6 +124,13 @@ pub enum ReplicaEvent {
     Fetched {
         id: u64,
         fetched: bool,
+        /// `fetched`, or why it was recomputed (`metrics::FETCH_REASONS`); empty from an older
+        /// replica.
+        #[serde(default)]
+        reason: String,
+        /// Snapshot bytes installed.
+        #[serde(default)]
+        bytes: u64,
     },
     Probed {
         ok: bool,
@@ -358,8 +365,24 @@ impl ReplicaServer {
             return;
         };
         if let Some(f) = &fetch {
-            let ok = self.fetch(f);
-            if !send(tx, &ReplicaEvent::Fetched { id, fetched: ok }) {
+            let t0 = Instant::now();
+            let (reason, bytes) = self.fetch(f);
+            tracing::info!(
+                request = id,
+                node = %f.node,
+                tokens = f.key.tokens.len(),
+                bytes,
+                took_ms = format_args!("{:.1}", t0.elapsed().as_secs_f64() * 1e3),
+                reason,
+                "prefix fetch"
+            );
+            let ev = ReplicaEvent::Fetched {
+                id,
+                fetched: reason == "fetched",
+                reason: reason.into(),
+                bytes,
+            };
+            if !send(tx, &ev) {
                 return;
             }
         }
@@ -404,21 +427,24 @@ impl ReplicaServer {
         ));
     }
 
-    /// Fetches the snapshot into this replica's store; false: recompute.
-    fn fetch(&self, f: &FetchFrom) -> bool {
-        let Some(kv) = &self.kv else { return false };
+    /// Fetches the snapshot into this replica's store: `fetched` and the bytes installed, or why
+    /// it is recomputed (`metrics::FETCH_REASONS`).
+    fn fetch(&self, f: &FetchFrom) -> (&'static str, u64) {
+        let Some(kv) = &self.kv else {
+            return ("refused", 0);
+        };
         if f.key.format != kv.store.kv_format() {
-            return false;
+            return ("refused", 0);
         }
         let Some(peer) = (kv.peers)(&f.node) else {
-            return false;
+            return ("refused", 0);
         };
         // What a snapshot of this replica looks like: a reply is checked against it before it
         // is read and before it is installed. Without a known row size nothing can be checked.
         let row = kv.store.row_bytes();
         let max_tokens = kv.store.max_tokens();
         if row == 0 || f.key.tokens.is_empty() || f.key.tokens.len() as u64 > max_tokens {
-            return false;
+            return ("refused", 0);
         }
         let max_reply = max_tokens
             .min(u64::from(u32::MAX))
@@ -434,22 +460,28 @@ impl ReplicaServer {
                 {
                     tetraeder_transport::metrics::rejected("bad_snapshot");
                     tracing::warn!(node = %f.node, "prefix reply does not match its key; discarded");
-                    return false;
+                    return ("bad_snapshot", 0);
                 }
+                let n = bytes.len() as u64;
                 // Installed under the tokens the snapshot really holds.
-                kv.store.put(
+                let put = kv.store.put(
                     PrefixKey {
                         format: f.key.format.clone(),
                         tokens,
                     },
                     bytes,
                 );
-                true
+                if put {
+                    ("fetched", n)
+                } else {
+                    ("not_installed", 0)
+                }
             }
-            Ok(None) => false,
+            // The holder no longer has it (evicted, or held only by a live sequence).
+            Ok(None) => ("gone", 0),
             Err(e) => {
                 tracing::warn!(node = %f.node, "prefix fetch failed: {e}");
-                false
+                ("failed", 0)
             }
         }
     }
@@ -550,8 +582,30 @@ fn reader(
                     let _ = deliver(&tx, event);
                 }
             }
-            ReplicaEvent::Fetched { fetched, .. } => {
-                crate::metrics::prefix_fetch(if fetched { "fetched" } else { "recomputed" });
+            ReplicaEvent::Fetched {
+                fetched,
+                reason,
+                bytes,
+                ..
+            } => {
+                let reason = match (fetched, reason.as_str()) {
+                    (true, _) => "fetched",
+                    (false, "" | "fetched") => "unknown",
+                    (false, r) => crate::metrics::fetch_reason(r),
+                };
+                tracing::info!(
+                    replica,
+                    result = if fetched { "fetched" } else { "recomputed" },
+                    reason,
+                    bytes,
+                    "prefix fetch done"
+                );
+                if fetched {
+                    crate::metrics::prefix_fetch("fetched", reason);
+                    crate::metrics::prefix_fetch_bytes(bytes);
+                } else {
+                    crate::metrics::prefix_fetch("recomputed", reason);
+                }
             }
             ReplicaEvent::Probed { ok, msg } => {
                 if let Some(p) = lock(&link.probe).take() {

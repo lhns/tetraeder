@@ -1136,3 +1136,354 @@ fn cpu_draining_a_node_replans_a_pipeline_replica_without_failing_requests() {
             .all(|p| p.try_wait().unwrap().is_none())
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// The prefix fetch through the real head (rehearsal 2, `cluster-prefix-fetch-not-observed`).
+// ---------------------------------------------------------------------------------------------
+
+const PREFIX_ARGS: [&str; 10] = [
+    "--engine",
+    "moe",
+    "--ngl",
+    "0",
+    "--threads",
+    "2",
+    "--ctx",
+    "2048",
+    "--parallel",
+    "2",
+];
+
+/// The log without its colour codes.
+fn plain(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            for c in chars.by_ref() {
+                if c == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// A `tetraeder serve --cluster` head whose stderr goes to a file.
+struct LoggedHead {
+    _procs: Procs,
+    port: u16,
+    log: PathBuf,
+}
+
+impl LoggedHead {
+    fn log(&self) -> String {
+        plain(&std::fs::read_to_string(&self.log).unwrap_or_default())
+    }
+
+    fn lines(&self, what: &str) -> Vec<String> {
+        self.log()
+            .lines()
+            .filter(|l| l.contains(what))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// The value of one sample of `/metrics`; 0 when it is not there.
+    fn metric(&self, sample: &str) -> u64 {
+        let (status, text) = http(self.port, "/metrics", None);
+        assert_eq!(status, 200, "/metrics: {text}");
+        text.lines()
+            .find_map(|l| l.strip_prefix(sample)?.trim().parse().ok())
+            .unwrap_or(0)
+    }
+}
+
+/// The head for the two replicas on b and c, one request at a time each, both priced at
+/// `prefill_tps` by the fetch rule on the graph `hw`. Waits until both joined.
+fn prefix_head(c: &Cluster, tag: &str, prefill_tps: f64, hw: &Path) -> LoggedHead {
+    let replicas = c.dir.join(format!("replicas-{tag}.toml"));
+    std::fs::write(
+        &replicas,
+        format!(
+            "model_sha256 = \"{SHA}\"\n[[replica]]\nleader = \"b\"\ncap = 1\nprefill_tps = {prefill_tps:e}\n[[replica]]\nleader = \"c\"\ncap = 1\nprefill_tps = {prefill_tps:e}\n"
+        ),
+    )
+    .unwrap();
+    let log = c.dir.join(format!("head-{tag}.log"));
+    let port = free_port();
+    let mut cmd = serve_args(c, port, &c.model);
+    cmd.arg("--replicas")
+        .arg(&replicas)
+        .arg("--cluster-hw")
+        .arg(hw)
+        .arg("--metrics")
+        .env("RUST_LOG", "info")
+        .stderr(Stdio::from(std::fs::File::create(&log).unwrap()));
+    let mut procs = Procs(vec![cmd.spawn().unwrap()]);
+    wait_healthy(port, &mut procs.0[0]);
+    let head = LoggedHead {
+        _procs: procs,
+        port,
+        log,
+    };
+    wait_for("both replicas join", Duration::from_secs(240), || {
+        head.lines("replica joined").len() >= 2
+    });
+    head
+}
+
+/// One greedy completion through the head: its text and the prompt tokens it restored.
+fn complete(port: u16, prompt: &str, max_tokens: u32) -> (String, u64) {
+    let body = serde_json::json!({
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": 0,
+        "ignore_eos": true,
+    })
+    .to_string();
+    let (status, text) = http(port, "/v1/completions", Some(&body));
+    assert_eq!(status, 200, "{text}");
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    (
+        v["choices"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        v["usage"]["prompt_tokens_details"]["cached_tokens"]
+            .as_u64()
+            .unwrap_or(0),
+    )
+}
+
+/// A streamed completion that runs on: returns once its first token arrived, with the open
+/// connection (the replica stays busy until it ends; read it to the end to let it finish).
+fn busy(port: u16, prompt: &str, max_tokens: u32) -> TcpStream {
+    let body = serde_json::json!({
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": 0,
+        "ignore_eos": true,
+        "stream": true,
+    })
+    .to_string();
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(120))).unwrap();
+    write!(
+        s,
+        "POST /v1/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    let mut seen = Vec::new();
+    let mut buf = [0u8; 1024];
+    while !String::from_utf8_lossy(&seen).contains("\"text\"") {
+        let n = s.read(&mut buf).unwrap();
+        assert!(
+            n > 0,
+            "the stream ended before its first token: {}",
+            String::from_utf8_lossy(&seen)
+        );
+        seen.extend_from_slice(&buf[..n]);
+    }
+    s
+}
+
+/// A prompt of at least `n` tokens that starts with `tag`.
+fn prompt_of(port: u16, tag: &str, n: usize) -> String {
+    let mut text = format!("{tag}:");
+    loop {
+        text += " the quick brown fox jumps over the lazy dog.";
+        let body = serde_json::json!({ "content": text }).to_string();
+        let (status, t) = http(port, "/tokenize", Some(&body));
+        assert_eq!(status, 200, "{t}");
+        let v: serde_json::Value = serde_json::from_str(&t).unwrap();
+        if v["tokens"].as_array().map_or(0, Vec::len) >= n {
+            return text;
+        }
+    }
+}
+
+/// What one round saw: the head's lines for it, and the two answers.
+struct Round {
+    decision: String,
+    done: Option<String>,
+    first: String,
+    again: (String, u64),
+}
+
+/// X1 (a prompt of about 120 tokens) runs on replica 0 (b) and finishes. Then replica 0 is made
+/// busy: by an unrelated long request, or (`share`) by one that extends X1's prompt, as the
+/// rehearsal's fillers did. X1 again then goes to replica 1 (c) with replica 0 as the holder,
+/// and the head decides. `None`: the busy request ended before X1 again was routed (no decision
+/// line), so the round is to be repeated.
+fn prefix_round(head: &LoggedHead, tag: &str, share: bool) -> Option<Round> {
+    let port = head.port;
+    let p = prompt_of(port, tag, 120);
+    let (first, _) = complete(port, &p, 8);
+    let decisions_before = head.lines("prefix decision").len();
+    let done_before = head.lines("prefix fetch done").len();
+    let blocker = if share {
+        format!("{p} And so the story goes on:")
+    } else {
+        format!("{tag} blocker: count from one to a thousand.")
+    };
+    let mut stream = busy(port, &blocker, 600);
+    let again = complete(port, &p, 8);
+    let mut rest = Vec::new();
+    let _ = stream.read_to_end(&mut rest);
+    // The outcome arrives before the request's first token, so it is logged by now; give the
+    // log file a moment.
+    std::thread::sleep(Duration::from_millis(200));
+    let decision = head
+        .lines("prefix decision")
+        .get(decisions_before)
+        .cloned()?;
+    let done = head.lines("prefix fetch done").get(done_before).cloned();
+    Some(Round {
+        decision,
+        done,
+        first,
+        again,
+    })
+}
+
+/// [`prefix_round`] until a round saw a decision (at most four tries).
+fn decided_round(head: &LoggedHead, tag: &str, share: bool) -> Round {
+    for attempt in 0..4 {
+        if let Some(r) = prefix_round(head, &format!("{tag}{attempt}"), share) {
+            return r;
+        }
+        println!(
+            "prefix round {tag}: try {attempt} saw no decision (the busy request ended first)"
+        );
+    }
+    panic!(
+        "no prefix decision in four rounds; head log:\n{}",
+        head.log()
+    );
+}
+
+/// A log field, quoted (`reason="gone"`) or not.
+fn has_field(line: &str, key: &str, value: &str) -> bool {
+    line.contains(&format!("{key}=\"{value}\"")) || line.contains(&format!("{key}={value} "))
+}
+
+/// hardware: cpu. The prefix fetch through the real head process (`serve --cluster --replicas
+/// --cluster-hw --metrics`), two replica processes behind the daemons of b and c, one request at
+/// a time each, the fetch rule priced on the probed graph with the declared prefill rate. A
+/// conversation held by replica 0 that comes back while replica 0 is busy goes to replica 1:
+/// - priced to fetch (prefill 0.001 tok/s): the head logs `decision=fetch`, the target reports
+///   `fetched` with the snapshot's bytes, `/metrics` counts both, the prompt is restored (cached
+///   tokens) and decodes like the first run;
+/// - rehearsal 2's shape (the holder busy with a request that extends the same prompt): the fetch
+///   is asked and the holder has nothing to serve, because its only copy of the prefix is the
+///   sequence that request now extends in place (only idle sequences and cache entries are
+///   served): `gone`, recomputed, the same tokens;
+/// - priced to recompute (prefill 1e12 tok/s): `decision=recompute reason=priced_recompute`,
+///   nothing fetched, the same tokens.
+#[test]
+fn cpu_the_head_fetches_a_prefix_as_priced_and_logs_and_counts_it() {
+    let mut c = Cluster::new("it-prefix-head", &["a", "b", "c"], "tiny-qwen3moe-f16.gguf");
+    for n in ["a", "b", "c"] {
+        c.spawn_daemon(n, &PREFIX_ARGS, &[]);
+    }
+    // The graph a box gets from `tetraeder cluster profile`: discovery and the probed links.
+    let hw_path = c.dir.join("hw.json");
+    {
+        let cfg = c.cfg();
+        let t = c.head_transport();
+        let probe =
+            client::probe_cluster(t.as_ref(), &cfg, &[4096, 65536, 1 << 20], 5, None).unwrap();
+        let hw = client::profile_cluster(t.as_ref(), &cfg, Some(&probe)).unwrap();
+        std::fs::write(&hw_path, hw.to_json().unwrap()).unwrap();
+    }
+    let fetched = "tetraeder_kv_prefix_fetch_total{result=\"fetched\",reason=\"fetched\"}";
+    let gone = "tetraeder_kv_prefix_fetch_total{result=\"recomputed\",reason=\"gone\"}";
+    let priced =
+        "tetraeder_kv_prefix_fetch_total{result=\"recomputed\",reason=\"priced_recompute\"}";
+    let bytes = "tetraeder_kv_prefix_fetch_bytes_total";
+    let gain = tetraeder_scheduler::RESTORE_MIN_GAIN as u64;
+
+    let head = prefix_head(&c, "fetch", 0.001, &hw_path);
+    let r = decided_round(&head, "fetch", false);
+    let log = head.log();
+    assert!(
+        has_field(&r.decision, "holder", "0") && has_field(&r.decision, "to", "1"),
+        "{}\n{log}",
+        r.decision
+    );
+    assert!(
+        has_field(&r.decision, "decision", "fetch"),
+        "priced to fetch: {}\n{log}",
+        r.decision
+    );
+    let done = r
+        .done
+        .clone()
+        .unwrap_or_else(|| panic!("no fetch outcome:\n{log}"));
+    assert!(has_field(&done, "reason", "fetched"), "{done}\n{log}");
+    assert_eq!(
+        r.again.0, r.first,
+        "the fetched prefix decodes like the computed one"
+    );
+    assert!(
+        r.again.1 >= gain,
+        "the fetched prefix was restored: {} cached tokens\n{log}",
+        r.again.1
+    );
+    assert_eq!(head.metric(fetched), 1, "{log}");
+    let fetched_bytes = head.metric(bytes);
+    assert!(fetched_bytes > 0, "{log}");
+    println!(
+        "prefix head fetch decision: {}\nprefix head fetch outcome: {done}\nprefix head fetch cached_tokens {} bytes {fetched_bytes} tokens_equal true",
+        r.decision, r.again.1
+    );
+
+    // Rehearsal 2: the holder is busy with a request that extends the prefix.
+    let r = decided_round(&head, "share", true);
+    let log = head.log();
+    assert!(
+        has_field(&r.decision, "decision", "fetch"),
+        "{}\n{log}",
+        r.decision
+    );
+    let done = r
+        .done
+        .clone()
+        .unwrap_or_else(|| panic!("no fetch outcome:\n{log}"));
+    assert!(has_field(&done, "reason", "gone"), "{done}\n{log}");
+    assert_eq!(r.again.0, r.first, "recomputed: the same tokens");
+    assert!(r.again.1 < gain, "nothing restored: {} cached", r.again.1);
+    assert_eq!(head.metric(gone), 1, "{log}");
+    assert_eq!(head.metric(fetched), 1, "{log}");
+    assert_eq!(head.metric(bytes), fetched_bytes, "{log}");
+    println!(
+        "prefix head shared holder decision: {}\nprefix head shared holder outcome: {done}",
+        r.decision
+    );
+    drop(head);
+
+    let head = prefix_head(&c, "recompute", 1e12, &hw_path);
+    let r = decided_round(&head, "recompute", false);
+    let log = head.log();
+    assert!(
+        has_field(&r.decision, "decision", "recompute")
+            && has_field(&r.decision, "reason", "priced_recompute"),
+        "{}\n{log}",
+        r.decision
+    );
+    assert!(r.done.is_none(), "nothing was asked: {:?}", r.done);
+    assert_eq!(r.again.0, r.first, "recomputed: the same tokens");
+    assert!(r.again.1 < gain, "nothing restored: {} cached", r.again.1);
+    assert_eq!(head.metric(priced), 1, "{log}");
+    assert_eq!(head.metric(fetched), 0, "{log}");
+    assert_eq!(head.metric(bytes), 0, "{log}");
+    println!("prefix head recompute decision: {}", r.decision);
+    for p in &mut c.procs.0 {
+        assert!(p.try_wait().unwrap().is_none(), "a daemon exited");
+    }
+}

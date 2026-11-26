@@ -211,7 +211,9 @@ impl PrefixStore for NoStore {
     fn get(&self, _key: &PrefixKey) -> Option<(Vec<u32>, Vec<u8>)> {
         None
     }
-    fn put(&self, _key: PrefixKey, _bytes: Vec<u8>) {}
+    fn put(&self, _key: PrefixKey, _bytes: Vec<u8>) -> bool {
+        false
+    }
 }
 
 // hardware: none
