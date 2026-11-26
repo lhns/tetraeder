@@ -691,3 +691,15 @@ def test_a_card_over_24_gib_without_a_peak_reading_or_a_round_without_the_card_s
     res, _ = build(tmp_path / "nocard", rounds=[{"a": {"gpu_mem_total_mib": None}}] * 3)
     why = summary(res)["rounds"][0]["unclean_reasons"]
     assert any("gpu_mem_total_mib" in w for w in why) or any("card" in w for w in why), why
+
+
+def test_a_cpu_only_segment_has_no_card_and_the_peak_rule_is_n_a(tmp_path):
+    res, _ = build(tmp_path, rounds=[{n: {"gpu_mem_total_mib": 0, "gpu_mem_peak_mib": None} for n in ("a", "b")}] * 3)
+    assert all(r["clean"] for r in summary(res)["rounds"])
+
+
+def test_a_gpu_segment_without_a_card_reading_stays_unclean_next_to_a_cpu_one(tmp_path):
+    res, _ = build(tmp_path, rounds=[{"a": {"gpu_mem_total_mib": 0, "gpu_mem_peak_mib": None}, "b": {"gpu_mem_total_mib": None}}] * 3)
+    why = summary(res)["rounds"][0]["unclean_reasons"]
+    assert not any(r["clean"] for r in summary(res)["rounds"])
+    assert any(w.startswith("b:") and "gpu_mem_total_mib" in w for w in why) and not any(w.startswith("a:") for w in why), why

@@ -639,13 +639,15 @@ balloon_rc() { bx "$1" 60 "EMULATE_RAM_GB=${EMULATE_RAM_GB:-64} bash scripts/sc_
 # gates stage's reading; no single engine process exists to sample during a round)
 box_flags() { # box_flags NODE JSON PRE_RC POST_RC PEAK_MIB
   local mib=0
-  # the card's size: a card over 24 GiB must peak under 24,576 MiB in the timed requests (summary rule, ADR 0091 History 2026-11-26); no GPU: 0
+  # the card's size: a card over 24 GiB must peak under 24,576 MiB in the timed requests (summary rule, ADR 0091 History 2026-11-26); a
+  # CPU-only segment (the loopback) has no card: 0 marks it, so the rule is n/a. An unreadable card on a GPU box stays empty (null: unclean).
+  mib=0
   [ "$LOOPBACK" = 1 ] || mib=$(bx "$1" 60 "nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1" | tail -n 1 | tr -dc '0-9')
-  python3 -I - "$out/gates/$1/cotenant.json" "$2" "$3" "$4" "${mib:-0}" "${5:-}" << 'EOF'
+  python3 -I - "$out/gates/$1/cotenant.json" "$2" "$3" "$4" "$mib" "${5:-}" << 'EOF'
 import json, sys
 gate, path, pre, post, mib, peak = sys.argv[1:7]
 d = json.load(open(path, encoding="utf-8"))
-d["gpu_mem_total_mib"] = int(mib)
+d["gpu_mem_total_mib"] = int(mib) if mib else None  # 0: a CPU-only segment, no card
 d["gpu_mem_peak_mib"] = float(peak) if peak else None  # the most GPU memory in use over the round, the warm request included
 ok = pre == "0" and post == "0"
 d["balloon_ok"] = ok

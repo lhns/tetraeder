@@ -409,7 +409,8 @@ def vram_peak(seg_file: str) -> list[str]:
     """ADR 0091 History 2026-11-26: on a card over 24 GiB the peak GPU memory of the round (the warm request included, so the timed one
     after it cannot exceed it) stays under 24,576 MiB, so the card stands in for a 24 GiB one. `gpu_mem_total_mib` is the card's size and
     `gpu_mem_peak_mib` the most `nvidia-smi` showed in use over the round (phase6_box.sh gpumem, twice a second), both written by the driver
-    into the segment file; a card of 24 GiB or less needs no peak."""
+    into the segment file; a card of 24 GiB or less needs no peak, and a CPU-only segment (size 0, the driver's mark) has no card. A missing
+    size on a GPU segment is unclean."""
     try:
         d = load(seg_file)
     except (OSError, ValueError):
@@ -417,6 +418,8 @@ def vram_peak(seg_file: str) -> list[str]:
     total = d.get("gpu_mem_total_mib")
     if total is None:
         return ["no card memory reading (gpu_mem_total_mib): the 24 GiB peak rule cannot be checked"]
+    if total == 0:
+        return []  # 0: the driver's mark of a CPU-only segment (no card), the rule is n/a
     if total <= CARD_MIB:
         return []
     peak = d.get("gpu_mem_peak_mib")

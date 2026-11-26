@@ -2818,20 +2818,22 @@ nodes:
   title: Case F loopback fault timing flake
   track: bench
   kind: defect
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - scripts/phase6_trigger.py
+  - scripts/phase6_exit_f.sh
+  verdict_quote: 'the Case F trigger fires on a freshly admitted request with ignore_eos in the loopback (wiring only, no verdict)'
+  headline: 'the fault trigger no longer reads B in flight in a separate call'
   depends_on:
   - bench-phase6-exit-f
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
-  plain: The real Case F loopback in CI failed once with fault hit nothing in flight on B (daemon trial 1) and the fake loopback once with B not in service after 30 s; both passed on rerun; make the trigger wait for in-flight requests deterministically.
+  plain: The real Case F loopback in CI failed once with fault hit nothing in flight on B (daemon trial 1) and the fake loopback once with B not in service after 30 s; both passed on rerun; cause was the trigger reading in-flight in a separate call and counting near-finished requests; fixed by gating /fire on a freshly admitted request with ignore_eos in the loopback.
 - id: cluster-planner-hardening
   title: Harden the cluster planner inputs
   track: cluster
@@ -4764,3 +4766,26 @@ nodes:
   folded: []
   overview: false
   plain: 'On two 3090 nodes at 59.4 GB the planner now picks a covering 0..44 and 44..94 split at 32 + 96 slots; the driver measures the budget and plans before the link gate and the download, prices that pick in the gate, takes each node slots from it, and a CI step runs the real model split, model id, calibration, merge and one judged round on a tiny MoE (the same code is the dryrun stage on the boxes); no verdict was measured.'
+
+- id: cluster-case-s-checks
+  title: Case S checks, peak GPU memory rule and bit-identical judged prediction
+  track: cluster
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - docs/adr/0092-costmodel-6-streamed-moe-segments.md
+  - scripts/phase6_exit_s.sh
+  - crates/planner/tests/cluster_discovered_ram_experts.rs
+  verdict_quote: 'P6_LOOPBACK_S one real judged-round accepted by the summary round check (CPU runner, wiring only)'
+  headline: 'the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing'
+  depends_on:
+  - cluster-case-s-ready
+  replaced_by: []
+  lane: ci
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured.'
