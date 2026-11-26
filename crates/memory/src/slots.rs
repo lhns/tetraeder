@@ -508,6 +508,21 @@ impl GlobalSlots {
     /// Hit, or make room by evicting the least recently used experts of any layer that are
     /// neither pinned nor in `protect` (experts of `layer`). Nothing is evicted on a bypass.
     pub fn lookup_except(&mut self, layer: u32, expert: u32, protect: &[u32]) -> GlobalLookup {
+        self.lookup_ranked(layer, expert, protect, None, None)
+    }
+
+    /// [`Self::lookup_except`] that makes room by evicting the lowest `rank` first (ties: least
+    /// recently used) when `rank` is given. With a `floor`, a victim ranked at or above it is
+    /// not worth the newcomer: nothing is evicted and the lookup bypasses (a prefetch passes the
+    /// newcomer's own rank, a demand read passes none).
+    pub fn lookup_ranked(
+        &mut self,
+        layer: u32,
+        expert: u32,
+        protect: &[u32],
+        rank: Option<&dyn Fn(u32, u32) -> f64>,
+        floor: Option<f64>,
+    ) -> GlobalLookup {
         let (l, e) = (layer as usize, expert as usize);
         if l >= self.bytes.len() || expert >= self.experts {
             return GlobalLookup::Bypass;
@@ -524,21 +539,36 @@ impl GlobalSlots {
             return GlobalLookup::Bypass;
         }
         let mut free = self.budget - self.used;
-        let mut victims = Vec::new();
-        if free < need {
-            for &(_, vl, ve) in &self.order {
-                if self.pinned[vl as usize][ve as usize] || (vl == layer && protect.contains(&ve)) {
-                    continue;
-                }
-                victims.push((vl, ve));
-                free += self.bytes[vl as usize];
-                if free >= need {
-                    break;
-                }
-            }
-            if free < need {
+        let mut victims: Vec<(u32, u32)> = Vec::new();
+        while free < need {
+            let skip = |vl: u32, ve: u32| {
+                self.pinned[vl as usize][ve as usize]
+                    || (vl == layer && protect.contains(&ve))
+                    || victims.contains(&(vl, ve))
+            };
+            let mut candidates = self
+                .order
+                .iter()
+                .map(|&(_, vl, ve)| (vl, ve))
+                .filter(|&(vl, ve)| !skip(vl, ve));
+            let next = match rank {
+                None => candidates.next(),
+                Some(r) => candidates
+                    .fold(None, |best: Option<((u32, u32), f64)>, c| {
+                        let v = r(c.0, c.1);
+                        match best {
+                            Some((_, bv)) if bv <= v => best,
+                            _ => Some((c, v)),
+                        }
+                    })
+                    .filter(|&(_, v)| floor.is_none_or(|f| v < f))
+                    .map(|(c, _)| c),
+            };
+            let Some((vl, ve)) = next else {
                 return GlobalLookup::Bypass;
-            }
+            };
+            victims.push((vl, ve));
+            free += self.bytes[vl as usize];
         }
         for &(vl, ve) in &victims {
             let s = self.stamp[vl as usize][ve as usize]

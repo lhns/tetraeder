@@ -244,6 +244,7 @@ fn decode_windows_split_the_decode_bytes() {
         Policy::Lru,
         Policy::GlobalLru,
         Policy::GlobalFreq { share: 0.5 },
+        Policy::GlobalExpected { horizon: 8 },
         Policy::GlobalBelady,
     ];
     let st = &[VramPolicy::Static][..];
@@ -274,8 +275,19 @@ fn decode_windows_split_the_decode_bytes() {
         let total = (w[0] * 5.0 + w[1] * 5.0 + w[2] * 2.0) / 12.0;
         let want = y["decode"]["disk_bytes_per_token"].as_f64().unwrap();
         assert!((total - want).abs() < 1e-9, "{total} {want}");
+        let sync: Vec<f64> = y["decode_sync_windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        assert_eq!(sync.len(), 3, "{y}");
+        let total = (sync[0] * 5.0 + sync[1] * 5.0 + sync[2] * 2.0) / 12.0;
+        let want = y["decode"]["sync_miss_bytes_per_token"].as_f64().unwrap();
+        assert!((total - want).abs() < 1e-9, "{total} {want}");
         let mut y = y.clone();
         y.as_object_mut().unwrap().remove("decode_windows");
+        y.as_object_mut().unwrap().remove("decode_sync_windows");
         assert_eq!(x, &y);
     }
     assert_eq!(replay::decode_windows(&[4, 2, 6], 2), vec![3.0, 6.0]);

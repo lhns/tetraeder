@@ -15,6 +15,7 @@
 //! without prefetch, an upper bound. The `Global*` policies share one byte budget across layers
 //! (ADR 0050 (c) addendum 2026-11-14).
 
+use super::expected::Expected;
 use super::prefetch_plan_with;
 use super::trace::{LayerStep, Record, TraceHeader, TraceReader};
 pub use crate::slots::FREQ_REFRESH_STEPS;
@@ -47,7 +48,16 @@ pub enum Policy {
     GlobalFreq { share: f64 },
     /// [`Policy::Belady`] over the shared budget. No prefetch.
     GlobalBelady,
+    /// [`Policy::GlobalLru`] in prefill. In decode the resident with the fewest expected uses
+    /// within `horizon` decode steps (the tier turnover) is evicted: decayed routing counts plus
+    /// the router's lookahead ([`Expected`]). A prefetch may only displace an expert of lower
+    /// value; a demand read always gets its room.
+    GlobalExpected { horizon: u32 },
 }
+
+/// The turnover of the RAM tier of the 235B at 77 slots, in decode steps: 7238 resident experts
+/// over about 14 admissions per step (`gfreq:0.5`, `replay-235b-ram.json`).
+pub const DEFAULT_HORIZON: u32 = 512;
 
 fn share_of(s: &str, prefix: &str) -> Option<f64> {
     s.strip_prefix(prefix)
@@ -63,12 +73,21 @@ impl Policy {
             "belady" => Ok(Policy::Belady),
             "glru" => Ok(Policy::GlobalLru),
             "gbelady" => Ok(Policy::GlobalBelady),
+            "gexp" => Ok(Policy::GlobalExpected {
+                horizon: DEFAULT_HORIZON,
+            }),
+            _ if s.starts_with("gexp:") => s["gexp:".len()..]
+                .parse::<u32>()
+                .ok()
+                .filter(|&h| h > 0)
+                .map(|horizon| Policy::GlobalExpected { horizon })
+                .ok_or_else(|| format!("policy {s:?}: gexp:<horizon in decode steps, > 0>")),
             _ => share_of(s, "freq:")
                 .map(|share| Policy::Freq { share })
                 .or_else(|| share_of(s, "gfreq:").map(|share| Policy::GlobalFreq { share }))
                 .ok_or_else(|| {
                     format!(
-                        "policy {s:?}: expected lru, belady, freq:<share in (0, 1]>, glru, gbelady or gfreq:<share in (0, 1]>"
+                        "policy {s:?}: expected lru, belady, freq:<share in (0, 1]>, glru, gbelady, gexp[:<horizon>] or gfreq:<share in (0, 1]>"
                     )
                 }),
         }
@@ -82,6 +101,7 @@ impl Policy {
             Policy::GlobalLru => "glru".into(),
             Policy::GlobalFreq { share } => format!("gfreq:{share}"),
             Policy::GlobalBelady => "gbelady".into(),
+            Policy::GlobalExpected { horizon } => format!("gexp:{horizon}"),
         }
     }
 
@@ -94,7 +114,10 @@ impl Policy {
     pub fn is_global(&self) -> bool {
         matches!(
             self,
-            Policy::GlobalLru | Policy::GlobalFreq { .. } | Policy::GlobalBelady
+            Policy::GlobalLru
+                | Policy::GlobalFreq { .. }
+                | Policy::GlobalBelady
+                | Policy::GlobalExpected { .. }
         )
     }
 }
@@ -268,6 +291,9 @@ pub struct Outcome {
     /// bench tool folds them into `decode_windows`.
     #[serde(skip)]
     pub decode_step_bytes: Vec<u64>,
+    /// The synchronous-miss part of [`Outcome::decode_step_bytes`].
+    #[serde(skip)]
+    pub decode_step_sync_bytes: Vec<u64>,
 }
 
 /// Min, mean and max over layers.
@@ -530,6 +556,10 @@ struct Sim<'a, 't> {
     depth2: bool,
     /// Decode disk bytes so far at the start of every decode step.
     decode_marks: Vec<u64>,
+    /// Decode synchronous-miss bytes so far at the start of every decode step.
+    sync_marks: Vec<u64>,
+    /// [`Policy::GlobalExpected`]: the value of every expert.
+    expected: Option<Expected>,
     /// The replayed layer span.
     lo: usize,
     hi: usize,
@@ -568,7 +598,7 @@ impl<'a, 't> Sim<'a, 't> {
                     used: 0,
                 }),
             }),
-            (Policy::GlobalLru | Policy::GlobalFreq { .. }, _) => {
+            (Policy::GlobalLru | Policy::GlobalFreq { .. } | Policy::GlobalExpected { .. }, _) => {
                 Ram::Global(GlobalSlots::new(&h.expert_bytes, h.n_expert, budget))
             }
             _ => Ram::Slots(SlotCache::new(
@@ -605,6 +635,11 @@ impl<'a, 't> Sim<'a, 't> {
             timing: None,
             depth2: true,
             decode_marks: Vec::new(),
+            sync_marks: Vec::new(),
+            expected: match cfg.policy {
+                Policy::GlobalExpected { horizon } => Some(Expected::new(layers, ne, horizon)),
+                _ => None,
+            },
             lo,
             hi,
         }
@@ -621,6 +656,7 @@ impl<'a, 't> Sim<'a, 't> {
             let layers = self.h.n_layer as usize;
             self.acc = [Acc::new(layers), Acc::new(layers)];
             self.decode_marks.clear();
+            self.sync_marks.clear();
         }
     }
 
@@ -632,7 +668,9 @@ impl<'a, 't> Sim<'a, 't> {
         }
     }
 
-    fn ram_lookup(&mut self, il: usize, e: u32, chunk: &[u32]) -> Look {
+    /// `floor`: see [`GlobalSlots::lookup_ranked`]; the expected-uses ranking applies in decode.
+    fn ram_lookup(&mut self, il: usize, e: u32, chunk: &[u32], floor: Option<f64>) -> Look {
+        let ex = self.expected.as_ref().filter(|_| self.phase == DECODE);
         let look = match &mut self.ram {
             Ram::Slots(c) => match c.layer_mut(il).lookup(e) {
                 Lookup::Hit(_) => Look::Hit,
@@ -647,21 +685,25 @@ impl<'a, 't> Sim<'a, 't> {
                 Lookup::Bypass => Look::Bypass,
             },
             Ram::Belady(b) => b.lookup(il, e, chunk),
-            Ram::Global(g) => match g.lookup_except(il as u32, e, chunk) {
-                GlobalLookup::Hit => Look::Hit,
-                GlobalLookup::Miss { evicted } => {
-                    if self.check {
-                        let bad = |&&(l, x): &&(u32, u32)| {
-                            g.is_pinned(l, x) || (l == il as u32 && chunk.contains(&x))
-                        };
-                        self.violations += evicted.iter().filter(bad).count() as u64;
+            Ram::Global(g) => {
+                let rank = |l: u32, x: u32| ex.map_or(0.0, |ex| ex.value(l, x));
+                let rank: Option<&dyn Fn(u32, u32) -> f64> = ex.map(|_| &rank as _);
+                match g.lookup_ranked(il as u32, e, chunk, rank, floor) {
+                    GlobalLookup::Hit => Look::Hit,
+                    GlobalLookup::Miss { evicted } => {
+                        if self.check {
+                            let bad = |&&(l, x): &&(u32, u32)| {
+                                g.is_pinned(l, x) || (l == il as u32 && chunk.contains(&x))
+                            };
+                            self.violations += evicted.iter().filter(bad).count() as u64;
+                        }
+                        Look::Miss {
+                            evicted: evicted.into_iter().map(|(l, x)| (l as usize, x)).collect(),
+                        }
                     }
-                    Look::Miss {
-                        evicted: evicted.into_iter().map(|(l, x)| (l as usize, x)).collect(),
-                    }
+                    GlobalLookup::Bypass => Look::Bypass,
                 }
-                GlobalLookup::Bypass => Look::Bypass,
-            },
+            }
         };
         let acc = &mut self.acc[self.phase];
         match look {
@@ -714,7 +756,7 @@ impl<'a, 't> Sim<'a, 't> {
                     ts.push(self.ev);
                 }
             }
-            match self.ram_lookup(il, e, experts) {
+            match self.ram_lookup(il, e, experts, None) {
                 Look::Hit => {
                     if std::mem::take(&mut self.prefetched[il][e as usize]) {
                         self.acc[self.phase].used += 1;
@@ -754,6 +796,10 @@ impl<'a, 't> Sim<'a, 't> {
             return;
         }
         let global = matches!(self.ram, Ram::Global(_));
+        let ranked = self.phase == DECODE;
+        if let (Some(ex), true) = (self.expected.as_mut(), ranked) {
+            ex.name(il as u32, predicted);
+        }
         let mut inflight: Vec<u32> = self
             .inflight
             .iter()
@@ -792,7 +838,13 @@ impl<'a, 't> Sim<'a, 't> {
         self.set_ram_pins(il, &pins);
         let mut read = Vec::new();
         for &e in &missing {
-            match self.ram_lookup(il, e, &[]) {
+            // expected uses: a read must beat the value of whoever it displaces
+            let floor = self
+                .expected
+                .as_ref()
+                .filter(|_| ranked)
+                .map(|ex| ex.value(il as u32, e));
+            match self.ram_lookup(il, e, &[], floor) {
                 Look::Miss { evicted } => {
                     for (l, old) in evicted {
                         self.note_wasted(l, old);
@@ -800,6 +852,8 @@ impl<'a, 't> Sim<'a, 't> {
                     self.prefetched[il][e as usize] = true;
                     read.push(e);
                 }
+                // refused by the value floor: try the next expert
+                Look::Bypass if floor.is_some() => {}
                 // The engine fails the step here; the replay skips the read.
                 Look::Hit | Look::Bypass => break,
             }
@@ -1050,9 +1104,16 @@ impl<'a, 't> Sim<'a, 't> {
             self.phase = phase;
             if phase == DECODE {
                 self.decode_marks.push(self.decode_bytes());
+                self.sync_marks.push(self.acc[DECODE].sync_bytes);
             }
             self.acc[self.phase].steps += 1;
             self.pins_on = self.phase == DECODE;
+            if let (Some(ex), DECODE) = (self.expected.as_mut(), self.phase) {
+                ex.advance(self.decode_steps as u32);
+                if self.decode_steps == 0 {
+                    ex.seed(&self.counts, self.h.n_used);
+                }
+            }
             if self.phase == DECODE {
                 if self.decode_steps.is_multiple_of(FREQ_REFRESH_STEPS) {
                     self.refresh_freq_pins();
@@ -1085,6 +1146,9 @@ impl<'a, 't> Sim<'a, 't> {
             if !std::mem::replace(&mut seen[e as usize], true) {
                 distinct.push(u32::from(e));
             }
+        }
+        if let (Some(ex), DECODE) = (self.expected.as_mut(), self.phase) {
+            ex.routed(il as u32, &distinct);
         }
         let acc = &mut self.acc[self.phase];
         acc.pairs += s.ids.len() as u64;
@@ -1183,6 +1247,13 @@ impl<'a, 't> Sim<'a, 't> {
             .zip(self.decode_marks.iter().skip(1).chain([&end]))
             .map(|(a, b)| b - a)
             .collect();
+        let end_sync = self.acc[DECODE].sync_bytes;
+        let decode_step_sync_bytes = self
+            .sync_marks
+            .iter()
+            .zip(self.sync_marks.iter().skip(1).chain([&end_sync]))
+            .map(|(a, b)| b - a)
+            .collect();
         let layers = self.h.n_layer as usize;
         let ram_layer_residents = match &self.ram {
             _ if !self.cfg.policy.is_global() => None,
@@ -1256,6 +1327,7 @@ impl<'a, 't> Sim<'a, 't> {
                 .filter(|&n| n > 0 && self.cfg.policy.is_global()),
             layer_stats,
             decode_step_bytes,
+            decode_step_sync_bytes,
         };
         (out, self.log)
     }

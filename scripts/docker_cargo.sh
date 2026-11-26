@@ -6,6 +6,7 @@
 # Usage: scripts/docker_cargo.sh [-l LANE] -- <command...>     e.g. scripts/docker_cargo.sh -l l1 -- cargo test -p tetraeder-control
 # LANE is one of the fixed pool main, l1, l2 (AGENTS.md): the host is shared with other projects, so volumes are reused, never one per
 # worker. Env: DOCKER_CARGO_JOBS (default 6), DOCKER_CARGO_CPUS (default 8), DOCKER_CARGO_MEM (default 16g).
+# DOCKER_CARGO_EXTRA: space-separated paths relative to the checkout (e.g. git-ignored traces) that are copied in too.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" # Git Bash on Windows must not rewrite /src, /target into Windows paths
 lane=main
@@ -37,5 +38,9 @@ docker start "$name" > /dev/null
 # copied: it lives in a volume, where patches/apply.sh fetches the pinned commit once and applies the patch queue
 (cd "$root" && git ls-files -z | while IFS= read -r -d '' f; do [ -f "$f" ] && printf '%s\0' "$f"; done \
   | tar --null -T - -cf -) | docker cp - "$name:/src"
+if [ -n "${DOCKER_CARGO_EXTRA:-}" ]; then
+  # shellcheck disable=SC2086 # the paths are a word list, without spaces in themselves
+  (cd "$root" && tar -cf - $DOCKER_CARGO_EXTRA) | docker cp - "$name:/src"
+fi
 docker exec "$name" sh -c 'cd /src && bash patches/apply.sh > /dev/null'
 docker exec -w /src "$name" "$@"
