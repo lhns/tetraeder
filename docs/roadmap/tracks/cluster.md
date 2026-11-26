@@ -39,12 +39,12 @@ flowchart TB
     cluster_case_s_checks["✔ Case S checks, peak<br/>GPU memory rule and<br/>bit-identical judged<br/>prediction"]
     cluster_case_s_pair_finder["✔ Case S box pair<br/>finder"]
     cluster_case_s_flow["✔ Case S full dry run<br/>and clock"]
+    cluster_short_prefix_dropped>"✔ Short idle prefix<br/>taken unsaved"]
     cluster_profile_gpu_cap["✔ Cap a node's GPU<br/>memory"]
     cluster_second_cold_request_empty>"⚠ Second cold request<br/>through a split plan<br/>returns an empty<br/>stream"]
     cluster_leader_move["⏸ Move a replica's<br/>leader"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
-    cluster_short_prefix_dropped>"⚠ Short idle prefix<br/>taken unsaved"]
     cluster_serve_live_prefix["⏸ Serve prefix from<br/>live sequence"]
     cluster_head_replica_fetch["⏸ Head's own replica<br/>fetches a prefix"]
     cluster_prefix_fetch_box[/"⏸ Prefix fetch time on<br/>boxes"/]
@@ -79,15 +79,15 @@ flowchart TB
     cluster_prefix_fetch_not_observed ~~~ cluster_case_s_checks
     cluster_case_s_checks ~~~ cluster_case_s_pair_finder
     cluster_case_s_checks ~~~ cluster_case_s_flow
-    cluster_case_s_checks ~~~ cluster_profile_gpu_cap
-    cluster_case_s_pair_finder ~~~ cluster_second_cold_request_empty
-    cluster_case_s_flow ~~~ cluster_leader_move
+    cluster_case_s_checks ~~~ cluster_short_prefix_dropped
+    cluster_case_s_pair_finder ~~~ cluster_profile_gpu_cap
+    cluster_case_s_flow ~~~ cluster_second_cold_request_empty
+    cluster_short_prefix_dropped ~~~ cluster_leader_move
     cluster_profile_gpu_cap ~~~ cluster_experts_nodes
     cluster_second_cold_request_empty ~~~ cluster_replica_scaling
-    cluster_leader_move ~~~ cluster_short_prefix_dropped
-    cluster_experts_nodes ~~~ cluster_serve_live_prefix
-    cluster_replica_scaling ~~~ cluster_head_replica_fetch
-    cluster_short_prefix_dropped ~~~ cluster_prefix_fetch_box
+    cluster_leader_move ~~~ cluster_serve_live_prefix
+    cluster_experts_nodes ~~~ cluster_head_replica_fetch
+    cluster_replica_scaling ~~~ cluster_prefix_fetch_box
     cluster_serve_live_prefix ~~~ cluster_prefix_fetch_box
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
@@ -131,8 +131,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound,cluster_sharded_model_id,cluster_case_s_ready,cluster_case_s_checks,cluster_case_s_pair_finder,cluster_case_s_flow,cluster_profile_gpu_cap unrated
-    class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan,cluster_head_led_plan_ignores_segments,cluster_probe_control_idle,cluster_prefix_fetch_not_observed succ
-    class cluster_second_cold_request_empty,cluster_short_prefix_dropped finding
+    class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan,cluster_head_led_plan_ignores_segments,cluster_probe_control_idle,cluster_prefix_fetch_not_observed,cluster_short_prefix_dropped succ
+    class cluster_second_cold_request_empty finding
     class cluster_leader_move,cluster_experts_nodes,cluster_serve_live_prefix,cluster_head_replica_fetch,cluster_prefix_fetch_box parked
     class cluster_replica_scaling blocked
 ```
@@ -181,7 +181,7 @@ flowchart TB
 | `cluster-case-s-checks` | Case S checks, peak GPU memory rule and bit-identical judged prediction | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-ready |  |  | the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing | docs/adr/0091-phase6-multi-node.md; docs/adr/0092-costmodel-6-streamed-moe-segments.md; scripts/phase6_exit_s.sh; crates/planner/tests/cluster_discovered_ram_experts.rs |
 | `cluster-case-s-pair-finder` | Case S box pair finder | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-checks |  |  | read-only finder lists Case S pairs from live Vast offers under every host rule and runs the real planner on each | scripts/phase6_pair_finder.py; tests/test_phase6_pair_finder.py |
 | `cluster-case-s-flow` | Case S full dry run and clock | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-checks |  |  | every judged stage runs on the tiny model before the download; bulk screen after the gates; pre-download clock check | scripts/phase6_exit_s.sh; scripts/phase6_bulk.py; scripts/phase6_clock.py; scripts/phase6_report_box.sh |
-| `cluster-short-prefix-dropped` | Short idle prefix taken unsaved | defect | local | next | unrated |  |  | cluster-remote-kv |  |  |  |  |
+| `cluster-short-prefix-dropped` | Short idle prefix taken unsaved | defect | local | done | unrated | 2026-11-26 | 2026-11-26 | cluster-remote-kv |  |  | a short idle prefix is no longer lost to a request sharing a token or two with it; the head forgets a gone prefix | docs/adr/0074-prefix-save-through-pinned-staging.md; docs/adr/0091-phase6-multi-node.md |
 | `cluster-serve-live-prefix` | Serve prefix from live sequence | feature | local | parked | unrated |  |  | cluster-remote-kv |  |  |  |  |
 | `cluster-head-replica-fetch` | Head's own replica fetches a prefix | feature | local | parked | unrated |  |  | cluster-remote-kv |  |  |  |  |
 | `cluster-prefix-fetch-box` | Prefix fetch time on boxes | experiment | box-later | parked | unrated |  |  | cluster-remote-kv |  |  |  |  |
@@ -228,7 +228,7 @@ flowchart TB
 | `cluster-case-s-checks` | Case S checks, peak GPU memory rule and bit-identical judged prediction | P6_LOOPBACK_S one real judged-round accepted by the summary round check (CPU runner, wiring only) | the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing | The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured. |  |  |  |  |  |
 | `cluster-case-s-pair-finder` | Case S box pair finder | 3 pair(s); top 3 by plannable, bulk rate, datacenter, price | read-only finder lists Case S pairs from live Vast offers under every host rule and runs the real planner on each | A read-only script lists pairs of Vast offers that meet every Case S rule (RAM, cores, disk, network, price with traffic, skip list, different hosts), ranks them by bulk rate and counts what each rule excludes; with the real planner it found 38 covering candidates on a 3090 plus A40 pair (2026-11-26, 14:20 UTC). Boxes are created only once it lists a pair. | RAM floor 61.7 GB for the listing (57.1 GB of node b plus 4.6 GB box use); judged boxes need 64 GB (advisor row 2026-11-26). The offer field gpu_max_power_w is not yet a rule; the power gate on the box decides. |  |  |  |  |
 | `cluster-case-s-flow` | Case S full dry run and clock | P6_LOOPBACK_S bulk screen, link gate, re-measured budget and re-pick, predict --judged with the freeze, 3 judged rounds with the early A/A and the A/A last, end probe and summary | every judged stage runs on the tiny model before the download; bulk screen after the gates; pre-download clock check | The Case S driver runs every judged stage on the tiny model on the boxes before the 142 GB download, screens the link with 64 MiB each way right after the gates (fail when the frozen prediction would move over 0.08), checks before the download that the older box can finish under its cap, and runs the single-node reference and the second-prompt prediction as report-only stages. CI runs the same stages with the real binaries. The clock is mostly estimates: 149 min nominal, 170 padded. | One-off (user, 2026-11-26): the boxes of the next judged Case S session may run 4 h (taxameter.toml max_box_hours 4 until its results are committed). |  |  |  |  |
-| `cluster-short-prefix-dropped` | Short idle prefix taken unsaved |  |  | An idle sequence shorter than the 512-token save minimum is taken in place, unsaved, by any new request sharing even one leading token, so on a busy holder a prefix under 512 tokens survives only by chance (found by cluster-remote-kv, 2026-11-26). | Scheduler change: decide whether a short idle prefix is saved, kept or taken; a reproducing test first. Not on the Case S path. |  |  |  |  |
+| `cluster-short-prefix-dropped` | Short idle prefix taken unsaved | an idle sequence is taken in place only when the request keeps at least as many of its rows as it cuts, keeps its whole prompt, or the cut is saved or cheap to recompute; otherwise the request takes a free slot, else the oldest idle sequence (ADR 0074 History, 2026-11-26; CI run 45870745791) | a short idle prefix is no longer lost to a request sharing a token or two with it; the head forgets a gone prefix | A short idle prefix is no longer given up to a request that shares only a token or two with it while a slot is free, and the head forgets a prefix once its holder answers that it is gone (not measured). | Scheduler change: decide whether a short idle prefix is saved, kept or taken; a reproducing test first. Not on the Case S path. |  |  |  |  |
 | `cluster-serve-live-prefix` | Serve prefix from live sequence |  |  | A holder serves only idle sequences and cache entries; a prefix held only by a running sequence answers gone. Serving it needs a snapshot of a running sequence cut to the key. | Parked: after the Phase 6 exit. |  |  |  |  |
 | `cluster-head-replica-fetch` | Head's own replica fetches a prefix |  |  | The fetch hint rides the replica connection, which the head's own in-process replica lacks, so a request routed there always recomputes (reason target_in_process). | Parked: after the Phase 6 exit. |  |  |  |  |
 | `cluster-prefix-fetch-box` | Prefix fetch time on boxes |  |  | Time to first token of a fetched prefix against recompute on real boxes. scripts/phase6_prefix.py must change first: its fillers share the prefix (gone), its remote-holder mode targets the head's own replica, and the prompt must exceed 512 tokens. | Parked: credit is reserved for Case S; not part of ADR 0091's done criterion for remote KV. |  |  |  |  |

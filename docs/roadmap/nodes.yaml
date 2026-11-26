@@ -4903,20 +4903,22 @@ nodes:
   title: Short idle prefix taken unsaved
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0074-prefix-save-through-pinned-staging.md
+  - docs/adr/0091-phase6-multi-node.md
+  verdict_quote: 'an idle sequence is taken in place only when the request keeps at least as many of its rows as it cuts, keeps its whole prompt, or the cut is saved or cheap to recompute; otherwise the request takes a free slot, else the oldest idle sequence (ADR 0074 History, 2026-11-26; CI run 45870745791)'
+  headline: 'a short idle prefix is no longer lost to a request sharing a token or two with it; the head forgets a gone prefix'
   depends_on:
   - cluster-remote-kv
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
-  plain: 'An idle sequence shorter than the 512-token save minimum is taken in place, unsaved, by any new request sharing even one leading token, so on a busy holder a prefix under 512 tokens survives only by chance (found by cluster-remote-kv, 2026-11-26).'
+  plain: 'A short idle prefix is no longer given up to a request that shares only a token or two with it while a slot is free, and the head forgets a prefix once its holder answers that it is gone (not measured).'
   notes: 'Scheduler change: decide whether a short idle prefix is saved, kept or taken; a reproducing test first. Not on the Case S path.'
 - id: cluster-serve-live-prefix
   title: Serve prefix from live sequence

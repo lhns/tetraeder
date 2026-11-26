@@ -204,7 +204,7 @@ fn follow_up_on_the_other_replica(
     policy: Policy,
     holder_has_it: bool,
     holder_format: &str,
-) -> (Arc<Store>, Arc<Store>, Vec<GenEvent>) {
+) -> (Arc<Store>, Arc<Store>, Vec<GenEvent>, u32) {
     let asked = Arc::new(AtomicUsize::new(0));
     let board = MemTransport::switchboard();
     let cfg = config(1000, &["a", "b"], &[1, 2]);
@@ -324,15 +324,17 @@ fn follow_up_on_the_other_replica(
         "the follow-up went to R1 while R0 held the prefix"
     );
     let _ = t.join();
-    (store_a, store_b, events)
+    let held = engine.holds(0, &prefix.bytes().map(u32::from).collect::<Vec<_>>());
+    (store_a, store_b, events, held)
 }
 
 // hardware: none
 #[test]
 fn a_prefix_computed_on_one_replica_is_fetched_when_priced_cheaper() {
-    let (a, b, events) = follow_up_on_the_other_replica(Policy::Fetch, true, "f16");
+    let (a, b, events, held) = follow_up_on_the_other_replica(Policy::Fetch, true, "f16");
     assert!(matches!(events.last(), Some(GenEvent::Finished { .. })));
     assert_eq!(a.served.load(Ordering::SeqCst), 1, "R0's leader served it");
+    assert_eq!(held as usize, PREFIX.len(), "R0 still holds it");
     assert_eq!(
         b.puts.load(Ordering::SeqCst),
         1,
@@ -346,7 +348,7 @@ fn a_prefix_computed_on_one_replica_is_fetched_when_priced_cheaper() {
 // hardware: none
 #[test]
 fn a_prefix_priced_dearer_than_recompute_is_recomputed() {
-    let (a, b, events) = follow_up_on_the_other_replica(Policy::Decline, true, "f16");
+    let (a, b, events, _) = follow_up_on_the_other_replica(Policy::Decline, true, "f16");
     assert!(matches!(events.last(), Some(GenEvent::Finished { .. })));
     assert_eq!(a.served.load(Ordering::SeqCst), 0);
     assert_eq!(b.puts.load(Ordering::SeqCst), 0);
@@ -356,12 +358,14 @@ fn a_prefix_priced_dearer_than_recompute_is_recomputed() {
 // hardware: none
 #[test]
 fn a_prefix_that_is_gone_or_in_another_format_is_recomputed() {
-    // Evicted at the holder: `Gone`.
-    let (_, b, events) = follow_up_on_the_other_replica(Policy::Fetch, false, "f16");
+    // Evicted at the holder: `Gone`, and the head forgets that R0 held it
+    // (cluster-short-prefix-dropped).
+    let (_, b, events, held) = follow_up_on_the_other_replica(Policy::Fetch, false, "f16");
     assert!(matches!(events.last(), Some(GenEvent::Finished { .. })));
     assert_eq!(b.puts.load(Ordering::SeqCst), 0);
+    assert_eq!(held, 0, "the head forgot the prefix the holder lost");
     // A holder whose snapshots are of another cut or format refuses.
-    let (a, b, events) = follow_up_on_the_other_replica(Policy::Fetch, true, "f16@0-2,2-4");
+    let (a, b, events, _) = follow_up_on_the_other_replica(Policy::Fetch, true, "f16@0-2,2-4");
     assert!(matches!(events.last(), Some(GenEvent::Finished { .. })));
     assert_eq!(a.served.load(Ordering::SeqCst), 0);
     assert_eq!(b.puts.load(Ordering::SeqCst), 0);

@@ -499,10 +499,15 @@ pub fn serve_conn(server: &Arc<ReplicaServer>, conn: Conn) {
 // The head's side.
 // ---------------------------------------------------------------------------------------------
 
+/// Told how a requested prefix fetch went: `fetched` or why it was recomputed
+/// (`metrics::FETCH_REASONS`).
+pub type FetchDone = Box<dyn FnOnce(&'static str) + Send>;
+
 struct Pend {
     tx: mpsc::Sender<GenEvent>,
     cancel: CancellationToken,
     cancel_sent: bool,
+    fetch_done: Option<FetchDone>,
 }
 
 struct Link {
@@ -583,10 +588,10 @@ fn reader(
                 }
             }
             ReplicaEvent::Fetched {
+                id,
                 fetched,
                 reason,
                 bytes,
-                ..
             } => {
                 let reason = match (fetched, reason.as_str()) {
                     (true, _) => "fetched",
@@ -605,6 +610,12 @@ fn reader(
                     crate::metrics::prefix_fetch_bytes(bytes);
                 } else {
                     crate::metrics::prefix_fetch("recomputed", reason);
+                }
+                let done = lock(&link.pending)
+                    .get_mut(&id)
+                    .and_then(|p| p.fetch_done.take());
+                if let Some(done) = done {
+                    done(reason);
                 }
             }
             ReplicaEvent::Probed { ok, msg } => {
@@ -837,12 +848,13 @@ impl RemoteEngine {
             .is_some_and(|l| l.write(&ReplicaRequest::Offer { peer, key }).is_ok())
     }
 
-    /// [`Engine::generate`] with a prefix to fetch first. The second value is the request's id
-    /// on the wire.
+    /// [`Engine::generate`] with a prefix to fetch first. `done` gets the fetch's outcome
+    /// (`fetched` or the reason it was recomputed) when the replica reports it.
     pub fn generate_with(
         &self,
         req: GenerateRequest,
         fetch: Option<FetchFrom>,
+        done: Option<FetchDone>,
     ) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
         let link = self.live().ok_or_else(|| {
             EngineError::Other(format!("replica {} is not connected", self.replica))
@@ -868,6 +880,7 @@ impl RemoteEngine {
                 tx,
                 cancel: req.cancel,
                 cancel_sent: false,
+                fetch_done: done,
             },
         );
         if let Err(e) = link.write(&ReplicaRequest::Generate {
@@ -927,7 +940,7 @@ impl Engine for RemoteEngine {
     }
 
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
-        self.generate_with(req, None)
+        self.generate_with(req, None, None)
     }
 
     fn json_schema_to_grammar(&self, model: &str, schema: &str) -> Result<String, EngineError> {
