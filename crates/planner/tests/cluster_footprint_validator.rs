@@ -179,6 +179,25 @@ fn seven_24_gib_nodes_build_no_plan_the_validator_rejects() {
     assert!(n > 0, "no candidate on seven 24 GiB nodes");
 }
 
+/// AGENTS rule 4: every fixture as committed (a single-node fixture as two copies of its node,
+/// since alone it has no plan across nodes) holds [`check_candidates`].
+#[test]
+fn every_fixture_gets_no_plan_the_validator_rejects_for_memory() {
+    for (i, f) in FIXTURES.iter().enumerate() {
+        let hw = HardwareGraph::from_toml(f).unwrap();
+        let hw = if hw.nodes().len() < 2 {
+            n_nodes(f, 2)
+        } else {
+            hw
+        };
+        let n = check_candidates(&hw).unwrap_or_else(|e| panic!("fixture {i}: {e}"));
+        println!("fixture {i}: {n} candidates");
+        if i == 0 {
+            assert!(n > 0, "the LAN fixture has candidates");
+        }
+    }
+}
+
 /// The filter of `memory_rejections` matches the validator's memory issue as the search prints
 /// it (`invalid: {:?}`).
 #[test]

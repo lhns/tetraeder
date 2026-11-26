@@ -348,9 +348,11 @@ fn choose(
 /// for every candidate the search emits (tree node `planner-footprint-validator-gap`).
 pub fn stage_memory(model: &ModelDesc, st: &Stage) -> BTreeMap<String, u64> {
     let mut used: BTreeMap<String, u64> = BTreeMap::new();
-    let mut add = |device: &str, bytes: u64| {
-        let u = used.entry(device.to_string()).or_default();
-        *u = u.saturating_add(bytes);
+    let mut add = |device: &str, bytes: u64| match used.get_mut(device) {
+        Some(u) => *u = u.saturating_add(bytes),
+        None => {
+            used.insert(device.to_string(), bytes);
+        }
     };
     let layers = st.layers.0..st.layers.1.min(model.layers);
     let units = [UnitId::Embed, UnitId::Head]

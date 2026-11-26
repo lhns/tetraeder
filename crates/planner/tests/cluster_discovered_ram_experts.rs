@@ -472,6 +472,13 @@ fn covering_candidates_of_two_3090_nodes_at_the_measured_budget() {
         cands.len(),
         pruned.len()
     );
+    // No plan the validator rejects for memory (`planner-footprint-validator-gap`).
+    assert!(
+        !pruned
+            .iter()
+            .any(|(_, why)| why.starts_with("invalid") && why.contains("MemoryExceeded")),
+        "{pruned:?}"
+    );
     for c in cands.iter().take(5) {
         println!("case_s_pick covering {}", show(c, &layout));
     }
