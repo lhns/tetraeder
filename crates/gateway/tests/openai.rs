@@ -521,3 +521,24 @@ async fn single_tool_call_cancels_the_engine() {
         );
     }
 }
+
+#[tokio::test]
+async fn input_tokens_count_the_chat_prompt() {
+    let (app, _) = app(FakeEngine::fixed("ok"));
+    let want = json!({"input_tokens": chatml_user_tokens("count me"), "object": "response.input_tokens"});
+    for path in [
+        "/v1/chat/completions/input_tokens",
+        "/chat/completions/input_tokens",
+    ] {
+        let body = json!({"model": "fake", "messages": user("count me")});
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+        assert_eq!(v, want, "{path}");
+    }
+    for path in ["/v1/responses/input_tokens", "/responses/input_tokens"] {
+        let body = json!({"model": "fake", "input": "count me"});
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+        assert_eq!(v, want, "{path}");
+    }
+}

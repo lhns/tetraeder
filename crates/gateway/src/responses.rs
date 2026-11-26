@@ -437,6 +437,18 @@ pub async fn responses(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Re
     ))
 }
 
+/// `POST /v1/responses/input_tokens`: the prompt tokens of a responses body, as llama-server's
+/// `handle_count_tokens` answers them.
+pub async fn input_tokens(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Json<Value>> {
+    let body: Value =
+        serde_json::from_slice(&body).map_err(|e| bad(format!("invalid request body: {e}")))?;
+    let ChatPlan { spec, .. } = chat_plan(to_chat_body(&body)?, gw.parallel_slots())?;
+    let n = gw.count_tokens(&spec)?;
+    Ok(Json(
+        json!({"input_tokens": n, "object": "response.input_tokens"}),
+    ))
+}
+
 fn event(name: &str, mut data: Value) -> Event {
     data["type"] = json!(name);
     Event::default().event(name).data(data.to_string())

@@ -100,7 +100,8 @@ async fn count_request(State(gw): State<Arc<Gateway>>, req: Request, next: Next)
 }
 
 /// Routes: `/v1/chat/completions`, `/v1/completions`, `/v1/messages`,
-/// `/v1/messages/count_tokens`, `/v1/models`, `/v1/models/{id}`, `/v1/responses`, and
+/// `/v1/messages/count_tokens`, `/v1/models`, `/v1/models/{id}`, `/v1/responses`, the
+/// `input_tokens` routes of chat and responses, and
 /// llama-server's own: `/health`, `/metrics`, `/props`, `/tokenize`, `/detokenize`,
 /// `/apply-template`, `/completion`, `/infill`, with `/models`, `/chat/completions` and
 /// `/responses` as aliases.
@@ -114,6 +115,16 @@ pub fn router_with(gw: Arc<Gateway>, log: Option<Arc<RequestLog>>) -> Router {
     let app = Router::new()
         .route("/v1/chat/completions", post(openai::chat_completions))
         .route("/chat/completions", post(openai::chat_completions))
+        .route(
+            "/v1/chat/completions/input_tokens",
+            post(openai::chat_input_tokens),
+        )
+        .route(
+            "/chat/completions/input_tokens",
+            post(openai::chat_input_tokens),
+        )
+        .route("/v1/responses/input_tokens", post(responses::input_tokens))
+        .route("/responses/input_tokens", post(responses::input_tokens))
         .route("/v1/completions", post(openai::completions))
         .route("/v1/messages", post(anthropic::messages_handler))
         .route("/v1/messages/count_tokens", post(anthropic::count_tokens))

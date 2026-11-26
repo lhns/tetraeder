@@ -1195,14 +1195,22 @@ cases:
     mode: shape
     engines: [auto]
     expect: gap serving-parity-remaining
-  - id: gap-input-tokens
+  - id: input-tokens-chat
     group: C
     row: "POST /v1/chat/completions/input_tokens, /responses/input_tokens"
     endpoint: POST /v1/chat/completions/input_tokens
     body: {"messages": [{"role": "user", "content": "Hello"}]}
-    mode: status
+    mode: exact
     engines: [auto]
-    expect: gap serving-parity-remaining
+    expect: pass
+  - id: input-tokens-responses
+    group: C
+    row: "POST /v1/chat/completions/input_tokens, /responses/input_tokens"
+    endpoint: POST /v1/responses/input_tokens
+    body: {"input": "Hello"}
+    mode: exact
+    engines: [auto]
+    expect: pass
   # no GET /slots route here (404)
   - id: gap-slots-get
     group: D

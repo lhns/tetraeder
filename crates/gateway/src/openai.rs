@@ -488,6 +488,19 @@ pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPl
     })
 }
 
+/// `POST /v1/chat/completions/input_tokens`: the prompt tokens of a chat body, as llama-server's
+/// `handle_count_tokens` answers them (its `object` is `response.input_tokens` here too).
+pub async fn chat_input_tokens(
+    State(gw): State<Arc<Gateway>>,
+    body: Bytes,
+) -> Result<Json<Value>> {
+    let ChatPlan { spec, .. } = chat_plan(parse_body(&body)?, gw.parallel_slots())?;
+    let n = gw.count_tokens(&spec)?;
+    Ok(Json(
+        json!({"input_tokens": n, "object": "response.input_tokens"}),
+    ))
+}
+
 pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let ChatPlan {
         spec,
