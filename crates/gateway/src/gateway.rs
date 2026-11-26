@@ -807,21 +807,38 @@ impl Gateway {
             None => ctx - n_prompt,
         };
 
-        let (parser, constraint) =
-            self.output_setup(&st, &spec.prompt, &spec.format, in_reasoning)?;
-
         let mut extra = spec.extra.clone();
+        let schema_grammar = |s: &str| {
+            self.engine
+                .json_schema_to_grammar(&model, s)
+                .map_err(|e| match self.engine_err(e) {
+                    GatewayError::InvalidRequest(m) => {
+                        GatewayError::InvalidRequest(format!("json_schema: {m}"))
+                    }
+                    e => e,
+                })
+        };
+        // A chat response_format becomes llama-server's grammar when nothing else shapes the
+        // output: no tools, no think block, no grammar of the request. Otherwise the token mask
+        // keeps the think block and tool calls apart.
+        let mut format = spec.format.clone();
+        if let (Some(f), Prompt::Chat { tools, tool_choice, .. }) = (&format, &spec.prompt)
+            && !st.think
+            && (tools.is_empty() || *tool_choice == ToolChoice::None)
+            && extra.grammar.is_none()
+        {
+            let schema = match f {
+                OutputFormat::JsonObject => serde_json::json!({"type": "object"}),
+                OutputFormat::JsonSchema(s) => s.clone(),
+            };
+            let g = response_format_grammar(&schema_grammar(&schema.to_string())?);
+            extra.grammar = Some(GrammarSource::Gbnf(g));
+            format = None;
+        }
+        let (parser, constraint) = self.output_setup(&st, &spec.prompt, &format, in_reasoning)?;
+
         extra.grammar = match extra.grammar.take() {
-            Some(GrammarSource::JsonSchema(s)) => Some(GrammarSource::Gbnf(
-                self.engine
-                    .json_schema_to_grammar(&model, &s)
-                    .map_err(|e| match self.engine_err(e) {
-                        GatewayError::InvalidRequest(m) => {
-                            GatewayError::InvalidRequest(format!("json_schema: {m}"))
-                        }
-                        e => e,
-                    })?,
-            )),
+            Some(GrammarSource::JsonSchema(s)) => Some(GrammarSource::Gbnf(schema_grammar(&s)?)),
             Some(GrammarSource::Gbnf(g)) => {
                 self.engine
                     .check_grammar(&model, &g)
@@ -1058,6 +1075,30 @@ impl Gateway {
 
 /// The output parser (chat only) and the sampling constraint of one request.
 type OutputSetup = (Option<OutputParser>, Option<Box<dyn TokenConstraint>>);
+
+/// llama-server's grammar for a chat `response_format` on a template without reasoning
+/// (`analyze_*::build_parser` at the pin, `chat-auto-parser-generator.cpp:119-133`, rendered
+/// by `common_peg_arena::build_grammar`): the schema, bare or in a ```` ```json ```` fence, with
+/// the converter's `space` around it. Its grammar starts with the generation prompt, which its
+/// sampler is fed before the first token; here the grammar starts after it. `schema` is the
+/// converter's output for the schema (`root` is renamed; a schema that refers to itself with
+/// `"$ref": "#"` is not supported).
+fn response_format_grammar(schema: &str) -> String {
+    let mut out = String::from(
+        "root ::= space space (\"```json\" space response-format space \"```\" | space response-format space)\n\
+         response-format ::= response-format-schema\n",
+    );
+    for line in schema.lines() {
+        match line.strip_prefix("root ::= ") {
+            Some(body) => out.push_str(&format!("response-format-schema ::= {body}\n")),
+            None => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
 
 /// Sets `error.type`; server failures also mark the span as an error, so tail sampling keeps it.
 fn record_error(span: &tracing::Span, error_type: &'static str) {

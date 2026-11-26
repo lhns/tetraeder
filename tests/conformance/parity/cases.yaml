@@ -1165,17 +1165,26 @@ cases:
     expect: pass
 
   # ---- gaps found by the audit (node serving-parity-remaining); each flips to pass in the change that closes it ----
-  # Tetraeder masks tokens through llguidance; llama-server converts the schema to GBNF. Unverified: the tokens may agree on the fixture
-  - id: gap-response-format-json-object
+  # not moe: llama-server answers 500 there when the cut output does not parse as its format, a check this does not copy
+  - id: response-format-json-object
     group: B
     row: "response_format: json_object / json_schema"
     endpoint: POST /v1/chat/completions
     body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 16, "response_format": {"type": "json_object"}}
     value_paths: ["choices[0].finish_reason"]
     mode: text
-    engines: [auto]
-    expect: gap serving-parity-remaining
-  # forced choice: grammar there, mask here. Unverified: the tokens may agree on the fixture
+    engines: [auto, dense]
+    expect: pass
+  - id: response-format-json-schema
+    group: B
+    row: "response_format: json_object / json_schema"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 24, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]}}}}
+    value_paths: ["choices[0].finish_reason"]
+    mode: text
+    engines: [auto, dense]
+    expect: pass
+  # the chatml fixture template renders no tools: llama-server builds no grammar and answers text, the mask here forces a call
   - id: gap-tool-choice-required
     group: B
     row: "tool_choice auto/none/required/named"

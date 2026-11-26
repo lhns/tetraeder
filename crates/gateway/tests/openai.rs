@@ -299,24 +299,50 @@ async fn reasoning_content_is_split() {
     assert_eq!(m["content"].as_str().unwrap().trim(), "Answer");
 }
 
+/// Without tools or a think block, response_format reaches the engine as llama-server's grammar:
+/// the schema's (the fake converts any schema to `root ::= "{}"`), bare or fenced, and no mask.
 #[tokio::test]
-async fn json_schema_response_format_is_enforced() {
-    let (app, _) = app(FakeEngine::fixed("Sure! {\"a\": 1}"));
-    let body = json!({"model": "fake", "messages": user("json please"), "response_format": {
-        "type": "json_schema", "json_schema": {"name": "x", "strict": true, "schema": {
-            "type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"],
-            "additionalProperties": false}}}});
+async fn response_format_becomes_llama_servers_grammar() {
+    use tetraeder_gateway::engine::GrammarSource;
+    let engine = FakeEngine::fixed("Sure!");
+    let params = engine.params.clone();
+    let (app, _) = app(engine);
+    let schema = json!({"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]});
+    let want = concat!(
+        "root ::= space space (\"```json\" space response-format space \"```\" | space response-format space)\n",
+        "response-format ::= response-format-schema\n",
+        "response-format-schema ::= \"{}\"\n",
+    );
+    for format in [
+        json!({"type": "json_schema", "json_schema": {"name": "x", "schema": schema}}),
+        json!({"type": "json_schema", "schema": schema}),
+        json!({"type": "json_object"}),
+        json!({"type": "json_object", "schema": schema}),
+    ] {
+        let body = json!({"model": "fake", "messages": user("json"), "response_format": format});
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200, "{format}: {v}");
+        let p = params.lock().unwrap().pop().unwrap();
+        assert_eq!(
+            p.extra.grammar,
+            Some(GrammarSource::Gbnf(want.into())),
+            "{format}"
+        );
+        // the fake honours masks only: unconstrained output means no mask was set
+        assert_eq!(v["choices"][0]["message"]["content"], "Sure!", "{format}");
+    }
+    let body = json!({"model": "fake", "messages": user("json"), "response_format": {"type": "xml"}});
     let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
-    assert_eq!(s, 200, "{v}");
-    let out: Value =
-        serde_json::from_str(v["choices"][0]["message"]["content"].as_str().unwrap()).unwrap();
-    assert_eq!(out, json!({"a": 1}));
+    assert_eq!(s, 400, "{v}");
 }
 
+/// With tools offered, response_format keeps the token mask (the grammar would also bind the
+/// tool calls).
 #[tokio::test]
-async fn json_object_response_format() {
+async fn response_format_with_tools_keeps_the_mask() {
     let (app, _) = app(FakeEngine::fixed("Here: {\"k\": \"v\"}"));
-    let body = json!({"model": "fake", "messages": user("json"), "response_format": {"type": "json_object"}});
+    let body = json!({"model": "fake", "messages": user("json"), "response_format": {"type": "json_object"},
+                      "tools": [weather_tool_openai()]});
     let (_, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
     let out: Value =
         serde_json::from_str(v["choices"][0]["message"]["content"].as_str().unwrap()).unwrap();
@@ -577,27 +603,6 @@ async fn single_tool_call_cancels_the_engine() {
 }
 
 #[tokio::test]
-async fn input_tokens_count_the_chat_prompt() {
-    let (app, _) = app(FakeEngine::fixed("ok"));
-    let want = json!({"input_tokens": chatml_user_tokens("count me"), "object": "response.input_tokens"});
-    for path in [
-        "/v1/chat/completions/input_tokens",
-        "/chat/completions/input_tokens",
-    ] {
-        let body = json!({"model": "fake", "messages": user("count me")});
-        let (s, _, v) = post(&app, path, &body, false).await;
-        assert_eq!(s, 200, "{path}: {v}");
-        assert_eq!(v, want, "{path}");
-    }
-    for path in ["/v1/responses/input_tokens", "/responses/input_tokens"] {
-        let body = json!({"model": "fake", "input": "count me"});
-        let (s, _, v) = post(&app, path, &body, false).await;
-        assert_eq!(s, 200, "{path}: {v}");
-        assert_eq!(v, want, "{path}");
-    }
-}
-
-#[tokio::test]
 async fn completion_prompt_batches_answer_prompt_major() {
     let engine = FakeEngine::fixed("ok");
     let prompts = engine.prompts.clone();
@@ -652,4 +657,25 @@ async fn completion_prompt_batch_longer_than_the_slots_finishes() {
     let body = json!({"model": "fake", "prompt": ["one", "two"], "stream": true});
     let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
     assert_eq!(s, 400, "{v}");
+}
+
+#[tokio::test]
+async fn input_tokens_count_the_chat_prompt() {
+    let (app, _) = app(FakeEngine::fixed("ok"));
+    let want = json!({"input_tokens": chatml_user_tokens("count me"), "object": "response.input_tokens"});
+    for path in [
+        "/v1/chat/completions/input_tokens",
+        "/chat/completions/input_tokens",
+    ] {
+        let body = json!({"model": "fake", "messages": user("count me")});
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+        assert_eq!(v, want, "{path}");
+    }
+    for path in ["/v1/responses/input_tokens", "/responses/input_tokens"] {
+        let body = json!({"model": "fake", "input": "count me"});
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+        assert_eq!(v, want, "{path}");
+    }
 }

@@ -298,20 +298,26 @@ fn tool_choice(v: Option<Value>, has_tools: bool) -> std::result::Result<ToolCho
 
 fn response_format(v: Option<Value>) -> std::result::Result<Option<OutputFormat>, GatewayError> {
     let Some(v) = v else { return Ok(None) };
-    match v.get("type").and_then(Value::as_str) {
-        None | Some("text") => Ok(None),
-        Some("json_object") => Ok(Some(OutputFormat::JsonObject)),
-        Some("json_schema") => {
-            let schema = v
-                .pointer("/json_schema/schema")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
-            Ok(Some(OutputFormat::JsonSchema(schema)))
+    // where llama-server's `oaicompat_chat_params_parse` reads the schema from
+    let schema = match v.get("type").and_then(Value::as_str) {
+        None | Some("") | Some("text") => return Ok(None),
+        Some("json_object") => v.get("schema"),
+        Some("json_schema") => match v.get("json_schema") {
+            Some(w) => w.get("schema"),
+            None => v.get("schema"),
+        },
+        Some(t) => {
+            return Err(GatewayError::InvalidRequest(format!(
+                "response_format type must be one of \"text\", \"json_object\" or \"json_schema\", but got: {t}"
+            )));
         }
-        Some(t) => Err(GatewayError::InvalidRequest(format!(
-            "unsupported response_format type '{t}'"
-        ))),
-    }
+    };
+    Ok(Some(match schema {
+        // an absent or empty schema means any object
+        None => OutputFormat::JsonObject,
+        Some(s) if s.as_object().is_some_and(Map::is_empty) => OutputFormat::JsonObject,
+        Some(s) => OutputFormat::JsonSchema(s.clone()),
+    }))
 }
 
 /// What a stream or a response calls this server, as llama-server's `system_fingerprint` does
