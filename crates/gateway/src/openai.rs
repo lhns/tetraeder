@@ -828,6 +828,28 @@ pub(crate) fn total_usage(all: &[Collected]) -> Usage {
     t.total()
 }
 
+/// The prompts of a completion body, as llama-server's `tokenize_input_prompts` reads them: an
+/// array with no number in it is a batch, anything else one prompt. A string stays text; token
+/// ids and mixed arrays are tokenized as on `/completion`.
+fn completion_prompts(gw: &Gateway, prompt: Value) -> Result<Vec<Prompt>> {
+    let items = match prompt {
+        Value::Array(a) if !a.iter().any(Value::is_number) => a,
+        one => vec![one],
+    };
+    if items.is_empty() {
+        return Err(bad("\"prompt\" must not be empty"));
+    }
+    items
+        .into_iter()
+        .map(|p| match p {
+            Value::String(s) => Ok(Prompt::Text(s)),
+            p => crate::native::prompt_tokens(gw, &p)
+                .map(Prompt::Tokens)
+                .map_err(|e| bad(e.message)),
+        })
+        .collect()
+}
+
 pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let req: CompletionRequest = parse_body(&body)?;
     let n = choice_count(req.n, gw.parallel_slots())?;
@@ -835,19 +857,8 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     if req.suffix.as_deref().is_some_and(|s| !s.is_empty()) {
         return Err(bad("suffix is not supported"));
     }
-    let prompt = match req.prompt {
-        Value::String(s) => s,
-        Value::Array(a) if a.len() == 1 && a[0].is_string() => {
-            a[0].as_str().unwrap_or_default().to_owned()
-        }
-        Value::Array(_) => {
-            return Err(bad(
-                "prompt must be one string; batches and token arrays are not supported",
-            ));
-        }
-        _ => return Err(bad("prompt must be a string")),
-    };
-    let mut spec = GenerateSpec::new(req.model, Prompt::Text(prompt));
+    let prompts = completion_prompts(&gw, req.prompt)?;
+    let mut spec = GenerateSpec::new(req.model, Prompt::Text(String::new()));
     // llama-server's `n_predict` default is -1, as for chat: no limit but the context.
     spec.max_tokens = req.max_tokens;
     spec.temperature = req.temperature;
@@ -858,22 +869,53 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     spec.extra.logprobs = n_probs;
     spec.stop = stop_list(req.stop)?;
     spec.caller = req.user;
-    let generations = gw
-        .generate_many(choice_specs(spec, n), Operation::TextCompletion)
-        .await?;
-    let gid = generations[0].id.clone();
-    if req.stream {
-        return Ok(tag_generation(
-            sse(oai_stream(generations, false, false)),
-            &gid,
-        ));
+    // Prompt-major, as llama-server numbers its tasks: the choices of prompt 0, then of prompt 1.
+    let specs: Vec<Vec<GenerateSpec>> = prompts
+        .into_iter()
+        .map(|p| {
+            let mut s = spec.clone();
+            s.prompt = p;
+            choice_specs(s, n)
+        })
+        .collect();
+    let total = specs.len() * n;
+    let batched = specs.len() > 1 && total > gw.parallel_slots();
+    if batched && req.stream {
+        return Err(bad(format!(
+            "a streamed batch must fit the {} parallel slots ({total} choices asked)",
+            gw.parallel_slots()
+        )));
     }
-    let (id, model, created) = (
-        format!("cmpl-{gid}"),
-        generations[0].model.clone(),
-        generations[0].created,
-    );
-    let all = try_join_all(generations.into_iter().map(Generation::collect)).await?;
+    let (gid, model, created, all) = if batched {
+        // More choices than slots: one prompt after the other, each finished before the next is
+        // admitted, so no running choice holds a slot while nobody reads its output.
+        let mut all = Vec::with_capacity(total);
+        let mut first = None;
+        for s in specs {
+            let gens = gw.generate_many(s, Operation::TextCompletion).await?;
+            first.get_or_insert_with(|| {
+                (gens[0].id.clone(), gens[0].model.clone(), gens[0].created)
+            });
+            all.extend(try_join_all(gens.into_iter().map(Generation::collect)).await?);
+        }
+        let (gid, model, created) = first.expect("at least one prompt");
+        (gid, model, created, all)
+    } else {
+        let generations = gw
+            .generate_many(specs.concat(), Operation::TextCompletion)
+            .await?;
+        let gid = generations[0].id.clone();
+        if req.stream {
+            return Ok(tag_generation(
+                sse(oai_stream(generations, false, false)),
+                &gid,
+            ));
+        }
+        let (model, created) = (generations[0].model.clone(), generations[0].created);
+        let all = try_join_all(generations.into_iter().map(Generation::collect)).await?;
+        (gid, model, created, all)
+    };
+    let id = format!("cmpl-{gid}");
     let usage = total_usage(&all);
     let choices: Vec<Value> = all
         .into_iter()

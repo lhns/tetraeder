@@ -542,3 +542,60 @@ async fn input_tokens_count_the_chat_prompt() {
         assert_eq!(v, want, "{path}");
     }
 }
+
+#[tokio::test]
+async fn completion_prompt_batches_answer_prompt_major() {
+    let engine = FakeEngine::fixed("ok");
+    let prompts = engine.prompts.clone();
+    let cfg = tetraeder_gateway::gateway::GatewayConfig {
+        max_concurrent: 2,
+        ..Default::default()
+    };
+    let (app, _) = app_with(engine, cfg);
+    let body = json!({"model": "fake", "prompt": ["one", "two"], "n": 2});
+    let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let idx: Vec<u64> = v["choices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["index"].as_u64().unwrap())
+        .collect();
+    assert_eq!(idx, [0, 1, 2, 3]);
+    assert_eq!(prompts.lock().unwrap().len(), 4);
+    // token ids are one prompt, not a batch
+    let body = json!({"model": "fake", "prompt": [1, 2, 3]});
+    let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["choices"].as_array().unwrap().len(), 1);
+    let (s, _, v) = post(&app, "/v1/completions", &json!({"model": "fake", "prompt": []}), false).await;
+    assert_eq!(s, 400, "{v}");
+}
+
+/// More prompts than slots: the batch queues on the one slot instead of holding it while its
+/// unread output fills the stream buffer.
+#[tokio::test]
+async fn completion_prompt_batch_longer_than_the_slots_finishes() {
+    let cfg = tetraeder_gateway::gateway::GatewayConfig {
+        max_concurrent: 1,
+        stream_buffer: 1,
+        ..Default::default()
+    };
+    let (app, _) = app_with(FakeEngine::fixed("a longer answer than the buffer"), cfg);
+    let body = json!({"model": "fake", "prompt": ["one", "two", "three"]});
+    let res = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        post(&app, "/v1/completions", &body, false),
+    )
+    .await
+    .expect("a batch longer than the slots must not hang");
+    let (s, _, v) = res;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["choices"].as_array().unwrap().len(), 3);
+    assert_eq!(v["choices"][2]["index"], 2);
+    assert_eq!(v["choices"][2]["text"], "a longer answer than the buffer");
+    // streamed, the batch must fit the slots
+    let body = json!({"model": "fake", "prompt": ["one", "two"], "stream": true});
+    let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+    assert_eq!(s, 400, "{v}");
+}
