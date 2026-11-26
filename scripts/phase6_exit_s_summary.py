@@ -10,6 +10,7 @@ rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
     phase6_exit_s_summary.py gate RESULTS_DIR         the link gate before the download: writes link/gate.json, exit 1 when it fails
     phase6_exit_s_summary.py chunk PLAN.toml [--prompt N]    tokens of one micro-batch of the pick's first prefill step (what the anchors run)
+    phase6_exit_s_summary.py bulk RESULTS_DIR        the bulk screen after the gates passed (link/bulk.json, scripts/phase6_bulk.py); the download asks
     phase6_exit_s_summary.py dryrun RESULTS_DIR      the dry run passed on both boxes of this session (exit 1 otherwise): the download stage asks
     phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
     phase6_exit_s_summary.py precheck RESULTS_DIR calib|freeze           the rules that must hold before calibration is trusted (calib) or
@@ -98,6 +99,20 @@ PROBE_POINTS = (16 * 1024, 32 * 1024 * 1024)  # 32 MiB is no probe point (4 KiB 
 def load(path: str):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def is_tiny(res: str) -> bool:
+    """The session of the dry run on the tiny model (phase6_exit_s.sh TINY=1 writes `tiny` into session.json). Its numbers are not the
+    235B's: the numeric bands are wide, the rules about the 235B session (budget cap, the analytic pick, the dry run itself, routing
+    against the replay) are n/a, and the verdict is never pass or miss. The wiring, the files and the order are what it checks."""
+    try:
+        return load(os.path.join(res, "session.json")).get("tiny") is True
+    except (OSError, ValueError):
+        return False
+
+
+TINY_BAND = 1e6  # a dry run reads no number against a band
+TINY_NA = "n/a in the dry run on the tiny model"
 
 
 def sha_file(path: str) -> str:
@@ -229,10 +244,11 @@ def gate_fitted_check(res: str) -> list[str]:
     return why
 
 
-def gate_check(res: str) -> tuple[dict, list[str]]:
-    """The link gate from its files: both probes full, their times, and the two prices of the frozen candidate. Returns (facts, reasons)."""
+def gate_check(res: str, band: float = BAND) -> tuple[dict, list[str]]:
+    """The link gate from its files: both probes full, their times, and the two prices of the frozen candidate. Returns (facts, reasons).
+    `band` is the 0.08 of the rule; only a dry run (is_tiny) widens it."""
     why: list[str] = []
-    info: dict = {"band": BAND}
+    info: dict = {"band": band}
     min_gap = float(os.environ.get("P6_MIN_GAP_S", MIN_GATE_GAP_S))
     info["min_gap_s"] = min_gap
     try:
@@ -263,8 +279,8 @@ def gate_check(res: str) -> tuple[dict, list[str]]:
         info["pp_move"], info["tg_move"] = (p2[k] / p1[k] - 1.0 for k in ("pp_tps", "tg_tps"))
         info["pp_tps"], info["tg_tps"] = (p1["pp_tps"], p2["pp_tps"]), (p1["tg_tps"], p2["tg_tps"])
         for k in ("pp_move", "tg_move"):
-            if abs(info[k]) > BAND + 1e-9:
-                why.append(f"{k[:2]} moves {info[k]:+.3f} between the probes against {BAND}")
+            if abs(info[k]) > band + 1e-9:
+                why.append(f"{k[:2]} moves {info[k]:+.3f} between the probes against {band}")
     except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as e:
         why.append(f"no re-priced predictions ({e})")
     return info, why
@@ -509,15 +525,17 @@ def node_rules(res: str, sess: dict, rule) -> None:
                  else f"anchors ran batches of {want} tokens, the pick's")
         except (OSError, ValueError, TypeError) as e:
             rule(f"anchors_step_{n}", False, f"no plan or anchors to compare ({e})")
-        why = sg.check_fit_band(os.path.join(cd, "pred.json"), sg.FIT_BAND_LIMIT)
+        why = sg.check_fit_band(os.path.join(cd, "pred.json"), TINY_BAND if is_tiny(res) else sg.FIT_BAND_LIMIT)
         rule(f"fit_band_{n}", not why, "; ".join(why) or "within the limit")
 
 
 def summarize(res: str) -> dict:
     sess = load(os.path.join(res, "session.json"))
+    tiny = sess.get("tiny") is True
+    band = TINY_BAND if tiny else BAND
     segs = sess.get("segments", [])
     nodes = tuple(sorted(s["node"] for s in segs))
-    out: dict = {"case": "S", "line": LINE, "band": BAND, "band_source": sess.get("band_source", "bench/spec/phase0.toml")}
+    out: dict = {"case": "S", "line": LINE, "band": BAND, "tiny": tiny, "band_source": sess.get("band_source", "bench/spec/phase0.toml")}
     rules: list[dict] = []
 
     def rule(name: str, ok: bool, detail: str) -> None:
@@ -540,7 +558,7 @@ def summarize(res: str) -> dict:
         rule(f"gates_{n}", not why, "; ".join(why) or "one NUMA node, co-tenant under the limit, power and idle gates passed")
         try:
             rb = load(os.path.join(res, "env", n, "env.json"))["ram_budget"]["ram_budget_bytes"]
-            rule(f"ram_budget_{n}", 0 < rb <= EMULATED_RAM_B, f"{rb} B against {EMULATED_RAM_B} emulated")
+            rule(f"ram_budget_{n}", tiny or 0 < rb <= EMULATED_RAM_B, f"{TINY_NA} ({rb} B)" if tiny else f"{rb} B against {EMULATED_RAM_B} emulated")
         except (OSError, ValueError, KeyError, TypeError):
             rule(f"ram_budget_{n}", False, "no measured RAM budget in env.json")
     # the hidden rows of the trace run reached both boxes unchanged
@@ -552,8 +570,10 @@ def summarize(res: str) -> dict:
         rule("trace_hidden", False, "missing hash of the hidden rows")
     node_rules(res, sess, rule)
     why = dryrun_check(res, sess)
-    rule("dryrun", not why, "; ".join(why) or "the dry run passed on both boxes before the download")
+    rule("dryrun", tiny or not why, TINY_NA if tiny else "; ".join(why) or "the dry run passed on both boxes before the download")
     why = budget_check(res, sess)
+    if tiny:  # the dry run measures again and picks again (the stages run); the pick is the pinned plan, not the planner's
+        why = [w for w in why if "not the judged plan" not in w and "repick" not in w]
     rule("ram_budget_remeasured", not why, "; ".join(why) or "RAM budget measured again after the model install, the pick still the covering pick")
 
     # the prediction: judged, from the trace, frozen before the first judged round
@@ -610,22 +630,27 @@ def summarize(res: str) -> dict:
         rule("segments_covering", False, f"no plan ({e})")
     try:
         why = check_span(plan, nodes)
-        info, w2 = pick(os.path.join(res, "plans", "candidates.json"), os.path.join(res, "plans", "candidates"), nodes, n_expert)
-        why += w2
-        if not w2:
-            if sha_file(plan) != sha_file(os.path.join(res, "plans", "candidates", info["plan"])):
-                why.append(f"the judged plan is not the pick {info['id']}")
-            if pc and (pc.get("plan_sha256") != sha_file(plan)):
+        if tiny:  # the plan is pinned by hand, no candidate list: it spans both nodes and is the plan that was priced
+            if pc and pc.get("plan_sha256") != sha_file(plan):
                 why.append("predict-cluster.json priced another plan")
-        rule("span_both_nodes", not why, "; ".join(why) or f"pick {info.get('id')} of {info.get('spanning')} spanning plans")
+            rule("span_both_nodes", not why, "; ".join(why) or f"{TINY_NA}: the pinned plan spans {list(nodes)}")
+        else:
+            info, w2 = pick(os.path.join(res, "plans", "candidates.json"), os.path.join(res, "plans", "candidates"), nodes, n_expert)
+            why += w2
+            if not w2:
+                if sha_file(plan) != sha_file(os.path.join(res, "plans", "candidates", info["plan"])):
+                    why.append(f"the judged plan is not the pick {info['id']}")
+                if pc and (pc.get("plan_sha256") != sha_file(plan)):
+                    why.append("predict-cluster.json priced another plan")
+            rule("span_both_nodes", not why, "; ".join(why) or f"pick {info.get('id')} of {info.get('spanning')} spanning plans")
     except (OSError, ValueError, KeyError) as e:
         rule("span_both_nodes", False, f"no plan or candidates ({e})")
 
-    gate, why = gate_check(res)
+    gate, why = gate_check(res, band)
     out["link_gate"] = gate
     rule("link_gate", not why, "; ".join(why) or (
         f"probes {gate['gap_s']:.0f} s apart (at least {gate['min_gap_s']:.0f}), the frozen candidate re-priced: pp {gate['pp_move']:+.3f}, "
-        f"tg {gate['tg_move']:+.3f} against {BAND}"))
+        f"tg {gate['tg_move']:+.3f} against {band}"))
 
     # the link: raw probe points per probe are reported; the rule is how far the end probe moves the frozen plan's prediction
     out["link"] = []
@@ -643,8 +668,8 @@ def summarize(res: str) -> dict:
         pf = (pc.get("prediction") or {}) if pc else {}
         mv = {k: pe[k] / pf[k] - 1.0 for k in ("pp_tps", "tg_tps")}
         out["link_reprice"] = {"pp_move": mv["pp_tps"], "tg_move": mv["tg_tps"], "band": BAND}
-        rule("link_reprice", all(abs(v) <= BAND + 1e-9 for v in mv.values()),
-             f"end-priced against frozen: pp {mv['pp_tps']:+.3f}, tg {mv['tg_tps']:+.3f} against {BAND}")
+        rule("link_reprice", all(abs(v) <= band + 1e-9 for v in mv.values()),
+             f"end-priced against frozen: pp {mv['pp_tps']:+.3f}, tg {mv['tg_tps']:+.3f} against {band}")
     except (OSError, ValueError, KeyError, ZeroDivisionError) as e:
         rule("link_reprice", False, f"no end-priced prediction ({e})")
 
@@ -690,7 +715,7 @@ def summarize(res: str) -> dict:
                            "ok": b is not None and abs(b - a) <= ln} for k, (a, b, ln) in g.items()}
             held = held and all(x["ok"] for x in gate[n].values())
         out["gate"] = gate
-        rule("routing_gate", held, "; ".join(f"{n} {k} {x['diff']:+.4f} against {x['line']}" for n, g in gate.items() if g
+        rule("routing_gate", held or tiny, (TINY_NA + ": ") * tiny + "; ".join(f"{n} {k} {x['diff']:+.4f} against {x['line']}" for n, g in gate.items() if g
                                            for k, x in g.items() if x["diff"] is not None) or "no readings")
     else:
         rule("routing_gate", False, "no clean round or no prediction")
@@ -700,9 +725,9 @@ def summarize(res: str) -> dict:
         if not a or not b or not os.path.exists(a) or not os.path.exists(b):
             rule(name, False, "no such run")
             return
-        r = sg.aa(load(a), load(b), BAND)
+        r = sg.aa(load(a), load(b), band)
         out[name] = r
-        rule(name, r["ok"], f"T {r['t_first']:.2f} -> {r['t_second']:.2f} s, {r['diff']:+.3f} against {BAND}")
+        rule(name, r["ok"], f"T {r['t_first']:.2f} -> {r['t_second']:.2f} s, {r['diff']:+.3f} against {band}")
 
     aa_rule("aa_early", j[0] if j else None, j[1] if len(j) > 1 else None)
     aa_rule("aa", j[0] if j else None, os.path.join(res, "judged", "aa-last", "cluster.json"))
@@ -712,7 +737,10 @@ def summarize(res: str) -> dict:
     bad = [r for r in rules if not r["ok"]]
     out["clean"] = not bad
     out["verdict"] = "no verdict"
-    if bad:
+    if tiny:  # a dry run has no verdict, whatever its numbers: nothing it writes can be read as a pass or a miss
+        out["status"] = ("dry run on the tiny model, no verdict: " + ("every rule that applies holds" if not bad else "; ".join(
+            f"{r['name']}: {r['detail']}" for r in bad)))
+    elif bad:
         out["status"] = "no verdict: not clean (" + "; ".join(f"{r['name']}: {r['detail']}" for r in bad) + ")"
         if out.get("median"):
             out["status"] += f"; on the medians e_pp {out['e_pp']:+.3f}, e_tg {out['e_tg']:+.3f} against {LINE}, not a verdict"
@@ -782,6 +810,7 @@ def main() -> int:
     lk.add_argument("--band", type=float, default=BAND)
     sub.add_parser("gate").add_argument("res")
     sub.add_parser("dryrun").add_argument("res")
+    sub.add_parser("bulk").add_argument("res")
     ck = sub.add_parser("chunk")
     ck.add_argument("plan")
     ck.add_argument("--prompt", type=int, default=2048)
@@ -837,7 +866,7 @@ def main() -> int:
             print(f"raw points outside {a.band} (reported, not gated; the rule is the end-priced prediction): {w}")
         return 0
     if a.cmd == "gate":
-        info, why = gate_check(a.res)
+        info, why = gate_check(a.res, TINY_BAND if is_tiny(a.res) else BAND)
         info["pass"] = not why
         info["reasons"] = why
         os.makedirs(os.path.join(a.res, "link"), exist_ok=True)
@@ -852,6 +881,17 @@ def main() -> int:
         for w in why:
             print(f"GATE FAILED dryrun: {w}")
         return 1 if why else 0
+    if a.cmd == "bulk":
+        # the bulk screen after the gates (scripts/phase6_bulk.py wrote link/bulk.json): the download needs its pass
+        try:
+            b = load(os.path.join(a.res, "link", "bulk.json"))
+        except (OSError, ValueError):
+            print("GATE FAILED bulk: no link/bulk.json: the bulk screen did not run")
+            return 1
+        if b.get("pass") is not True:
+            print(f"GATE FAILED bulk: the bulk screen did not pass ({'; '.join(b.get('why') or [])})")
+            return 1
+        return 0
     if a.cmd == "chunk":
         print(pick_chunk(a.plan, a.prompt))
         return 0

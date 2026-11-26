@@ -37,6 +37,8 @@
 # (`TETRAEDER_EXIT_GPU` unset), `cargo test` in the profile SC_PROFILE (debug, or release), the binaries from SC_BIN_DIR (target/debug), and the
 # throttle record `<run>.gpu.txt` is the made-up line "before: 0x0, 100 W, 350 W, 350 W" (a CPU run has no GPU to read). Timing numbers of such a run
 # prove the wiring, not the model.
+# SC_PROMPT_COPY (default /root/exit_prompt.txt): where the prompt is copied for the engine; the report-only runs of phase6_report_box.sh use their own, so the frozen
+# prompt copy is never replaced.
 # SC_RUN_TAG (set by scripts/phase6_exit_s.sh) ends the DONE lines of the log (`tag=...`), so a driver waits for its own run and not for the
 # finished stage of an earlier one; SC_RUN_DIR (default runs/sc) holds the hidden rows, the trace and the samplers' files.
 # The session ends with `$out/DONE` (also on an abort): taxameter's fetch and destroy need it. Tests (tests/test_sc_box.py) set
@@ -73,7 +75,7 @@ ub="${UBATCH:-2048}" pre="${PREFILL:-2048}" dec="${DECODE:-128}"
 rounds="${ROUNDS:-3}" arounds="${ANCHOR_ROUNDS:-2}"
 prompt_src="${PROMPT_FILE-$root/bench/prompts/exit_prompt.txt}"
 prompt=""
-if [ -n "$prompt_src" ]; then prompt=/root/exit_prompt.txt; cp "$prompt_src" "$prompt"; fi
+if [ -n "$prompt_src" ]; then prompt="${SC_PROMPT_COPY:-/root/exit_prompt.txt}"; cp "$prompt_src" "$prompt"; fi
 bin_dir="${SC_BIN_DIR:-$root/target/release}"
 tet="$bin_dir/tetraeder"
 plan="$bin_dir/tetraeder-plan"
