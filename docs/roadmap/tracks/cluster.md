@@ -35,6 +35,7 @@ flowchart TB
     cluster_sharded_model_id["✔ One model id for a<br/>split GGUF on every<br/>node"]
     cluster_probe_control_idle>"✔ cluster probe to 64<br/>MiB dies on the daemon<br/>control-idle limit"]
     cluster_case_s_ready["✔ Case S readiness,<br/>covering pick, stage<br/>order and a real-<br/>binary dry run"]
+    cluster_case_s_checks["✔ Case S checks, peak<br/>GPU memory rule and<br/>bit-identical judged<br/>prediction"]
     cluster_leader_move["⏸ Move a replica's<br/>leader"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
@@ -65,9 +66,12 @@ flowchart TB
     cluster_plan_source_gpu_segments ~~~ cluster_sharded_model_id
     cluster_drain_without_plan ~~~ cluster_probe_control_idle
     cluster_head_led_plan_ignores_segments ~~~ cluster_case_s_ready
-    cluster_sharded_model_id ~~~ cluster_leader_move
-    cluster_probe_control_idle ~~~ cluster_experts_nodes
-    cluster_case_s_ready ~~~ cluster_replica_scaling
+    cluster_sharded_model_id ~~~ cluster_case_s_ready
+    cluster_probe_control_idle ~~~ cluster_case_s_ready
+    cluster_case_s_ready ~~~ cluster_case_s_checks
+    cluster_case_s_ready ~~~ cluster_leader_move
+    cluster_case_s_ready ~~~ cluster_experts_nodes
+    cluster_case_s_checks ~~~ cluster_replica_scaling
     cluster_leader_move ~~~ cluster_prefix_fetch_not_observed
     cluster_experts_nodes ~~~ cluster_second_cold_request_empty
     cluster_transport_wan --> cluster_transport
@@ -90,6 +94,7 @@ flowchart TB
     cluster_mode1_detection --> cluster_failover_bound
     cluster_judged_round_cmd --> cluster_case_s_ready
     cluster_sharded_model_id --> cluster_case_s_ready
+    cluster_case_s_ready --> cluster_case_s_checks
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -104,7 +109,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound,cluster_sharded_model_id,cluster_case_s_ready unrated
+    class cluster_transport_wan,cluster_transport,cluster_planner,cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_integration,cluster_join_leave,cluster_failover,cluster_pipeline_prefill,cluster_judged_round_cmd,cluster_failover_bound,cluster_sharded_model_id,cluster_case_s_ready,cluster_case_s_checks unrated
     class cluster_remote_kv next
     class cluster_planner_hardening,cluster_step_tokens_from_plan,cluster_mode1_detection,cluster_discovery_disk_names,cluster_rejoin_after_restore,cluster_prefix_fetch_not_triggered,cluster_plan_source_gpu_segments,cluster_drain_without_plan,cluster_head_led_plan_ignores_segments,cluster_probe_control_idle succ
     class cluster_leader_move,cluster_experts_nodes parked
@@ -152,6 +157,7 @@ flowchart TB
 | `cluster-sharded-model-id` | One model id for a split GGUF on every node | feature | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | a split GGUF has one 64 hex id, a manifest of its shards, checked on every node before anything starts | bench/results/phase6-rehearsal-2-20261125/README.md; crates/model/tests/model_id.rs; crates/control/tests/check_model.rs; crates/tetraeder/tests/cluster_integration.rs |
 | `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | defect | cluster | done | unrated | 2026-11-25 | 2026-11-25 | bench-phase6-rehearsal-2 |  |  | a probe connection is cut after 300 s without a byte, not 30 s between frames | bench/results/phase6-rehearsal-2-20261125/README.md; crates/control/tests/probe_limits.rs |
 | `cluster-case-s-ready` | Case S readiness, covering pick, stage order and a real-binary dry run | tooling | ci | done | unrated | 2026-11-25 | 2026-11-25 | cluster-judged-round-cmd, cluster-sharded-model-id |  |  | the judged Case S pick is a covering plan within the measured budgets, a refused pick costs no download, and the real binaries run the dry run | docs/adr/0091-phase6-multi-node.md; docs/notes/phase6-rule-changes.md; docs/box-driver.md; crates/planner/tests/cluster_discovered_ram_experts.rs; crates/planner/tests/tiny_case_s_plan.rs; crates/tetraeder/tests/model_split.rs; scripts/phase6_exit_s.sh; scripts/phase6_loopback_check_s.py; .github/workflows/ci.yml |
+| `cluster-case-s-checks` | Case S checks, peak GPU memory rule and bit-identical judged prediction | tooling | ci | done | unrated | 2026-11-26 | 2026-11-26 | cluster-case-s-ready |  |  | the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing | docs/adr/0091-phase6-multi-node.md; docs/adr/0092-costmodel-6-streamed-moe-segments.md; scripts/phase6_exit_s.sh; crates/planner/tests/cluster_discovered_ram_experts.rs |
 
 ### Details per node
 
@@ -191,6 +197,7 @@ flowchart TB
 | `cluster-sharded-model-id` | One model id for a split GGUF on every node | test cpu_a_split_model_runs_through_the_daemons_like_the_whole_file ... ok and test a_split_model_has_one_id_that_both_nodes_resolve_and_load ... ok (local run 2026-11-25, three shards of the 4-layer fixture, tokens equal the whole file) | a split GGUF has one 64 hex id, a manifest of its shards, checked on every node before anything starts | The 235B is five GGUF shards while the daemon named a model by the sha256 of one file. The id of a split model is now the sha256 of a manifest of its shards, kept as a folder with the shards beside it; the daemon checks the manifest and the shard sizes and the head asks every node before it starts (serve and judged-round); tetraeder cluster model-id makes the id and the layout. The exit scripts still name sha256.gguf for the 235B and need cluster model-id --install. |  |  |  |  |  |
 | `cluster-probe-control-idle` | cluster probe to 64 MiB dies on the daemon control-idle limit | test a_bulk_probe_frame_on_a_slow_link_arrives_within_the_probe_limit ... ok and test the_old_limit_cuts_that_same_probe ... ok (local run 2026-11-25, MemTransport slow-link fault) | a probe connection is cut after 300 s without a byte, not 30 s between frames | Every byte received restarts the clock of another node probe connection and the limit is 300 s, so a 64 MiB frame on a slow link arrives; the MemTransport slow-link test fails with the old limit and passes with the new one. |  |  |  |  |  |
 | `cluster-case-s-ready` | Case S readiness, covering pick, stage order and a real-binary dry run | P6_LOOPBACK_S real binaries, tiny MoE in 3 shards under one id on 2 nodes, pinned head-led plan with covering slots 4+8; one real judged-round accepted by the summary round check (CI run 45704517742, step phase 6 Case S loopback) | the judged Case S pick is a covering plan within the measured budgets, a refused pick costs no download, and the real binaries run the dry run | On two 3090 nodes at 59.4 GB the planner now picks a covering 0..44 and 44..94 split at 32 + 96 slots; the driver measures the budget and plans before the link gate and the download, prices that pick in the gate, takes each node slots from it, and a CI step runs the real model split, model id, calibration, merge and one judged round on a tiny MoE (the same code is the dryrun stage on the boxes); no verdict was measured. |  |  |  |  |  |
+| `cluster-case-s-checks` | Case S checks, peak GPU memory rule and bit-identical judged prediction | P6_LOOPBACK_S one real judged-round accepted by the summary round check (CPU runner, wiring only) | the Case S summary checks the fitted-rate link gate, the 24 GiB peak GPU memory rule on GPU segments only, and the micro-batch offload pricing | The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured. |  |  |  |  |  |
 
 ### Folded items per node
 
