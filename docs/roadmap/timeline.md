@@ -169,7 +169,7 @@ gantt
     Nodes join and leave live :cluster_join_leave, 2026-11-24, 2026-11-24
     Pipeline stages across machines :cluster_pipeline_nodes, 2026-11-24, 2026-11-24
     Prefill pipelined across stages :cluster_pipeline_prefill, 2026-11-25, 2026-11-25
-    KV cache on another machine :cluster_remote_kv, 2026-11-24, 2026-11-24
+    KV cache on another machine :cluster_remote_kv, 2026-11-24, 2026-11-26
     Model replicas behind one router :cluster_replicas, 2026-11-24, 2026-11-24
     Keep serving when a node dies :cluster_failover, 2026-11-24, 2026-11-24
     Routing trace as prediction input :cluster_owner_routing_input, 2026-11-24, 2026-11-24
@@ -177,6 +177,7 @@ gantt
     No prefix fetch between replicas on two… :cluster_prefix_fetch_not_triggered, 2026-11-25, 2026-11-25
     Planner proposes no plan for two real G… :cluster_plan_source_gpu_segments, 2026-11-25, 2026-11-25
     Node drain does not move load without a… :cluster_drain_without_plan, 2026-11-25, 2026-11-25
+    Prefix fetch between real processes not… :cluster_prefix_fetch_not_observed, 2026-11-26, 2026-11-26
     A plan led by the head runs the whole m… :cluster_head_led_plan_ignores_segments, 2026-11-25, 2026-11-25
     One model id for a split GGUF on every… :cluster_sharded_model_id, 2026-11-25, 2026-11-25
     cluster probe to 64 MiB dies on the dae… :cluster_probe_control_idle, 2026-11-25, 2026-11-25
@@ -186,5 +187,5 @@ gantt
     Case S full dry run and clock :cluster_case_s_flow, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-footprint-validator-gap`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `bench-phase6-exit-s-2`, `ops-packages`, `ops-profiling-mode`, `cluster-leader-move`, `cluster-experts-nodes`, `cluster-replica-scaling`, `cluster-profile-gpu-cap`, `cluster-prefix-fetch-not-observed`, `cluster-second-cold-request-empty`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `memory-replay-expected-uses`, `planner-cost-model-v5-host2`, `planner-footprint-validator-gap`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `bench-phase6-exit-s-2`, `ops-packages`, `ops-profiling-mode`, `cluster-leader-move`, `cluster-experts-nodes`, `cluster-replica-scaling`, `cluster-profile-gpu-cap`, `cluster-second-cold-request-empty`, `cluster-short-prefix-dropped`, `cluster-serve-live-prefix`, `cluster-head-replica-fetch`, `cluster-prefix-fetch-box`
 <!-- END GENERATED: timeline -->

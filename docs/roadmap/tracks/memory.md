@@ -27,6 +27,7 @@ flowchart TB
     memory_kv_tiers["⏸ KV cache spills to<br/>RAM, disk"]
     memory_prefill_misses["⏸ Stream expert misses<br/>during prefill"]
     memory_typed_slots["⏸ Per-expert formats<br/>by tier"]
+    memory_replay_expected_uses[/"○ Replay expected-uses<br/>expert ranking"/]
     memory_tiers ~~~ memory_pair_groups
     memory_tiers ~~~ memory_prefetch
     memory_tiers ~~~ memory_conversion
@@ -48,6 +49,9 @@ flowchart TB
     memory_kv_host ~~~ memory_kv_tiers
     memory_kv_host ~~~ memory_prefill_misses
     memory_kv_host ~~~ memory_typed_slots
+    memory_kv_tiers ~~~ memory_replay_expected_uses
+    memory_prefill_misses ~~~ memory_replay_expected_uses
+    memory_typed_slots ~~~ memory_replay_expected_uses
     memory_tiers --> memory_pair_groups
     memory_tiers --> memory_prefetch
     memory_prefetch --> memory_io_service
@@ -59,6 +63,7 @@ flowchart TB
     memory_conversion --> memory_safetensors
     memory_kv_host --> memory_kv_tiers
     memory_io_service --> memory_prefill_misses
+    memory_ram_freq --> memory_replay_expected_uses
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -79,7 +84,7 @@ flowchart TB
     class memory_low_bit_kv,memory_ram_tier_complement succ
     class memory_ram_pool dead
     class memory_safetensors,memory_kv_tiers,memory_prefill_misses,memory_typed_slots parked
-    class memory_kv_host next
+    class memory_kv_host,memory_replay_expected_uses next
 ```
 <!-- END GENERATED: track-memory -->
 
@@ -106,6 +111,7 @@ flowchart TB
 | `memory-ram-tier-complement` | Read-free covering expert tiers | defect | ci | done | unrated | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  |  | crates/memory/tests/replay.rs; crates/model/tests/cpu_experts.rs; crates/memory/src/replay/sim.rs |
 | `memory-prefill-misses` | Stream expert misses during prefill | feature | local | parked | unrated |  |  | memory-io-service |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier | feature | local | parked | unrated |  |  | serving-kv-layout, planner-quality |  |  |  |  |
+| `memory-replay-expected-uses` | Replay expected-uses expert ranking | experiment | local | next | unrated |  |  | memory-ram-freq |  |  |  |  |
 
 ### Details per node
 
@@ -129,6 +135,7 @@ flowchart TB
 | `memory-ram-tier-complement` | Read-free covering expert tiers | CI run 45415720514 ubuntu test cpu_covering_slots_read_nothing_after_the_refresh ... ok; test covering_slots_leave_the_ram_tier_holding_the_complement ... ok |  | When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again). |  |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill |  |  | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). | Parked with Track B (m2-plan, Track B: candidate first item when it resumes). Done when: one timed box run of the prefill buckets first, then a paired run of the 235B 32K prefill. |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier |  |  | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). | Parked: was waiting for the KV and slot layout (C6, decided chunked 2026-11-14); nothing schedules it now. Done when: a mix of slot formats passes parity and the quality gate. |  |  |  |  |
+| `memory-replay-expected-uses` | Replay expected-uses expert ranking |  |  | Add Magnitude's expert ranking (expected uses within a tier turnover from routing history and router lookahead) as a policy in the offline replay and compare it with gfreq and glru on the saved 235B trace; port into the engine only if it wins (rule 3). | Reference: docs/plan.md references, Magnitude row. No box time; needs the trace in bench/traces. Advisor 2026-11-26: the comparison touches no judged path, a port waits for the Case S verdict. |  |  |  |  |
 
 ### Folded items per node
 

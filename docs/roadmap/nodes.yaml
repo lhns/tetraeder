@@ -2976,23 +2976,24 @@ nodes:
   title: KV cache on another machine
   track: cluster
   kind: feature
-  state: next
+  state: done
   outcome: unrated
   evidence:
+  - crates/tetraeder/tests/cluster_integration.rs
   - docs/adr/0091-phase6-multi-node.md
   - crates/control/tests/kv_sim.rs
-  verdict_quote: 'kv fetch=fetched bytes=1000 served=1 puts=1 and kv fetch=recomputed served=0 puts=0 (CI run 45424566387, ubuntu and windows)'
-  headline: 'the priced fetch rule and the fetch between two replica leaders over the transport work on simulated nodes with fake prefix stores; the real scheduler has no prefix store yet, so a fetched prefix is not decoded and no real prefix is fetched'
+  verdict_quote: 'prefix head fetch cached_tokens 743 bytes 192256 tokens_equal true; prefix fetch done reason="gone"; decision="recompute" reason="priced_recompute" (CI run 45856675334, ubuntu and windows)'
+  headline: 'through the real head a held prefix is fetched when priced to win and recomputed otherwise, every decision logged and counted on /metrics'
   depends_on:
   - cluster-replicas
   replaced_by: []
   lane: cluster
   start: 2026-11-24
-  end: 2026-11-24
+  end: 2026-11-26
   folded: []
   overview: false
-  plain: 'A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).'
-  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. Step 5 did it with fake stores; the real scheduler prefix store (cache entry or idle sequence) is now served and installed over the Prefix purpose and a fetched prefix decodes equal to a recomputed one (ADR 0091 History, step 6, cluster-integration). Open before the rehearsal measures a fetch on GPU boxes. Reopened 2026-11-25 (advisor) - the prefix fetch was never seen through a real head in either rehearsal and the existing test bypasses the head policy; needs decision logging and a test through the head HTTP endpoint; gates the M3 report, not the box sessions.'
+  plain: 'Through the real head, a prefix another replica holds is fetched when the priced rule says the move beats recomputing and recomputed otherwise; every decision is logged with its priced inputs and counted on /metrics, and a fetched prefix decodes like a computed one.'
+  notes: 'Closed in CI by ADR 0091''s step 5 exit test ("a prefix computed on one replica is fetched or recomputed on the other as priced"); the box measurement of time to first token of a fetch is not part of that criterion and is node cluster-prefix-fetch-box (parked). KV tiers on a remote node during attention are out of M3.'
 - id: cluster-replicas
   title: Model replicas behind one router
   track: cluster
@@ -4679,21 +4680,22 @@ nodes:
   title: Prefix fetch between real processes not demonstrated
   track: cluster
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - bench/results/phase6-rehearsal-2-20261125/README.md
-  verdict_quote: 'prefix: no fetch line, x2 recomputed (common=0) with declared prefill 5 tok/s and --cluster-hw (bench/results/phase6-rehearsal-2-20261125/README.md, step 2)'
-  headline: 'a fetch priced to win was not seen, no grant log line, no readable counter'
+  - crates/tetraeder/tests/cluster_integration.rs
+  verdict_quote: 'prefix decision ... decision="fetch"; prefix fetch done result="fetched" bytes=192256 (CI run 45856675334)'
+  headline: 'four causes found; the fetch is now logged, counted and shown through the head in CI'
   depends_on:
   - bench-phase6-rehearsal-2
   replaced_by: []
   lane: cluster
-  start: ''
-  end: ''
+  start: 2026-11-26
+  end: 2026-11-26
   folded: []
   overview: false
-  plain: 'With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread.'
+  plain: 'Rehearsal 2 saw no fetch because one run had no hardware graph, in another the holder''s only copy was the sequence a filler had taken in place (gone, unlogged), in the third the target was the head''s own replica, and /metrics did not carry the counters; all are now logged and counted, and the fetch is shown through the head in CI.'
 
 - id: cluster-head-led-plan-ignores-segments
   title: A plan led by the head runs the whole model in process
@@ -4897,3 +4899,98 @@ nodes:
   overview: false
   plain: 'The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26).'
   notes: 'Worst case about 12.5 USD of 16.13 (two attempts, 4 h, 1.56 USD/h).'
+- id: cluster-short-prefix-dropped
+  title: Short idle prefix taken unsaved
+  track: cluster
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-remote-kv
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'An idle sequence shorter than the 512-token save minimum is taken in place, unsaved, by any new request sharing even one leading token, so on a busy holder a prefix under 512 tokens survives only by chance (found by cluster-remote-kv, 2026-11-26).'
+  notes: 'Scheduler change: decide whether a short idle prefix is saved, kept or taken; a reproducing test first. Not on the Case S path.'
+- id: cluster-serve-live-prefix
+  title: Serve prefix from live sequence
+  track: cluster
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-remote-kv
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'A holder serves only idle sequences and cache entries; a prefix held only by a running sequence answers gone. Serving it needs a snapshot of a running sequence cut to the key.'
+  notes: 'Parked: after the Phase 6 exit.'
+- id: cluster-head-replica-fetch
+  title: Head's own replica fetches a prefix
+  track: cluster
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-remote-kv
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The fetch hint rides the replica connection, which the head''s own in-process replica lacks, so a request routed there always recomputes (reason target_in_process).'
+  notes: 'Parked: after the Phase 6 exit.'
+- id: cluster-prefix-fetch-box
+  title: Prefix fetch time on boxes
+  track: cluster
+  kind: experiment
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-remote-kv
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'Time to first token of a fetched prefix against recompute on real boxes. scripts/phase6_prefix.py must change first: its fillers share the prefix (gone), its remote-holder mode targets the head''s own replica, and the prompt must exceed 512 tokens.'
+  notes: 'Parked: credit is reserved for Case S; not part of ADR 0091''s done criterion for remote KV.'
+- id: memory-replay-expected-uses
+  title: Replay expected-uses expert ranking
+  track: memory
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - memory-ram-freq
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'Add Magnitude''s expert ranking (expected uses within a tier turnover from routing history and router lookahead) as a policy in the offline replay and compare it with gfreq and glru on the saved 235B trace; port into the engine only if it wins (rule 3).'
+  notes: 'Reference: docs/plan.md references, Magnitude row. No box time; needs the trace in bench/traces. Advisor 2026-11-26: the comparison touches no judged path, a port waits for the Case S verdict.'

@@ -287,6 +287,7 @@ flowchart TB
 | KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
+| Replay expected-uses expert ranking | ○ next | Add Magnitude's expert ranking (expected uses within a tier turnover from routing history and router lookahead) as a policy in the offline replay and compare it with gfreq and glru on the saved 235B trace; port into the engine only if it wins (rule 3). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
 | Price decode at measured clocks | ✔ done · successful | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
@@ -354,11 +355,13 @@ flowchart TB
 | Move a replica's leader | ⏸ parked | A replan that moves a replica's leader node replaces the replica (drain the old one, start a new id on the new leader, no prefix carried), as ADR 0091 decides; ClusterControl::restart refuses such a plan today. Parked until after the exit, which needs no leader move. |
 | Pipeline stages across machines | ✔ done · unrated | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
 | Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
-| KV cache on another machine | ○ next | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
 | Keep serving when a node dies | ✔ done · unrated | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
-| Prefix fetch between real processes not demonstrated | ⚠ open | With the graph given and the node-state flag fixed the target still recomputed; the head offers no log line for a grant and /metrics returned nothing, so whether a fetch was attempted is unread. |
 | Second cold request through a split plan returns an empty stream | ⚠ open | Read from the committed admit lines: the replica evicted the first request idle 2177 token sequence and its snapshot over the WAN took 5.05 s against a 5 s reply floor, which kills the segment worker; the failure is an error event that the round script does not record. Not confirmed, because the leader log of that window was not kept. Hardened with a bulk deadline (120 s) for snapshots, restores and prefill steps, a loopback eviction test and logging; the node stays open until a box run shows it. |
+| Short idle prefix taken unsaved | ⚠ open | An idle sequence shorter than the 512-token save minimum is taken in place, unsaved, by any new request sharing even one leading token, so on a busy holder a prefix under 512 tokens survives only by chance (found by cluster-remote-kv, 2026-11-26). |
+| Serve prefix from live sequence | ⏸ parked | A holder serves only idle sequences and cache entries; a prefix held only by a running sequence answers gone. Serving it needs a snapshot of a running sequence cut to the key. |
+| Head's own replica fetches a prefix | ⏸ parked | The fetch hint rides the replica connection, which the head's own in-process replica lacks, so a request routed there always recomputes (reason target_in_process). |
+| Prefix fetch time on boxes | ⏸ parked | Time to first token of a fetched prefix against recompute on real boxes. scripts/phase6_prefix.py must change first: its fillers share the prefix (gone), its remote-holder mode targets the head's own replica, and the prompt must exceed 512 tokens. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -370,6 +373,8 @@ flowchart TB
 - `memory-kv-host`: KV cache partly in RAM
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `serving-mtp-libllama`: MTP drafts through libllama
+- `cluster-short-prefix-dropped`: Short idle prefix taken unsaved
+- `memory-replay-expected-uses`: Replay expected-uses expert ranking
 
 **ci**
 
@@ -384,8 +389,6 @@ flowchart TB
 
 **cluster**
 
-- `cluster-remote-kv`: KV cache on another machine
-- `cluster-prefix-fetch-not-observed`: Prefix fetch between real processes not demonstrated
 - `cluster-second-cold-request-empty`: Second cold request through a split plan returns an empty stream
 - `bench-phase6-exit-s-2`: Phase 6 exit Case S, rerun
 <!-- END GENERATED: ready-now -->
@@ -427,7 +430,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 156 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 158 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -871,6 +874,8 @@ Generated on 2026-11-26.
 - `cluster-case-s-checks`: Case S checks, peak GPU memory rule and bit-identical judged prediction (✔ done · unrated). The Case S summary and driver gain the advisor checks of 2026-11-26 (link gate on fitted rates, balloon released for the download, budget re-measured after install, peak GPU memory under 24,576 MiB on cards over 24 GiB, n/a for CPU-only segments), the cost model prices each micro-batch chunk as a ubatch of its own, and the Case F trigger is fixed; no verdict was measured.
 - `cluster-case-s-flow`: Case S full dry run and clock (✔ done · unrated). The Case S driver runs every judged stage on the tiny model on the boxes before the 142 GB download, screens the link with 64 MiB each way right after the gates (fail when the frozen prediction would move over 0.08), checks before the download that the older box can finish under its cap, and runs the single-node reference and the second-prompt prediction as report-only stages. CI runs the same stages with the real binaries. The clock is mostly estimates: 149 min nominal, 170 padded.
 - `cluster-case-s-pair-finder`: Case S box pair finder (✔ done · unrated). A read-only script lists pairs of Vast offers that meet every Case S rule (RAM, cores, disk, network, price with traffic, skip list, different hosts), ranks them by bulk rate and counts what each rule excludes; with the real planner it found 38 covering candidates on a 3090 plus A40 pair (2026-11-26, 14:20 UTC). Boxes are created only once it lists a pair.
+- `cluster-prefix-fetch-not-observed`: Prefix fetch between real processes not demonstrated (✔ fixed). Rehearsal 2 saw no fetch because one run had no hardware graph, in another the holder's only copy was the sequence a filler had taken in place (gone, unlogged), in the third the target was the head's own replica, and /metrics did not carry the counters; all are now logged and counted, and the fetch is shown through the head in CI.
+- `cluster-remote-kv`: KV cache on another machine (✔ done · unrated). Through the real head, a prefix another replica holds is fetched when the priced rule says the move beats recomputing and recomputed otherwise; every decision is logged with its priced inputs and counted on /metrics, and a fetched prefix decodes like a computed one.
 
 </details>
 
@@ -905,11 +910,11 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (13 done, 1 next, 6 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (12 done, 1 next, 4 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 19 nodes (12 done, 2 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 57 nodes (43 done, 3 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 38 nodes (32 done, 3 next, 1 blocked, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 42 nodes (34 done, 2 next, 1 blocked, 5 parked)
 <!-- END GENERATED: tracks -->
