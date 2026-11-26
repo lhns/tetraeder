@@ -134,6 +134,8 @@ run_one() { # run_one TAG JSON [ENV=VALUE...]
     bash scripts/sc_balloon.sh check > /dev/null 2>&1 || { ok=false; why="dead or shrunk after the run"; }
     [ "$bpre" = ok ] || { ok=false; why="${why:+$why; }$bpre"; }
     python3 -I scripts/balloon_guard.py merge --json "$json" --ok "$ok" --reason "${why:-}" || true
+    # the batch size this run computed: the Case S summary checks that the anchors ran the pick's micro-batch (phase6_exit_s_summary.py)
+    python3 -I -c 'import json, sys; d = json.load(open(sys.argv[1])); d["exit_ubatch"] = int(sys.argv[2]); json.dump(d, open(sys.argv[1], "w"), indent=2)' "$json" "$ub" || true
     gzip -c "$samples" > "${json%.json}.samples.jsonl.gz" 2> /dev/null
   else
     say "$tag: no result JSON (rc $rc); last log lines:"

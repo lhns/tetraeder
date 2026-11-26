@@ -335,3 +335,41 @@ fn the_slow_link_fixtures_are_slower_than_their_bases() {
     assert!(rate(5) < rate(1), "wan slowlink");
     assert!(rate(2) > rate(0) && rate(0) > rate(1), "samehost, lan, wan");
 }
+
+/// The PCIe links of every node cost nothing: the RAM-to-GPU offload copy is free.
+fn free_pcie(g: &HardwareGraph) -> HardwareGraph {
+    let mut g = g.clone();
+    for l in &mut g.links {
+        if l.kind == LinkKind::Pcie {
+            l.alpha_s.value = 0.0;
+            l.beta_bytes_per_s.value = f64::INFINITY;
+        }
+    }
+    g
+}
+
+/// Seconds a prompt takes under `micro` chunks, network links free, offload copy as the graph has it.
+fn pp_seconds(g: &HardwareGraph, micro: u32) -> f64 {
+    // Node a computes part of its matmuls from RAM (op offload copies them per batch); node b
+    // is a tiny GPU-only tail, so the finish time is node a's chunks one after the other.
+    let mut f = two((10.0, 0.01), micro, false);
+    f.segments[0].run = features(10.0, 5.0);
+    f.segments[0].run.ubatch = 2048; // the plan's ubatch: one batch of the prompt, or chunks of it
+    f.segments[0].run.switches_per_token = 0.0; // only the offload copy crosses the PCIe link
+    let c = predict_cluster(&free_links(g), &f, 2048, 8).unwrap();
+    2048.0 / c.pp_tps
+}
+
+#[test]
+fn the_offload_copy_is_charged_once_per_micro_batch() {
+    // ADR 0092 section 5 and the pipeline (ADR 0077): the prefill chunks are separate batches, so
+    // each one copies the RAM-resident matmul weights to the GPU again. Four chunks of 512 cost
+    // four copies, not the one copy of a whole 2048-token ubatch.
+    for (name, g) in graphs() {
+        let free = free_pcie(&g);
+        let copy = |micro: u32| pp_seconds(&g, micro) - pp_seconds(&free, micro);
+        let (c1, c4) = (copy(1), copy(4));
+        assert!(c1 > 1e-4, "{name}: the copy costs something ({c1})");
+        close(c4, 4.0 * c1);
+    }
+}

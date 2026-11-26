@@ -26,6 +26,10 @@ def stamp(t):
     return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 
 
+def admit_line(t, live):
+    return f"{stamp(t)} DEBUG tetraeder::step: admit seq=3 queued_ms=0.10 prompt=96 common=0 source=live live={live}\n"
+
+
 def step_line(t, live, ansi=False):
     ts = f"\x1b[2m{stamp(t)}\x1b[0m" if ansi else stamp(t)
     return f"{ts} DEBUG tetraeder::step: step dec_seqs=1 dec_toks=1 pre_seqs=0 live={live} paused=0 idle=3 waiting=0\n"
@@ -105,7 +109,9 @@ def test_the_load_fires_once_requests_are_in_flight_and_records_it(tmp_path):
 
     def later():
         time.sleep(0.6)
-        node_log.write_text(step_line(time.time(), 2))
+        node_log.write_text(step_line(time.time(), 2))  # decoding, but admitted long ago: not yet
+        time.sleep(0.4)
+        node_log.write_text(admit_line(time.time(), 2))
 
     threading.Thread(target=later, daemon=True).start()
     try:

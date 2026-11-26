@@ -61,11 +61,11 @@ def calibrate(host, port, key, target, cpt=CHARS_PER_TOKEN, tol=0.01, rounds=5):
     return cpt, n
 
 
-def one_request(host, port, key, model, text, max_tokens, timeout):
+def one_request(host, port, key, model, text, max_tokens, timeout, ignore_eos=False):
     """Returns the record of one streamed request (times in epoch seconds)."""
     rec = {"t_submit": time.time(), "t_first": None, "t_end": None, "status": None, "chunks": 0,
            "finish": None, "error": None, "done": False, "after_error": 0}
-    body = json.dumps({"model": model, "stream": True, "max_tokens": max_tokens, "temperature": 0.7,
+    body = json.dumps({"model": model, "stream": True, "max_tokens": max_tokens, "temperature": 0.7, **({"ignore_eos": True} if ignore_eos else {}),
                        "messages": [{"role": "user", "content": text}]})
     conn = None
     try:
@@ -131,6 +131,7 @@ def main():
     ap.add_argument("--prompt-tokens", type=int, default=512)
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--timeout", type=float, default=120)
+    ap.add_argument("--ignore-eos", action="store_true", help="every request runs to --max-tokens (the loopback fixture would stop early)")
     ap.add_argument("--out", help="one JSON line per request (required unless --calibrate)")
     ap.add_argument("--label", default="load")
     ap.add_argument("--chars-per-token", type=float, default=CHARS_PER_TOKEN)
@@ -173,7 +174,7 @@ def main():
                 counter[0] += 1
                 n = counter[0]
             rec = one_request(u.hostname, u.port or 80, key, a.model, prompt(a.prompt_tokens, f"{a.label}-{n}", a.chars_per_token),
-                              a.max_tokens, a.timeout)
+                              a.max_tokens, a.timeout, a.ignore_eos)
             rec.update({"n": n, "worker": w, "label": a.label})
             with lock:
                 out.write(json.dumps(rec) + "\n")

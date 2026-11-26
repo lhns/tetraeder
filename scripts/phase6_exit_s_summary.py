@@ -9,6 +9,8 @@ rule as code. Two Linux boxes, Qwen3-235B-A22B, one segment per node.
     phase6_exit_s_summary.py slots PLAN.toml [--n-expert N]   `node V R` per stage from the plan's expert cache (what the anchors run); with N: every stage covers
     phase6_exit_s_summary.py link START.json END.json [--band B]         the link did not drift (16 KiB and 32 MiB)
     phase6_exit_s_summary.py gate RESULTS_DIR         the link gate before the download: writes link/gate.json, exit 1 when it fails
+    phase6_exit_s_summary.py chunk PLAN.toml [--prompt N]    tokens of one micro-batch of the pick's first prefill step (what the anchors run)
+    phase6_exit_s_summary.py dryrun RESULTS_DIR      the dry run passed on both boxes of this session (exit 1 otherwise): the download stage asks
     phase6_exit_s_summary.py spans PLAN.toml [--n-layer N]   `node first..last` per stage, in order; with N: they partition the layers
     phase6_exit_s_summary.py precheck RESULTS_DIR calib|freeze           the rules that must hold before calibration is trusted (calib) or
                                                       before the first judged round (freeze); exit 1 and the reasons otherwise
@@ -26,7 +28,14 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
   trace_hidden          the hidden rows of the trace run have the same sha256 on both boxes and in trace/hidden.sha256
   anchors_<node>        anchors ran on real input: hidden rows of the dump for a span after layer 0, the frozen prompt hash for
                         a span from layer 0 (which takes tokens); two rounds of both truncations
+  anchors_step_<node>   the anchors ran the batch the judged plan runs: its micro-batch (the first prefill step, ubatch x prefill_micro_batches
+                        tokens, cut as the pipeline cuts it: 512 for 2048 x 4 over a 2048-token prompt), stamped `exit_ubatch` in every anchor
+                        file by sc_box.sh, not the whole prompt as one batch (ADR 0091 History 2026-11-26)
   fit_band_<node>       each node's fit band within 0.10 (sc_gates.FIT_BAND_LIMIT)
+  dryrun                dryrun.json: the dry run on the tiny sharded MoE passed on both nodes of this session's boxes before the download
+  ram_budget_remeasured the balloon went back after the install and each node's RAM budget was measured again (env/<n>/env.json; env-plan.json is
+                        the plan's reading, session.json budget names both), and the covering pick made again on them is the judged plan
+                        (plans/repick.json); a pick that no longer fits aborts the session before the freeze
   prediction_judged     predict-cluster.json is routing `trace`, judged, priced from the sha256 of the trace on disk, for the
                         frozen prompt and the judged plan
   freeze                FROZEN.sha256 and every frozen file match; every judged round ran under that hash, started after t_frozen
@@ -36,8 +45,10 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
                         nodes, and no candidate that does not is considered
   link_gate             the link gate before the 142 GB download (advisor, delegated by the owner, 2026-11-25): two full probes (frames to
                         64 MiB) at least 10 minutes apart (link/probe-gate{1,2}.json, times in link/gate-times.json), the judged pick
-                        itself priced with each (link/gate/predict-gate{1,2}.json: the plan's graph and the committed 235B layout with only the
-                        gate probe's link curves swapped in; the plan hash of both prices is the judged plan's); predicted pp and tg each move
+                        itself priced with each (link/gate/predict-gate{1,2}.json: the plan's graph with both nodes' compute rates from the
+                        committed fitted graph of segment-confirm-20261125b, not discovered priors (link/gate/fitted.toml, hw-gate{1,2}.json),
+                        the committed 235B layout and only the gate probe's link curves swapped in; the plan hash of both prices is the judged
+                        plan's); predicted pp and tg each move
                         by at most 0.08, else the pair is aborted before the download. Recomputed from the files here; missing evidence fails
   link_reprice          the link rule (advisor, delegated by the owner, 2026-11-25; docs/notes/phase6-rule-changes.md): the frozen judged plan
                         is priced again with the end probe's link curves and nothing else changed (predictions/predict-cluster-end.json);
@@ -48,7 +59,9 @@ Rules (every one a line of `rules` in verdict-s.json; all must hold or there is 
   aa_early              judged r1 against r2 within 0.08 on T
   aa                    judged r1 against judged/aa-last the last run, within 0.08 on T
 A round is unclean when a segment's warm block says not covering, timed prefill read disk bytes, the balloon or co-tenant
-flag is false, the GPU throttled or ran below its default power limit, a rate is missing, or the prompt differs.
+flag is false, the GPU throttled or ran below its default power limit, a rate is missing, or the prompt differs, or the card is over
+24 GiB (seg-<node>.json gpu_mem_total_mib above 24,576) and the peak GPU memory in use over the round (gpu_mem_peak_mib, sampled by
+phase6_box.sh gpumem, the warm request included) is not under 24,576 MiB (ADR 0091 History 2026-11-26).
 Then, only when clean: e_pp = pp_pred / pp_meas - 1 and e_tg on the medians of the clean rounds, against the frozen prediction and
 against the end-priced one; pass only when both are within 0.15 against both, a miss when it is outside against both, else no verdict.
 Report only: the errors against a prediction priced from a second prompt's routing trace (predictions/predict-cluster-p2.json).
@@ -69,6 +82,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sc_gates as sg  # noqa: E402
 import sc_summary as ss  # noqa: E402
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GATE_FITTED_REL = "bench/results/segment-confirm-20261125b/predictions/fitted.toml"  # the confirmed node fit, one 3090 box
+CARD_MIB = 24576  # a card over 24 GiB must peak under this after the warm request: it stands in for the 24 GiB card
 LINE = 0.15
 BAND = sg.AA_BAND  # 0.08, bench/spec/phase0.toml: no two-node noise class exists
 GATE_SHARE, GATE_RAM = ss.GATE_SHARE, ss.GATE_RAM
@@ -122,6 +138,97 @@ def plan_spans(plan_toml: str) -> list[tuple[str, int, int]]:
     return out
 
 
+def pick_chunk(plan_toml: str, prompt: int) -> int:
+    """Tokens of one micro-batch of the judged plan's first prefill step: the batch every segment computes at once. A step is
+    `prefill_micro_batches x ubatch` tokens cut as `plan::micro_batch_sizes` cuts it. A plan without knobs runs the prompt in one batch."""
+    k = tomllib.loads(open(plan_toml, encoding="utf-8").read()).get("knobs") or {}
+    ub, micro = int(k.get("ubatch") or prompt), max(int(k.get("prefill_micro_batches") or 1), 1)
+    step = min(prompt, ub * micro)
+    n = min(step, micro)
+    return max(step // n + (1 if c < step % n else 0) for c in range(n))
+
+
+def dryrun_check(res: str, sess: dict) -> list[str]:
+    """The dry run on the tiny sharded MoE (stage `dryrun`) passed on both boxes of this session before the download."""
+    try:
+        d = load(os.path.join(res, "dryrun.json"))
+    except (OSError, ValueError):
+        return ["no dryrun.json: the dry run did not pass before the download"]
+    why = []
+    if d.get("passed") is not True:
+        why.append("the dry run did not pass")
+    nodes = sorted(s["node"] for s in sess.get("segments", []))
+    if sorted(d.get("nodes") or []) != nodes:
+        why.append(f"the dry run covers nodes {d.get('nodes')}, the session has {nodes}")
+    boxes = {k: (v or {}).get("id") for k, v in (sess.get("boxes") or {}).items()}
+    if (d.get("boxes") or {}) != boxes:
+        why.append(f"the dry run ran on boxes {d.get('boxes')}, the session on {boxes}")
+    return why
+
+
+def budget_check(res: str, sess: dict) -> list[str]:
+    """ADR 0091 History 2026-11-26: the balloon is released for the download and back after the model install, each node's RAM budget is
+    measured again then (env/<n>/env.json is that reading, env-plan.json the one the plan was made on) and the covering pick is made again on
+    it: the re-pick is the judged plan, or the session aborted before the freeze."""
+    why: list[str] = []
+    b = sess.get("budget") or {}
+    for s in sess.get("segments", []):
+        n = s["node"]
+        try:
+            now = load(os.path.join(res, "env", n, "env.json"))["ram_budget"]["ram_budget_bytes"]
+            first = load(os.path.join(res, "env", n, "env-plan.json"))["ram_budget"]["ram_budget_bytes"]
+        except (OSError, ValueError, KeyError, TypeError):
+            why.append(f"{n}: no budget before and after the model install (env.json, env-plan.json)")
+            continue
+        if (b.get(n) or {}).get("plan") != first or (b.get(n) or {}).get("installed") != now:
+            why.append(f"{n}: session.json budget {b.get(n)} is not the files' {first} and {now}")
+    try:
+        rp = load(os.path.join(res, "plans", "repick.json"))
+        if rp.get("plan_sha256") != sha_file(os.path.join(res, "plans", "judged-plan.toml")) or rp.get("same") is not True:
+            why.append("the pick made again on the measured budgets is not the judged plan")
+    except (OSError, ValueError):
+        why.append("no plans/repick.json: the pick was not made again on the budgets measured after the install")
+    return why
+
+
+def gate_fitted_path() -> str:
+    """The committed node fit the link gate prices on (ADR 0091 History 2026-11-26); P6_GATE_FITTED replaces it in tests."""
+    return os.environ.get("P6_GATE_FITTED") or os.path.join(ROOT, GATE_FITTED_REL)
+
+
+def fitted_rates(path: str) -> dict[str, float]:
+    """`device id -> flops_per_s` of a fitted node graph (TOML)."""
+    with open(path, "rb") as f:
+        d = tomllib.load(f)
+    return {dev["id"]: dev["compute"]["flops_per_s"] for dev in d.get("devices", []) if (dev.get("compute") or {}).get("flops_per_s")}
+
+
+def gate_fitted_check(res: str) -> list[str]:
+    """The gate prices on the fitted rates of both nodes, not on discovered priors: the fitted file the driver put on node a is the
+    committed one, and each priced graph (link/gate/hw-gate{1,2}.json, the one the price names by hash) carries its rates on both nodes."""
+    why: list[str] = []
+    try:
+        want = fitted_rates(gate_fitted_path())
+        used = os.path.join(res, "link", "gate", "fitted.toml")
+        if sha_file(used) != sha_file(gate_fitted_path()):
+            why.append("link/gate/fitted.toml is not the committed fitted graph")
+        for k in ("gate1", "gate2"):
+            hwp = os.path.join(res, "link", "gate", f"hw-{k}.json")
+            hw = load(hwp)
+            by_id = {d["id"]: d for d in hw.get("devices", [])}
+            for node in ("a", "b"):
+                for dev, rate in want.items():
+                    got = ((by_id.get(f"{node}/{dev}") or {}).get("compute") or {}).get("flops_per_s")
+                    if got != rate:
+                        why.append(f"hw-{k}.json: {node}/{dev} rate {got} is not the fitted {rate}")
+            priced = load(os.path.join(res, "link", "gate", f"predict-{k}.json")).get("hw_sha256")
+            if priced != sha_file(hwp):
+                why.append(f"predict-{k}.json priced graph {str(priced)[:12]}, not hw-{k}.json")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        why.append(f"no fitted-rate evidence of the gate ({e})")
+    return why
+
+
 def gate_check(res: str) -> tuple[dict, list[str]]:
     """The link gate from its files: both probes full, their times, and the two prices of the frozen candidate. Returns (facts, reasons)."""
     why: list[str] = []
@@ -143,6 +250,7 @@ def gate_check(res: str) -> tuple[dict, list[str]]:
                 why.append(f"probe-{k}.json stops at {top} B frames, a full probe reaches {FULL_PROBE_BYTES}")
         except (OSError, ValueError, KeyError, TypeError) as e:
             why.append(f"no probe-{k}.json ({e})")
+    why += gate_fitted_check(res)
     try:
         # the gate prices the judged pick itself (ADR 0091 History 2026-11-25), not a nominal candidate
         want = sha_file(os.path.join(res, "plans", "judged-plan.toml"))
@@ -198,7 +306,7 @@ def check_covering(plan_toml: str, n_expert: int) -> list[str]:
 
 
 # what must hold before the calibration is trusted, and before the first judged round (the rest of the rules are about the rounds)
-PRE_CALIB = ("gates_", "ram_budget_", "link_gate", "segments_covering", "trace_hidden", "anchors_", "fit_band_")
+PRE_CALIB = ("gates_", "ram_budget_", "dryrun", "link_gate", "segments_covering", "trace_hidden", "anchors_", "fit_band_")
 PRE_FREEZE = PRE_CALIB + ("prediction_judged", "freeze", "span_both_nodes")
 
 
@@ -297,6 +405,31 @@ def seg_files(rd: str) -> list[str]:
     return sorted(f for f in glob.glob(os.path.join(rd, "seg-*.json")) if not f.endswith(".gpu.json"))
 
 
+def vram_peak(seg_file: str) -> list[str]:
+    """ADR 0091 History 2026-11-26: on a card over 24 GiB the peak GPU memory of the round (the warm request included, so the timed one
+    after it cannot exceed it) stays under 24,576 MiB, so the card stands in for a 24 GiB one. `gpu_mem_total_mib` is the card's size and
+    `gpu_mem_peak_mib` the most `nvidia-smi` showed in use over the round (phase6_box.sh gpumem, twice a second), both written by the driver
+    into the segment file; a card of 24 GiB or less needs no peak, and a CPU-only segment (size 0, the driver's mark) has no card. A missing
+    size on a GPU segment is unclean."""
+    try:
+        d = load(seg_file)
+    except (OSError, ValueError):
+        return []  # ss.unclean reports an unreadable file
+    total = d.get("gpu_mem_total_mib")
+    if total is None:
+        return ["no card memory reading (gpu_mem_total_mib): the 24 GiB peak rule cannot be checked"]
+    if total == 0:
+        return []  # 0: the driver's mark of a CPU-only segment (no card), the rule is n/a
+    if total <= CARD_MIB:
+        return []
+    peak = d.get("gpu_mem_peak_mib")
+    if peak is None:
+        return [f"a {total} MiB card without a peak GPU memory reading (gpu_mem_peak_mib)"]
+    if peak >= CARD_MIB:
+        return [f"peak GPU memory {peak:.0f} MiB on a {total} MiB card, not under {CARD_MIB} MiB"]
+    return []
+
+
 def round_unclean(rd: str, prompt_hash: str | None, frozen_sha: str | None = None, t_frozen: float | None = None) -> list[str]:
     """Why a judged round is not clean: the per-segment rules of sc_summary on each segment's JSON, plus the prompt and the freeze."""
     why: list[str] = []
@@ -310,7 +443,7 @@ def round_unclean(rd: str, prompt_hash: str | None, frozen_sha: str | None = Non
     if len(segs) < 2:
         why.append(f"{len(segs)} segment file(s), one per node needed")
     for f in segs:
-        why += [f"{os.path.basename(f)[4:-5]}: {w}" for w in ss.unclean(f)]
+        why += [f"{os.path.basename(f)[4:-5]}: {w}" for w in ss.unclean(f) + vram_peak(f)]
     p = (cl.get("prompt") or {})
     if prompt_hash and p.get("fnv1a64") != prompt_hash:
         why.append(f"prompt hash {p.get('fnv1a64')} is not the frozen {prompt_hash}")
@@ -366,6 +499,16 @@ def node_rules(res: str, sess: dict, rule) -> None:
         if not full:
             why = why + [f"anchors {sorted(names)}: two truncations of two rounds each are needed"]
         rule(f"anchors_{n}", not why, "; ".join(why) or "real input, two truncations, two rounds")
+        # the anchors run the batch the judged plan runs (ADR 0091 History 2026-11-26): the pick's micro-batch of its first step, not the
+        # whole prompt as one batch, so the fit calibrates the regime that is judged
+        try:
+            want = pick_chunk(os.path.join(res, "plans", "judged-plan.toml"), int((sess.get("prompt") or {}).get("tokens") or 2048))
+            got = sorted({load(f).get("exit_ubatch") for f in files}, key=str)
+            ok = bool(files) and got == [want]
+            rule(f"anchors_step_{n}", ok, f"anchors ran batches of {got} tokens, the pick's micro-batch is {want}" if not ok
+                 else f"anchors ran batches of {want} tokens, the pick's")
+        except (OSError, ValueError, TypeError) as e:
+            rule(f"anchors_step_{n}", False, f"no plan or anchors to compare ({e})")
         why = sg.check_fit_band(os.path.join(cd, "pred.json"), sg.FIT_BAND_LIMIT)
         rule(f"fit_band_{n}", not why, "; ".join(why) or "within the limit")
 
@@ -408,6 +551,10 @@ def summarize(res: str) -> dict:
     except (OSError, IndexError):
         rule("trace_hidden", False, "missing hash of the hidden rows")
     node_rules(res, sess, rule)
+    why = dryrun_check(res, sess)
+    rule("dryrun", not why, "; ".join(why) or "the dry run passed on both boxes before the download")
+    why = budget_check(res, sess)
+    rule("ram_budget_remeasured", not why, "; ".join(why) or "RAM budget measured again after the model install, the pick still the covering pick")
 
     # the prediction: judged, from the trace, frozen before the first judged round
     frozen_sha, t_frozen = frozen_facts(res)
@@ -634,6 +781,10 @@ def main() -> int:
     lk.add_argument("end")
     lk.add_argument("--band", type=float, default=BAND)
     sub.add_parser("gate").add_argument("res")
+    sub.add_parser("dryrun").add_argument("res")
+    ck = sub.add_parser("chunk")
+    ck.add_argument("plan")
+    ck.add_argument("--prompt", type=int, default=2048)
     r = sub.add_parser("round")
     r.add_argument("dir")
     r.add_argument("--prompt-hash")
@@ -696,6 +847,14 @@ def main() -> int:
         for w in why:
             print(f"GATE FAILED link_gate: {w}")
         return 1 if why else 0
+    if a.cmd == "dryrun":
+        why = dryrun_check(a.res, load(os.path.join(a.res, "session.json")))
+        for w in why:
+            print(f"GATE FAILED dryrun: {w}")
+        return 1 if why else 0
+    if a.cmd == "chunk":
+        print(pick_chunk(a.plan, a.prompt))
+        return 0
     if a.cmd == "spans":
         for n, lo, hi in plan_spans(a.plan):
             print(f"{n} {lo}..{hi}")

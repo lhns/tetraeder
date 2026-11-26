@@ -4,7 +4,7 @@
 
 [Back to the page](../roadmap.md)
 
-Generated on 2026-11-25. Open bars end on that date.
+Generated on 2026-11-26. Open bars end on that date.
 
 <!-- BEGIN GENERATED: timeline -->
 ```mermaid
@@ -124,6 +124,7 @@ gantt
     Report milestone M2 :bench_m2_report, 2026-11-22, 2026-11-22
     Predict the 235B on one box :bench_235b_stream_predict, 2026-11-24, 2026-11-24
     First two-box cluster session :bench_phase6_rehearsal, 2026-11-25, 2026-11-25
+    Case F loopback fault timing flake :bench_phase6_loopback_f_flake, 2026-11-26, 2026-11-26
     Strata against llama-server on Qwen3.6 :bench_strata_q36, 2026-11-23, 2026-11-23
     Regression gate on final main :bench_regression_gate, 2026-11-23, 2026-11-24
     Confirm one exit segment :bench_235b_segment_confirm, 2026-11-24, 2026-11-24
@@ -179,7 +180,8 @@ gantt
     One model id for a split GGUF on every… :cluster_sharded_model_id, 2026-11-25, 2026-11-25
     cluster probe to 64 MiB dies on the dae… :cluster_probe_control_idle, 2026-11-25, 2026-11-25
     Case S readiness, covering pick, stage… :cluster_case_s_ready, 2026-11-25, 2026-11-25
+    Case S checks, peak GPU memory rule and… :cluster_case_s_checks, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-footprint-validator-gap`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-loopback-f-flake`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-leader-move`, `cluster-experts-nodes`, `cluster-replica-scaling`, `cluster-prefix-fetch-not-observed`, `cluster-second-cold-request-empty`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-footprint-validator-gap`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-remaining`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-mtp-libllama`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-magnitude-q36`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-leader-move`, `cluster-experts-nodes`, `cluster-replica-scaling`, `cluster-prefix-fetch-not-observed`, `cluster-second-cold-request-empty`
 <!-- END GENERATED: timeline -->

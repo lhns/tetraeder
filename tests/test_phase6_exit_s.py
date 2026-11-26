@@ -4,6 +4,7 @@ A/A aborts, the unclean-round rule and the 15% line, on synthetic two-node sessi
 import hashlib
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 
@@ -48,11 +49,11 @@ def cluster_json(pp=295.0, tg=5.1, prompt=PH):
     return {"runs": [{"prefill_tok_s": pp, "decode_tok_s": tg, "prompt": {"tokens": 2048, "fnv1a64": prompt}}]}
 
 
-def anchor(node, prompt=PH, seed=False):
+def anchor(node, prompt=PH, seed=False, ubatch=2048):
     seg = {} if node == "a" else {"hidden_in": {"seed": 1} if seed else {"file": "/root/hidden.bin"}}
     r = run_json()["runs"][0]
     r.update(prompt={"tokens": 2048, "fnv1a64": prompt}, segment=seg)
-    return {"runs": [r]}
+    return {"runs": [r], "exit_ubatch": ubatch}  # sc_box.sh stamps the batch size of the run
 
 
 def make_round(d, *, t_start, frozen, pp=295.0, tg=5.1, share=0.39, prompt=PH, **seg_kw):
@@ -60,6 +61,8 @@ def make_round(d, *, t_start, frozen, pp=295.0, tg=5.1, share=0.39, prompt=PH, *
     for n in ("a", "b"):
         kw = dict(seg_kw.get(n, {}))
         kw.setdefault("share", share)
+        kw.setdefault("gpu_mem_total_mib", 24576)
+        kw.setdefault("gpu_mem_peak_mib", 21000.0)
         write(d / f"seg-{n}.json", run_json(**kw))
         write(d / f"seg-{n}.gpu.txt", gpu_txt())
     write(d / "meta.json", {"t_start": t_start, "frozen_sha256": frozen})
@@ -67,32 +70,50 @@ def make_round(d, *, t_start, frozen, pp=295.0, tg=5.1, share=0.39, prompt=PH, *
 
 def build(tmp_path, *, rounds=None, aa_last=True, fit=None, lscpu_b=LSCPU_1, plan=PLAN, probe_end=None, hidden_b=None,
           anchor_b_seed=False, anchor_a_prompt=PH, cand_single_faster=True, mutate=None, frozen_t=1000.0, freeze_pp=300.0, freeze_tg=5.0, end_move=(1.0, 1.0),
-          second=None, gate=(700.0, 1.0, 1.0)):
+          second=None, gate=(700.0, 1.0, 1.0), dryrun=True, repick="same", budgets=(59_450_000_000, 59_430_000_000), anchor_ubatch=2048,
+          fitted_rates_in_gate=True):
     res = tmp_path / "res"
     write(res / "session.json", {"model_sha256": "ab" * 32, "prompt": {"tokens": 2048, "gen": 128, "fnv1a64": PH},
                                  "segments": [{"node": "a", "span": [0, 47], "embed": True, "head": False, "slots": [32, 96]},
-                                              {"node": "b", "span": [47, 94], "embed": False, "head": False, "slots": [32, 96]}]})
+                                              {"node": "b", "span": [47, 94], "embed": False, "head": False, "slots": [32, 96]}],
+                                 "boxes": {"a": {"id": "11"}, "b": {"id": "22"}},
+                                 "budget": {n: {"plan": budgets[0], "installed": budgets[1]} for n in ("a", "b")}})
+    if dryrun:  # the dry run on the tiny MoE passed on both boxes of this session before the download
+        write(res / "dryrun.json", {"passed": True, "name": "s-dryrun", "nodes": ["a", "b"], "boxes": {"a": "11", "b": "22"}})
     write(res / "layout.json", {"n_expert": 128, "n_layer": 94})
     for n in ("a", "b"):
         write(res / "gates" / n / "lscpu.txt", lscpu_b if n == "b" else LSCPU_1)
         write(res / "gates" / n / "cotenant.json", reading(1.0, 256))
         write(res / "gates" / n / "gates.json", {"power_ok": True, "idle_ok": True})
-        write(res / "env" / n / "env.json", {"ram_budget": {"ram_budget_bytes": 59_450_000_000}})
+        write(res / "env" / n / "env.json", {"ram_budget": {"ram_budget_bytes": budgets[1]}})  # measured again after the install
+        write(res / "env" / n / "env-plan.json", {"ram_budget": {"ram_budget_bytes": budgets[0]}})  # the reading the plan was made on
         write(res / "hidden" / f"{n}.sha256", (hidden_b if (n == "b" and hidden_b) else "h" * 64) + "  hidden\n")
         for a in ("a1-r1", "a1-r2", "a2-r1", "a2-r2"):
-            write(res / "calib" / n / "anchors" / f"{a}.json", anchor(n, anchor_a_prompt if n == "a" else PH, anchor_b_seed and n == "b"))
+            write(res / "calib" / n / "anchors" / f"{a}.json", anchor(n, anchor_a_prompt if n == "a" else PH, anchor_b_seed and n == "b", anchor_ubatch))
         band = (fit or {}).get(n, 0.05)
         write(res / "calib" / n / "pred.json", {"prediction": {"band": band, "replay_vram_share": 0.39, "replay_full_hit_share": 0.005,
                                                                "replay_ram_hit_rate": 1.0}})
     write(res / "trace" / "routing.sha256", "t" * 64 + "  routing\n")
     write(res / "trace" / "hidden.sha256", "h" * 64 + "  hidden\n")
     write(res / "plans" / "judged-plan.toml", plan)  # the gate prices it
+    plan_sha = sha((res / "plans" / "judged-plan.toml").read_bytes())
+    if repick == "same":  # the covering pick made again on the budgets measured after the install is the judged plan
+        write(res / "plans" / "repick.json", {"plan_sha256": plan_sha, "judged_sha256": plan_sha, "same": True})
+    elif repick == "other":
+        write(res / "plans" / "repick.json", {"plan_sha256": "0" * 64, "judged_sha256": plan_sha, "same": False})
     if gate is not None:  # the link gate before the download: (seconds between the probes, pp and tg of the second price / the first)
+        (res / "link" / "gate").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(s6.gate_fitted_path(), res / "link" / "gate" / "fitted.toml")
+        rates = s6.fitted_rates(s6.gate_fitted_path())
+        for k in ("gate1", "gate2"):  # the graph each price was made on: both nodes with the fitted rates (or the discovered priors)
+            devs = [{"id": f"{n}/{d}", "compute": {"flops_per_s": r if fitted_rates_in_gate else 1.0}} for n in ("a", "b") for d, r in rates.items()]
+            write(res / "link" / "gate" / f"hw-{k}.json", {"devices": devs})
         write(res / "link" / "probe-gate1.json", probe())
         write(res / "link" / "probe-gate2.json", probe(1.02))
         write(res / "link" / "gate-times.json", {"gate1": 100.0, "gate2": 100.0 + gate[0]})
-        write(res / "link" / "gate" / "predict-gate1.json", {"plan_sha256": sha((res / "plans" / "judged-plan.toml").read_bytes()), "prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
-        write(res / "link" / "gate" / "predict-gate2.json", {"plan_sha256": sha((res / "plans" / "judged-plan.toml").read_bytes()),
+        write(res / "link" / "gate" / "predict-gate1.json", {"plan_sha256": plan_sha, "hw_sha256": sha((res / "link" / "gate" / "hw-gate1.json").read_bytes()),
+                                                              "prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
+        write(res / "link" / "gate" / "predict-gate2.json", {"plan_sha256": plan_sha, "hw_sha256": sha((res / "link" / "gate" / "hw-gate2.json").read_bytes()),
                                                               "prediction": {"pp_tps": 280.0 * gate[1], "tg_tps": 4.8 * gate[2], "request_s": 30.0}})
     write(res / "link" / "probe-start.json", probe())
     write(res / "link" / "probe-end.json", probe_end or probe(1.02))
@@ -418,7 +439,7 @@ def test_gates_and_budgets_on_both_boxes(tmp_path):
     assert failed(summary(res)) == ["gates_b"]
     res, _ = build(tmp_path / "r")
     (res / "env" / "a" / "env.json").unlink()
-    assert failed(summary(res)) == ["ram_budget_a"]
+    assert failed(summary(res)) == ["ram_budget_a", "ram_budget_remeasured"]  # no reading after the install either
     res, _ = build(tmp_path / "s")
     write(res / "gates" / "a" / "gates.json", {"power_ok": True, "idle_ok": False})
     assert failed(summary(res)) == ["gates_a"]
@@ -473,7 +494,8 @@ def test_the_pick_drops_candidates_that_do_not_cover(tmp_path):
 
 def test_the_link_gate_must_have_priced_the_judged_pick(tmp_path):
     res, _ = build(tmp_path)
-    write(res / "link" / "gate" / "predict-gate2.json", {"plan_sha256": "0" * 64, "prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
+    write(res / "link" / "gate" / "predict-gate2.json", {"plan_sha256": "0" * 64, "hw_sha256": sha((res / "link" / "gate" / "hw-gate2.json").read_bytes()),
+                                                          "prediction": {"pp_tps": 280.0, "tg_tps": 4.8, "request_s": 30.0}})
     o = summary(res)
     assert "link_gate" in failed(o)
     assert "not the judged pick" in next(r["detail"] for r in o["rules"] if r["name"] == "link_gate")
@@ -525,3 +547,159 @@ def test_the_gate_files_are_not_frozen(tmp_path):
     res, _ = build(tmp_path)
     sums = (res / "predictions" / "SHA256SUMS").read_text()
     assert "gate" not in sums
+
+
+# ---- ADR 0091 History 2026-11-26: fitted link gate, step size, dry run, memory, card peak ------------------------------------------
+
+
+def rule_detail(o, name):
+    return next(r["detail"] for r in o["rules"] if r["name"] == name)
+
+
+def test_the_link_gate_prices_on_the_fitted_rates_of_both_nodes_not_on_priors(tmp_path):
+    res, _ = build(tmp_path, fitted_rates_in_gate=False)  # the graphs the prices were made on carry the discovered rates
+    o = summary(res)
+    assert "link_gate" in failed(o) and "is not the fitted" in rule_detail(o, "link_gate")
+    res, _ = build(tmp_path / "ok")
+    assert failed(summary(res)) == []
+
+
+def test_the_link_gate_refuses_a_fit_that_is_not_the_committed_one_and_a_price_made_on_another_graph(tmp_path):
+    def other_fit(res, frozen):
+        (res / "link" / "gate" / "fitted.toml").write_text("# another fit\n")
+
+    assert "not the committed fitted graph" in rule_detail(summary(build(tmp_path, mutate=other_fit)[0]), "link_gate")
+
+    def other_graph(res, frozen):
+        write(res / "link" / "gate" / "hw-gate1.json", {"devices": []})
+
+    o = summary(build(tmp_path / "g", mutate=other_graph)[0])
+    assert "link_gate" in failed(o) and "not hw-gate1.json" in rule_detail(o, "link_gate")
+
+
+KNOBS = "[knobs]\nubatch = 2048\nprefill_micro_batches = 4\n\n"
+
+
+def test_the_picks_micro_batch_is_the_step_cut_as_the_pipeline_cuts_it(tmp_path):
+    f = tmp_path / "p.toml"
+    for knobs, prompt, want in [("ubatch = 2048\nprefill_micro_batches = 4", 2048, 512), ("ubatch = 128\nprefill_micro_batches = 4", 2048, 128),
+                                ("ubatch = 2048\nprefill_micro_batches = 1", 2048, 2048), ("ubatch = 2048\nprefill_micro_batches = 3", 2048, 683),
+                                ("ubatch = 16\nprefill_micro_batches = 2", 64, 16), ("ubatch = 1024\nprefill_micro_batches = 8", 100, 13)]:
+        f.write_text(f"[knobs]\n{knobs}\n\n" + PLAN)
+        assert s6.pick_chunk(str(f), prompt) == want, (knobs, prompt)
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "chunk", str(f), "--prompt", str(prompt)], capture_output=True, text=True)
+        assert r.stdout.split() == [str(want)]
+    f.write_text(PLAN)  # no knobs: one batch of the prompt
+    assert s6.pick_chunk(str(f), 2048) == 2048
+
+
+def pick_has_knobs(res, frozen):  # the planner's pick carries its knobs: the judged plan is a copy of it
+    write(res / "plans" / "candidates" / "m-c1.toml", KNOBS + PLAN)
+
+
+def test_the_anchors_must_run_the_picks_micro_batch(tmp_path):
+    res, _ = build(tmp_path, plan=KNOBS + PLAN, anchor_ubatch=512, mutate=pick_has_knobs)
+    assert failed(summary(res)) == []
+    res, _ = build(tmp_path / "whole", plan=KNOBS + PLAN, anchor_ubatch=2048, mutate=pick_has_knobs)  # the whole prompt as one batch, as segment-confirm ran them
+    o = summary(res)
+    assert failed(o) == ["anchors_step_a", "anchors_step_b"] and "micro-batch is 512" in rule_detail(o, "anchors_step_a")
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "precheck", str(res), "calib"], capture_output=True, text=True)
+    assert r.returncode == 1 and "anchors_step_a" in r.stdout  # the calibration is refused
+
+    def unstamped(res, frozen):  # an anchor that does not say its batch
+        d = json.loads((res / "calib" / "a" / "anchors" / "a1-r1.json").read_text())
+        d.pop("exit_ubatch")
+        write(res / "calib" / "a" / "anchors" / "a1-r1.json", d)
+
+    assert "anchors_step_a" in failed(summary(build(tmp_path / "u", mutate=unstamped)[0]))
+
+
+def test_a_download_needs_a_dry_run_that_passed_on_both_boxes_of_this_session(tmp_path):
+    res, _ = build(tmp_path, dryrun=False)
+    o = summary(res)
+    assert failed(o) == ["dryrun"]
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "dryrun", str(res)], capture_output=True, text=True)
+    assert r.returncode == 1 and "no dryrun.json" in r.stdout
+
+    def one_node(res, frozen):
+        write(res / "dryrun.json", {"passed": True, "nodes": ["a"], "boxes": {"a": "11", "b": "22"}})
+
+    assert "covers nodes ['a']" in rule_detail(summary(build(tmp_path / "one", mutate=one_node)[0]), "dryrun")
+
+    def other_boxes(res, frozen):  # a dry run of earlier boxes does not count
+        write(res / "dryrun.json", {"passed": True, "nodes": ["a", "b"], "boxes": {"a": "11", "b": "99"}})
+
+    assert "ran on boxes" in rule_detail(summary(build(tmp_path / "boxes", mutate=other_boxes)[0]), "dryrun")
+
+    def failed_dry(res, frozen):
+        write(res / "dryrun.json", {"passed": False, "nodes": ["a", "b"], "boxes": {"a": "11", "b": "22"}})
+
+    assert "did not pass" in rule_detail(summary(build(tmp_path / "failed", mutate=failed_dry)[0]), "dryrun")
+    res, _ = build(tmp_path / "ok")
+    assert subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "dryrun", str(res)], capture_output=True).returncode == 0
+
+
+def test_the_ram_budget_is_measured_again_after_the_install_and_the_pick_must_be_the_judged_plan(tmp_path):
+    res, _ = build(tmp_path, repick=None)
+    o = summary(res)
+    assert failed(o) == ["ram_budget_remeasured"] and "no plans/repick.json" in rule_detail(o, "ram_budget_remeasured")
+    o = summary(build(tmp_path / "other", repick="other")[0])
+    assert failed(o) == ["ram_budget_remeasured"] and "not the judged plan" in rule_detail(o, "ram_budget_remeasured")
+
+    def no_second_reading(res, frozen):
+        (res / "env" / "b" / "env-plan.json").unlink()
+
+    o = summary(build(tmp_path / "once", mutate=no_second_reading)[0])
+    assert "b: no budget before and after" in rule_detail(o, "ram_budget_remeasured")
+    # the calibration is refused on it
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "phase6_exit_s_summary.py"), "precheck", str(build(tmp_path / "pc", repick=None)[0]), "calib"],
+                       capture_output=True, text=True)
+    assert r.returncode == 1 and "ram_budget_remeasured" in r.stdout
+    # the session file must say what the files say
+    o = summary(build(tmp_path / "lie", budgets=(59_450_000_000, 59_430_000_000), mutate=lambda res, f: write(
+        res / "env" / "a" / "env.json", {"ram_budget": {"ram_budget_bytes": 60_000_000_000}}))[0])
+    assert "session.json budget" in rule_detail(o, "ram_budget_remeasured")
+
+
+CARD = {"a": 32768, "b": 32768}
+
+
+def peak_round(total, peak):
+    return {n: {"gpu_mem_total_mib": total, "gpu_mem_peak_mib": peak} for n in ("a", "b")}
+
+
+@pytest.mark.parametrize("total,peak,clean", [
+    (24576, 24576.0, True),   # a 24 GiB card is the card: no extra rule
+    (32768, 24000.0, True),   # a bigger card that stays under 24,576 MiB
+    (32768, 24575.0, True),
+    (32768, 24576.0, False),  # at the line is not under it
+    (32768, 26000.0, False),
+    (49152, 30000.0, False),
+])
+def test_on_a_card_over_24_gib_the_peak_stays_under_24576_mib(tmp_path, total, peak, clean):
+    res, _ = build(tmp_path, rounds=[peak_round(total, peak)] * 3)
+    o = summary(res)
+    assert all(r["clean"] for r in o["rounds"]) == clean, [r["unclean_reasons"] for r in o["rounds"]]
+    if not clean:
+        assert "peak GPU memory" in o["rounds"][0]["unclean_reasons"][0] and "24576" in o["rounds"][0]["unclean_reasons"][0]
+        assert "rounds_clean" in failed(o)
+
+
+def test_a_card_over_24_gib_without_a_peak_reading_or_a_round_without_the_card_size_is_unclean(tmp_path):
+    res, _ = build(tmp_path, rounds=[{n: {"gpu_mem_total_mib": 32768, "gpu_mem_peak_mib": None} for n in ("a", "b")}] * 3)
+    assert not any(r["clean"] for r in summary(res)["rounds"])
+    res, _ = build(tmp_path / "nocard", rounds=[{"a": {"gpu_mem_total_mib": None}}] * 3)
+    why = summary(res)["rounds"][0]["unclean_reasons"]
+    assert any("gpu_mem_total_mib" in w for w in why) or any("card" in w for w in why), why
+
+
+def test_a_cpu_only_segment_has_no_card_and_the_peak_rule_is_n_a(tmp_path):
+    res, _ = build(tmp_path, rounds=[{n: {"gpu_mem_total_mib": 0, "gpu_mem_peak_mib": None} for n in ("a", "b")}] * 3)
+    assert all(r["clean"] for r in summary(res)["rounds"])
+
+
+def test_a_gpu_segment_without_a_card_reading_stays_unclean_next_to_a_cpu_one(tmp_path):
+    res, _ = build(tmp_path, rounds=[{"a": {"gpu_mem_total_mib": 0, "gpu_mem_peak_mib": None}, "b": {"gpu_mem_total_mib": None}}] * 3)
+    why = summary(res)["rounds"][0]["unclean_reasons"]
+    assert not any(r["clean"] for r in summary(res)["rounds"])
+    assert any(w.startswith("b:") and "gpu_mem_total_mib" in w for w in why) and not any(w.startswith("a:") for w in why), why

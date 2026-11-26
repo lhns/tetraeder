@@ -238,6 +238,14 @@ fn cpu_a_judged_round_across_two_loopback_nodes_writes_the_files_the_summary_rea
         assert!(
             r["prefill_tok_s"].as_f64().unwrap() > 0.0 && r["decode_tok_s"].as_f64().unwrap() > 0.0
         );
+        // what the driver stamps on a CPU-only segment: no card, so the peak rule is n/a
+        let mut stamped = seg.clone();
+        stamped["gpu_mem_total_mib"] = serde_json::json!(0);
+        std::fs::write(
+            out.join(format!("seg-{node}.json")),
+            serde_json::to_string(&stamped).unwrap(),
+        )
+        .unwrap();
         std::fs::write(
             out.join(format!("seg-{node}.gpu.txt")),
             "before: 0x0, 100.0 W, 350.0 W, 350.0 W\nafter: 0x0, 300.0 W, 350.0 W, 350.0 W\n",

@@ -63,6 +63,8 @@ def main() -> int:
             r = load("calib", n, "anchors", f"{f}.json")
             run = (r.get("runs") or [r])[-1]
             check(bool(run.get("prefill_tok_s")) and bool(run.get("decode_tok_s")), f"{n} {f} has no rates")
+            # the anchors ran the pinned plan's micro-batch (ubatch 16, two micro-batches, a 64-token prompt: batches of 16), stamped by sc_box.sh
+            check(r.get("exit_ubatch") == 16, f"{n} {f} ran batches of {r.get('exit_ubatch')} tokens, the pinned plan's micro-batch is 16")
         check(os.path.getsize(os.path.join(res, "calib", n, "fitted.toml")) > 0, f"{n} fitted.toml is empty")
         check("band" in load("calib", n, "pred.json")["prediction"], f"{n} pred.json has no fit band")
     # the merge of the fitted graphs into the cluster graph (a real `tetraeder cluster merge`)
@@ -84,7 +86,7 @@ def main() -> int:
             print("P6_LOOPBACK_S FAIL " + b)
         return 1
     print(f"P6_LOOPBACK_S real binaries, tiny MoE in 3 shards under one id {mid[:12]} on 2 nodes, pinned head-led plan with covering slots 4+8")
-    print("P6_LOOPBACK_S per-node calibration (anchors, fit, replay) and cluster merge of the fitted graphs done")
+    print("P6_LOOPBACK_S per-node calibration (anchors in the pick's micro-batch of 16 tokens, fit, replay) and cluster merge of the fitted graphs done")
     print(f"P6_LOOPBACK_S one real judged-round accepted by the summary round check, pp {run['prefill_tok_s']:.1f} tg {run['decode_tok_s']:.2f} tok/s (CPU runner, wiring only)")
     return 0
 

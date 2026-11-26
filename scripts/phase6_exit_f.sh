@@ -72,12 +72,13 @@ if [ "$LOOPBACK" = 1 ]; then
   else
     # the tiny MoE fixture: 256 training positions, byte-level vocabulary (one character is one token), as in cluster_integration.rs
     trial_s="${TRIAL_S:-20}" fault_at="${FAULT_AT:-6}" stop_for="${STOP_FOR:-6}" restore_after="${RESTORE_AFTER:-4}"
-    rejoin_s="${REJOIN_S:-30}" down_ms="${NODE_DOWN_MS:-2000}" prompt_tokens="${PROMPT_TOKENS:-96}" max_tokens="${MAX_TOKENS:-120}"
+    rejoin_s="${REJOIN_S:-30}" down_ms="${NODE_DOWN_MS:-2000}" prompt_tokens="${PROMPT_TOKENS:-96}" max_tokens="${MAX_TOKENS:-1000}"
+    load_extra="--ignore-eos" # the tiny model emits EOS early at temperature 0.7 and decodes 120 tokens in under 0.1 s: long fixed-length answers keep requests in flight across the fault window
     b_up_wait="${B_UP_WAIT_S:-90}"
     LB_BIN="${TETRAEDER_BIN:-$repo/target/debug/tetraeder}"
     case "$LB_BIN" in /* | ?:*) ;; *) LB_BIN="$repo/$LB_BIN" ;; esac
     export LB_BIN
-    LB_BOX_ENV="$LB_BOX_ENV THREADS=${THREADS:-2} PAR=4 CTX=2048"
+    LB_BOX_ENV="$LB_BOX_ENV THREADS=${THREADS:-2} PAR=4 CTX=8192"
     serve_extra="--chat-template-file $repo/tests/fixtures/chatml.jinja"
   fi
   export LB_BOX_ENV
@@ -210,7 +211,7 @@ load_cmd() { # load_cmd LABEL SECONDS OUTFILE [FIRE_MODE]: with a fire mode the 
   local A fire=""
   A=$(p6dir a)
   [ -n "${4:-}" ] && fire="--fire-peer $peer_b --fire-token-file $A/trigger-token.txt --fire-mode $4 --fire-after $fault_at --fire-out $A/fire-$1.json --fire-stop-for $stop_for --fire-restore-after $restore_after --fire-poll-s $poll_s"
-  echo "python3 scripts/phase6_load.py $(head_url) --key-file $A/api-key.txt --concurrency $conc --duration $2 --prompt-tokens $prompt_tokens --chars-per-token $cpt --max-tokens $max_tokens --label $1 --out $3 $fire"
+  echo "python3 scripts/phase6_load.py $(head_url) --key-file $A/api-key.txt --concurrency $conc --duration $2 --prompt-tokens $prompt_tokens --chars-per-token $cpt --max-tokens $max_tokens ${load_extra:-} --label $1 --out $3 $fire"
 }
 
 b_admits_since() { # b_admits_since EPOCH_B: how many admit lines of node b are at or after the epoch (b's clock)
@@ -219,6 +220,10 @@ b_admits_since() { # b_admits_since EPOCH_B: how many admit lines of node b are 
 
 ensure_b_serving() { # ensure_b_serving TAG: warm load on a, until b admits a request; never restarts anything
   local tag=$1 t0b n=0 t0=$SECONDS
+  if [ "$lb_fake" = 1 ]; then # the fake head logs when B's replica joins: wait for that signal, then give the warm loads their time
+    bx a $((b_up_wait + 30)) "for i in \$(seq 1 $((b_up_wait * 2))); do grep -E 'replica 1 (joined|left)' $(p6dir a)/logs/serve.log 2> /dev/null | tail -n 1 | grep -q joined && exit 0; sleep 0.5; done; exit 1" > /dev/null       || die "B is not in service: its replica did not join the fake head within $b_up_wait s before $tag. Nothing was restarted"
+    t0=$SECONDS
+  fi
   while [ $((SECONDS - t0)) -lt "$b_up_wait" ]; do
     t0b=$(epoch_of b)
     bx a 60 "bash scripts/phase6_box.sh launch warm-$tag-$n $(load_cmd "warm-$tag-$n" "$warm_s" "$(p6dir a)/warm-$tag-$n.jsonl")" > /dev/null
