@@ -1,0 +1,121 @@
+{
+ "rules": {
+  "ram_floor_gb": 61.7,
+  "min_cores": 12,
+  "min_disk_gb": 230,
+  "min_inet_mbps": 1000,
+  "max_price_per_h": 0.9,
+  "download_gb": 150,
+  "session_hours": 3.0,
+  "plan_aclass": true,
+  "reads": 3
+ },
+ "counts": {
+  "offers": 30,
+  "excluded": {
+   "gpu_class": 0,
+   "skip_host": 8,
+   "unknown": 0,
+   "cores": 3,
+   "ram": 9,
+   "disk": 0,
+   "inet": 5,
+   "price": 3
+  },
+  "fails": {
+   "gpu_class": 0,
+   "skip_host": 8,
+   "unknown": 0,
+   "cores": 4,
+   "ram": 13,
+   "disk": 0,
+   "inet": 19,
+   "price": 16
+  },
+  "survivors": 2,
+  "per_class": {
+   "RTX 3090": 25,
+   "A40": 2,
+   "RTX A6000": 0,
+   "L40": 0,
+   "L40S": 3
+  },
+  "pairs_same_host_dropped": 0,
+  "pairs_no_covering_plan": 0
+ },
+ "pairs": [
+  {
+   "a": "62594175",
+   "b": "62193526",
+   "hosts": [
+    "392144",
+    "79466"
+   ],
+   "gpus": [
+    "RTX 3090",
+    "RTX 3090"
+   ],
+   "locations": [
+    "The Netherlands, NL",
+    "Quebec, CA"
+   ],
+   "bulk_mbps": 1487.4,
+   "datacenter": 0,
+   "price_per_h": 1.395,
+   "plannable": true,
+   "boxes": [
+    {
+     "id": "62594175",
+     "gpu_name": "RTX 3090",
+     "num_gpus": 1,
+     "host_id": "392144",
+     "machine_id": "54967",
+     "location": "The Netherlands, NL",
+     "cpu_cores": 24.0,
+     "price_per_h": 0.4318518518518518,
+     "inet_down_cost": 0.006510416666666667,
+     "ram_gb": 64.336,
+     "disk_gb": 1458.0,
+     "inet_down_mbps": 7158.8,
+     "inet_up_mbps": 3296.1,
+     "hosting_type": 0,
+     "cpu_name": "AMD Ryzen Threadripper 3960X 24-Core Processor",
+     "gpu_max_power_w": 360.0
+    },
+    {
+     "id": "62193526",
+     "gpu_name": "RTX 3090",
+     "num_gpus": 1,
+     "host_id": "79466",
+     "machine_id": "41880",
+     "location": "Quebec, CA",
+     "cpu_cores": 12.0,
+     "price_per_h": 0.44259259259259254,
+     "inet_down_cost": 0.00390625,
+     "ram_gb": 128.491,
+     "disk_gb": 1225.0,
+     "inet_down_mbps": 1487.4,
+     "inet_up_mbps": 2106.5,
+     "hosting_type": 0,
+     "cpu_name": "Xeon\u00ae W-2133 ",
+     "gpu_max_power_w": 350.0
+    }
+   ],
+   "flags": [
+    "NUMA/sockets unknown (lscpu gate on box)",
+    "power limit unknown (gate on box)"
+   ],
+   "plan": {
+    "covering": true,
+    "n": 38,
+    "best": {
+     "id": "c00",
+     "notes": [
+      "a>b, cuts [48], head Leader, ubatch 2048, micro 1: pp 207.6 tg 3.62 tok/s"
+     ]
+    },
+    "error": null
+   }
+  }
+ ]
+}

@@ -4904,7 +4904,9 @@ nodes:
   kind: session
   state: next
   outcome: unrated
-  evidence: []
+  evidence:
+  - bench/results/phase6-exit-s-20261126c/README.md
+  - bench/results/phase6-exit-s-20261127/README.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -4918,7 +4920,7 @@ nodes:
   folded: []
   overview: false
   plain: 'The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26).'
-  notes: 'Attempt 2026-11-26 evening (bench/results/phase6-exit-s-20261126c): no verdict. Pairs vanished within minutes, so scripts/phase6_pair_create.sh now finds and creates both boxes in one step; the pair 3090 host 45726 plus A40 host 682584 came up, and 682584 failed the one-NUMA gate at first SSH (2 sockets, 2 NUMA nodes); both destroyed before build and download, about 0.21 USD for three boxes, 0 of 2 download attempts used. 682584 is now skipped. The 4 h one-off is used; a retry runs under 3 h (170 min padded fits only without the report-only runs) unless the owner grants a new one.'
+  notes: 'Attempt 2026-11-27 night (bench/results/phase6-exit-s-20261127): no verdict. The only listed pair, two 3090s on hosts 392144 and 79466, passed NUMA, RAM, cuda, idle and co-tenant, but host 392144 caps its card at 360 of 370 W, so the power gate failed at the gates stage; both destroyed before bulk, build and download, about 0.25 USD, 0 of 2 download attempts used; 392144 is now skipped. Attempt 2026-11-26 evening (bench/results/phase6-exit-s-20261126c): no verdict. Pairs vanished within minutes, so scripts/phase6_pair_create.sh now finds and creates both boxes in one step; the pair 3090 host 45726 plus A40 host 682584 came up, and 682584 failed the one-NUMA gate at first SSH (2 sockets, 2 NUMA nodes); both destroyed before build and download, about 0.21 USD for three boxes, 0 of 2 download attempts used. 682584 is now skipped. The 4 h one-off is used; a retry runs under 3 h (170 min padded fits only without the report-only runs) unless the owner grants a new one.'
 - id: cluster-short-prefix-dropped
   title: Short idle prefix taken unsaved
   track: cluster

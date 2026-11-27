@@ -1,0 +1,3 @@
+memory.max 129341849600
+Model name: Intel(R) Xeon(R) W-2133 CPU @ 3.60GHz; CPU(s) 12; Socket(s) 1; NUMA node(s) 1
+cpu.max 1152000 100000
