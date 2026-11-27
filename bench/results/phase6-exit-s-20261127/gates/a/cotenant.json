@@ -1,0 +1,11 @@
+{
+  "source": "engine_sample.py cotenant",
+  "seconds": 19.019431591033936,
+  "host_busy_cores": 0.5504397105213128,
+  "container_cores": 0.002962654258635329,
+  "outside_cores": 0.5474770562626775,
+  "host_cpus": 48,
+  "limit": 4.0,
+  "ok": true,
+  "t": 1795738213.7541316
+}

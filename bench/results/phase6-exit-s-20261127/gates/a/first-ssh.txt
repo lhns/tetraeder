@@ -1,0 +1,4 @@
+memory.max 91587870720
+Model name: AMD Ryzen Threadripper 3960X 24-Core Processor; CPU(s) 48; Socket(s) 1; NUMA node(s) 1
+cpu.max 2304000 100000
+nvidia-smi: NVIDIA GeForce RTX 3090, power.limit 360.00 W, power.default_limit 370.00 W, power.max_limit 390.00 W, enforced.power.limit 360.00 W
