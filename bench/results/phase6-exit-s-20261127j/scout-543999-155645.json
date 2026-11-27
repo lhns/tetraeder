@@ -1,0 +1,55 @@
+{
+ "box": "62885713",
+ "host": "543999",
+ "machine": "155645",
+ "gpu": "RTX 3090",
+ "cpu_name": null,
+ "host_threads": null,
+ "all_in": null,
+ "two_socket_hint": null,
+ "t_created": 1795798137.438533,
+ "t": 1795798483.353014,
+ "ssh_rc": 0,
+ "raw": {
+  "smi": [
+   [
+    "NVIDIA GeForce RTX 3090",
+    "420.00",
+    "420.00",
+    "500.00"
+   ]
+  ],
+  "memmax": "64400392192",
+  "cpumax": "3071999 100000",
+  "cpus": "32",
+  "model": "Intel(R) Core(TM) i9-14900KS",
+  "sockets": "1",
+  "numa": "1"
+ },
+ "checks": {
+  "sockets": {
+   "ok": true,
+   "detail": "Socket(s) 1"
+  },
+  "numa": {
+   "ok": true,
+   "detail": "NUMA node(s) 1"
+  },
+  "power": {
+   "ok": true,
+   "detail": "NVIDIA GeForce RTX 3090 limit 420.0 W default 420.0 W"
+  },
+  "memory": {
+   "ok": true,
+   "detail": "memory.max 64400392192"
+  },
+  "cuda": {
+   "ok": true,
+   "detail": "cuda: ok;"
+  }
+ },
+ "pass": true,
+ "kind": "scout",
+ "host_property_failures": [],
+ "list": "pass"
+}

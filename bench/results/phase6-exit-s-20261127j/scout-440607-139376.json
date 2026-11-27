@@ -1,0 +1,57 @@
+{
+ "box": "62886511",
+ "host": "440607",
+ "machine": "139376",
+ "gpu": "RTX 3090",
+ "cpu_name": null,
+ "host_threads": null,
+ "all_in": null,
+ "two_socket_hint": null,
+ "t_created": 1795798622.623818,
+ "t": 1795798648.9670541,
+ "ssh_rc": 0,
+ "raw": {
+  "smi": [
+   [
+    "NVIDIA GeForce RTX 3090",
+    "270.00",
+    "420.00",
+    "450.00"
+   ]
+  ],
+  "memmax": "243278020608",
+  "cpumax": "3071999 100000",
+  "cpus": "128",
+  "model": "AMD EPYC 7742 64-Core Processor",
+  "sockets": "1",
+  "numa": "1"
+ },
+ "checks": {
+  "sockets": {
+   "ok": true,
+   "detail": "Socket(s) 1"
+  },
+  "numa": {
+   "ok": true,
+   "detail": "NUMA node(s) 1"
+  },
+  "power": {
+   "ok": false,
+   "detail": "NVIDIA GeForce RTX 3090 limit 270.0 W default 420.0 W LIMITED"
+  },
+  "memory": {
+   "ok": true,
+   "detail": "memory.max 243278020608"
+  },
+  "cuda": {
+   "ok": null,
+   "detail": "not run: a raw check failed"
+  }
+ },
+ "pass": false,
+ "kind": null,
+ "host_property_failures": [
+  "power"
+ ],
+ "list": "skip"
+}

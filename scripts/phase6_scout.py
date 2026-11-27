@@ -116,7 +116,7 @@ def check(box, outd, cuda=True, meta=None):
         say(f"provision --models , on box {box} (cuda)")
         prc, pout = tax("provision", "--id", str(box), "--models", ",", timeout=900, log=log)
         good = re.search(r"cuda: ok(_preload)?\b", pout) is not None
-        checks["cuda"] = {"ok": good, "detail": (re.findall(r"cuda: \S+", pout) or [f"provision rc={prc}, no cuda line"])[-1]}
+        checks["cuda"] = {"ok": good, "detail": (re.findall(r"cuda: [a-z_]+", pout) or [f"provision rc={prc}, no cuda line"])[-1]}
     elif cuda:
         checks["cuda"] = {"ok": None, "detail": "not run: a raw check failed"}
     host_fail = [n for n in HOST_CHECKS if checks.get(n, {}).get("ok") is False]
