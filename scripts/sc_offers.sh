@@ -22,7 +22,11 @@ done
 disk="${DISK_GB:-230}"
 case "$disk" in '' | *[!0-9]*) echo "DISK_GB must be a whole number of GB, got '$disk'" >&2; exit 2 ;; esac
 [ "$disk" -ge 230 ] || { echo "DISK_GB $disk is below the 230 GB the 235B needs" >&2; exit 2; }
-set -- uv run taxameter "$cmd" --download-gb "$gb" --max-price "${MAX_PRICE:-0.90}" "$@"
+# --min-disk: the search must ask for the disk the box gets. With taxameter's default 50 GB, Vast leaves out offers the pair finder
+# lists at 230 GB (2026-11-27: machine 54637 in every 230 GB search, in no 50 GB one), so `create --offer` reported them gone
+md=(--min-disk "$disk")
+for a in "$@"; do case "$a" in --min-disk | --min-disk=*) md=() ;; esac; done
+set -- uv run taxameter "$cmd" --download-gb "$gb" --max-price "${MAX_PRICE:-0.90}" "${md[@]}" "$@"
 if [ "${DRY_RUN:-0}" = 1 ]; then
   echo "$*"
   echo "would set disk_gb $disk in ${VAST_STATE_DIR:-.vast}/config.json" >&2
