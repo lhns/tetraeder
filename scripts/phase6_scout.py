@@ -167,7 +167,7 @@ def current_offer(machine, fallback, gpu, outd):
     hit = next((k for k, v in d.items() if str(v.get("machine_id")) == str(machine)), None)
     if hit:
         return hit
-    # one Vast search returns a varying subset of the market (2026-11-27: two searches a second apart shared 17 of 24 machines),
+    # one Vast search returns a varying subset of the market (2026-11-27: the create's search and the finder's, seconds apart, listed 22 and 24 machines with 10 in common),
     # so the listing may miss the machine the finder's merged reads saw. Record the finder's id under its machine in taxameter's
     # map (ADR 0013 format): `create --offer` then follows it with a search on that machine id, same filters and caps
     d[str(fallback)] = {"machine_id": str(machine), "num_gpus": 1, "gpu_name": gpu}
