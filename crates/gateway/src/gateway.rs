@@ -608,6 +608,24 @@ impl Gateway {
                     // before its think block, which is reopened with the message's reasoning),
                     // then the message's content.
                     (Some(c), _, Some((last, rest))) => {
+                        // On a thinking template the message is rendered by the template, which
+                        // knows its own think markers (`<think>\n`, `\n</think>\n\n`), and cut
+                        // after the text being continued, as the prefill path does.
+                        let reasoning = last.reasoning_content.as_deref().unwrap_or("");
+                        let needle = match c {
+                            Continuation::Content => last.content.as_str(),
+                            Continuation::Reasoning => reasoning,
+                        };
+                        if st.think && !reasoning.is_empty() && !needle.is_empty() {
+                            let full = render(messages, false)?;
+                            let cut = full
+                                .rfind(needle)
+                                .filter(|&i| needle == reasoning || full[..i].contains(reasoning));
+                            if let Some(i) = cut {
+                                let open = *c == Continuation::Reasoning;
+                                return Ok((full[..i + needle.len()].to_owned(), open));
+                            }
+                        }
                         let base = render(rest, false)?;
                         let full = render(rest, true)?;
                         let mut gen_prompt = full.strip_prefix(&base).unwrap_or(&full).to_owned();
@@ -615,10 +633,11 @@ impl Gateway {
                             if let Some(i) = gen_prompt.find("<think>") {
                                 gen_prompt.truncate(i);
                             }
-                            gen_prompt.push_str("<think>");
+                            // Qwen3's markers, as llama-server's analysis finds them
+                            gen_prompt.push_str("<think>\n");
                             gen_prompt.push_str(last.reasoning_content.as_deref().unwrap_or(""));
                             if *c == Continuation::Content {
-                                gen_prompt.push_str("</think>");
+                                gen_prompt.push_str("\n</think>\n\n");
                             }
                         }
                         if *c == Continuation::Content {

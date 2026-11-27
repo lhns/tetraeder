@@ -1320,3 +1320,161 @@ cases:
     value_paths: ["usage.prompt_tokens"]
     engines: [auto]
     expect: pass
+
+
+  # ---- the Qwen3-style template with tool calls and <think> (node serving-parity-tool-template, ADR 0094) ----
+  # llama_args and tetraeder_args give tests/fixtures/qwen3-tools.jinja to both servers instead of chatml.jinja.
+  # The tiny models have 512 context and one token per byte, so the tools are minimal.
+  - id: tools-prompt-qwen3
+    group: B
+    row: "tools"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 8, "tools": [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}]}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: pass
+  - id: tool-history-qwen3
+    group: B
+    row: "tools"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "f", "arguments": "{\"c\": \"P\"}"}}]}, {"role": "tool", "tool_call_id": "call_1", "content": "Sun"}], "temperature": 0, "max_tokens": 8, "tools": [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}]}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: pass
+  - id: tool-choice-auto-qwen3
+    group: B
+    row: "tool_choice auto/none/required/named"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 12, "tools": [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}]}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: pass
+  # on a thinking template llama-server parses reasoning? content? tool-calls: free text may come before the call, so noise text stays content; the mask here starts the call at once (mask kept: it forces calls on real templates)
+  - id: tool-choice-required-qwen3
+    group: B
+    row: "tool_choice auto/none/required/named"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 64, "tool_choice": "required", "tools": [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}]}
+    value_paths: ["choices[0].message.tool_calls[0].function.name", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template
+  # same difference for a named choice
+  - id: tool-choice-named-qwen3
+    group: B
+    row: "tool_choice auto/none/required/named"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 64, "tool_choice": {"type": "function", "function": {"name": "f"}}, "tools": [{"type": "function", "function": {"name": "g", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}, {"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}]}
+    value_paths: ["choices[0].message.tool_calls[0].function.name", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template
+  # llama-server builds the grammar of ADR 0093 item 5 with the think block and (tools) the tool call in front, its first token is the code fence; the token mask here ends the reply at once (4 tokens, llama-server 14 and 38)
+  - id: response-format-with-tools-qwen3
+    group: B
+    row: "response_format: json_object / json_schema"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 128, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"enum": ["a"]}}}, "tools": [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]}}}]}
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template
+  # a thinking template without tools: same difference
+  - id: response-format-thinking-qwen3
+    group: B
+    row: "response_format: json_object / json_schema"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 128, "response_format": {"type": "json_schema", "json_schema": {"name": "a", "schema": {"enum": ["a"]}}}}
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template
+  - id: prefill-assistant-thinking-qwen3
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_tokens": 6}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: pass
+  # the continued message is rendered by the template, with its own think markers
+  - id: continue-final-message-thinking-qwen3
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi", "reasoning_content": "Greet"}], "temperature": 0, "max_tokens": 6}
+    value_paths: ["usage.prompt_tokens", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: pass
+  # the prompt ends inside the think block: all generated text is reasoning (byte noise whose U+FFFD runs differ in
+  # reasoning_content, so the token counts are compared, not the text)
+  - id: continue-reasoning-qwen3
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "", "reasoning_content": "Greet"}], "temperature": 0, "max_tokens": 24, "continue_final_message": "reasoning_content", "add_generation_prompt": false}
+    value_paths: ["usage.prompt_tokens", "usage.completion_tokens", "choices[0].finish_reason"]
+    mode: shape
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: pass
+  # llama-server leaves the reasoning in content (with its <think> tag); reasoning_format is ignored here
+  - id: reasoning-format-none-qwen3
+    group: B
+    row: "reasoning_format (request)"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "", "reasoning_content": "Greet"}], "temperature": 0, "max_tokens": 12, "continue_final_message": "reasoning_content", "add_generation_prompt": false, "reasoning_format": "none"}
+    value_paths: ["usage.prompt_tokens", "choices[0].message.content"]
+    mode: text
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template
+  # llama-server forces the end of the think block after the budget (stopped at 11 tokens); the budget is ignored here
+  - id: reasoning-budget-qwen3
+    group: B
+    row: "reasoning_budget_tokens / thinking_budget_tokens"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "", "reasoning_content": "Greet"}], "temperature": 0, "max_tokens": 24, "continue_final_message": "reasoning_content", "add_generation_prompt": false, "reasoning_budget_tokens": 3}
+    value_paths: ["usage.completion_tokens", "choices[0].finish_reason"]
+    mode: shape
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template
+  # llama-server answers 400 "missing completion id" (the route steers a running reasoning budget); no route here (404)
+  - id: reasoning-control-no-id
+    group: B
+    row: "POST /v1/chat/completions/control (`reasoning_end`)"
+    endpoint: POST /v1/chat/completions/control
+    body: {"type": "reasoning_end"}
+    no_model: true
+    mode: status
+    engines: [auto]
+    llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
+    expect: gap serving-parity-tool-template

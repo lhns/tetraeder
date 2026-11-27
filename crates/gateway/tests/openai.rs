@@ -124,8 +124,9 @@ async fn chat_continues_the_final_message() {
 }
 
 /// On a thinking template the continued message's think block is reopened (reasoning) or
-/// closed (content) after the generation prompt. Pins the construction; not compared with
-/// llama-server, whose markers come from its template analysis (ADR 0093, open).
+/// closed (content) after the generation prompt. Without reasoning the markers are literal (Qwen3's); with
+/// it the template renders the message, as llama-server's prompt does (parity case
+/// `continue-final-message-thinking-qwen3`, ADR 0094).
 #[tokio::test]
 async fn continuation_on_a_thinking_template() {
     let engine = FakeEngine::with_template(Some(QWEN3.into()), |_| "ok".into());
@@ -137,7 +138,7 @@ async fn continuation_on_a_thinking_template() {
     assert_eq!(s, 200, "{v}");
     let p = prompts.lock().unwrap().pop().unwrap();
     assert!(
-        p.ends_with("<|im_start|>assistant\n<think></think>Hi"),
+        p.ends_with("<|im_start|>assistant\n<think>\n\n</think>\n\nHi"),
         "{p:?}"
     );
     let convo = json!([{"role": "user", "content": "q"},
@@ -146,7 +147,17 @@ async fn continuation_on_a_thinking_template() {
     let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
     assert_eq!(s, 200, "{v}");
     let p = prompts.lock().unwrap().pop().unwrap();
-    assert!(p.ends_with("<|im_start|>assistant\n<think>hmm"), "{p:?}");
+    assert!(p.ends_with("<|im_start|>assistant\n<think>\nhmm"), "{p:?}");
+    let convo = json!([{"role": "user", "content": "q"},
+                       {"role": "assistant", "content": "Hi", "reasoning_content": "hmm"}]);
+    let body = json!({"model": "fake", "messages": convo});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let p = prompts.lock().unwrap().pop().unwrap();
+    assert!(
+        p.ends_with("<|im_start|>assistant\n<think>\nhmm\n</think>\n\nHi"),
+        "{p:?}"
+    );
 }
 
 #[tokio::test]
