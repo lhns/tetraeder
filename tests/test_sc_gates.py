@@ -311,7 +311,8 @@ def test_the_driver_prices_the_traffic_into_offers_and_create():
         out = dry(cmd, "--min-cpu-cores", "24")
         assert out.returncode == 0
         assert out.stdout.split() == ["uv", "run", "taxameter", cmd, "--download-gb", "150", "--max-price", "0.90",
-                                      "--min-cpu-cores", "24"]
+                                      "--min-disk", "230", "--min-cpu-cores", "24"]
+    assert "--min-disk" not in dry("offers", "--min-disk", "300").stdout.replace("--min-disk 300", "")
     assert "--download-gb 142" in dry("offers", DOWNLOAD_GB="142").stdout
     assert dry("offers", "--download-gb", "20").returncode == 2
     assert dry("offers", DOWNLOAD_GB="20").returncode == 2

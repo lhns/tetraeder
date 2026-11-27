@@ -1,0 +1,57 @@
+{
+ "box": "62887406",
+ "host": "88516",
+ "machine": "104634",
+ "gpu": "RTX 3090",
+ "cpu_name": null,
+ "host_threads": null,
+ "all_in": null,
+ "two_socket_hint": null,
+ "t_created": 1795799086.211465,
+ "t": 1795799425.4175704,
+ "ssh_rc": 0,
+ "raw": {
+  "smi": [
+   [
+    "NVIDIA GeForce RTX 3090",
+    "220.00",
+    "350.00",
+    "350.00"
+   ]
+  ],
+  "memmax": "63450382336",
+  "cpumax": "3071999 100000",
+  "cpus": "32",
+  "model": "13th Gen Intel(R) Core(TM) i9-13900KF",
+  "sockets": "1",
+  "numa": "1"
+ },
+ "checks": {
+  "sockets": {
+   "ok": true,
+   "detail": "Socket(s) 1"
+  },
+  "numa": {
+   "ok": true,
+   "detail": "NUMA node(s) 1"
+  },
+  "power": {
+   "ok": false,
+   "detail": "NVIDIA GeForce RTX 3090 limit 220.0 W default 350.0 W LIMITED"
+  },
+  "memory": {
+   "ok": false,
+   "detail": "memory.max 63450382336"
+  },
+  "cuda": {
+   "ok": null,
+   "detail": "not run: a raw check failed"
+  }
+ },
+ "pass": false,
+ "kind": null,
+ "host_property_failures": [
+  "power"
+ ],
+ "list": "skip"
+}

@@ -351,3 +351,20 @@ def test_case_s_the_older_box_without_the_time_for_the_stages_after_the_download
         assert "fetch done" not in t and not (out / "env" / "a" / "env-plan.json").exists()
     finally:
         kill_all(tmp_path)
+
+
+@needs_posix
+def test_case_s_one_stage_per_invocation_gives_the_same_verdict(tmp_path):
+    """A driver on a real pair runs one stage per tool call (calls are backgrounded after 180 s): every stage must take what it needs
+    from the session's files, not from an earlier stage in the same process (docs/box-driver.md "Stage by stage")."""
+    try:
+        for st in "gates bulk setup dryrun budget plan linkgate fetch calib predict".split():
+            r, out = run_s(tmp_path, st)
+            assert r.returncode == 0, f"stage {st}: " + text(r)[-1500:]
+        for st in "judged aalast linkend summary".split():
+            r, out = run_s(tmp_path, st, FROZEN_SHA=frozen_sha(out))
+            assert r.returncode == 0, f"stage {st}: " + text(r)[-1500:]
+        v = verdict_s(out)
+        assert v["verdict"] == "pass" and failed_rules(v) == [], v["status"]
+    finally:
+        kill_all(tmp_path)

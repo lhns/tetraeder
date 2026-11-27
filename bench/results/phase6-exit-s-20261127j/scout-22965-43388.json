@@ -1,0 +1,15 @@
+{
+ "host": "22965",
+ "machine": "43388",
+ "gpu": "RTX 3090",
+ "cpu_name": null,
+ "host_threads": null,
+ "all_in": null,
+ "two_socket_hint": null,
+ "box": "62890751",
+ "t_created": 1795800799.2313495,
+ "pass": false,
+ "list": null,
+ "note": "stall: create did not finish",
+ "t": 1795801399.8764532
+}

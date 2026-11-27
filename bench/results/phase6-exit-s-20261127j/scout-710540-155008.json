@@ -1,0 +1,58 @@
+{
+ "box": "62890242",
+ "host": "710540",
+ "machine": "155008",
+ "gpu": "L40S",
+ "cpu_name": null,
+ "host_threads": null,
+ "all_in": null,
+ "two_socket_hint": null,
+ "t_created": 1795800551.7580864,
+ "t": 1795800596.945177,
+ "ssh_rc": 0,
+ "raw": {
+  "smi": [
+   [
+    "NVIDIA L40S",
+    "350.00",
+    "350.00",
+    "350.00"
+   ]
+  ],
+  "memmax": "172099633152",
+  "cpumax": "2304000 100000",
+  "cpus": "48",
+  "model": "Intel Xeon Processor (SapphireRapids)",
+  "sockets": "2",
+  "numa": "2"
+ },
+ "checks": {
+  "sockets": {
+   "ok": false,
+   "detail": "Socket(s) 2"
+  },
+  "numa": {
+   "ok": false,
+   "detail": "NUMA node(s) 2"
+  },
+  "power": {
+   "ok": true,
+   "detail": "NVIDIA L40S limit 350.0 W default 350.0 W"
+  },
+  "memory": {
+   "ok": true,
+   "detail": "memory.max 172099633152"
+  },
+  "cuda": {
+   "ok": null,
+   "detail": "not run: a raw check failed"
+  }
+ },
+ "pass": false,
+ "kind": null,
+ "host_property_failures": [
+  "sockets",
+  "numa"
+ ],
+ "list": "skip"
+}
