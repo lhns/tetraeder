@@ -10,7 +10,8 @@ use crate::chat::{
 };
 use crate::error::{GatewayError, OpenAiError};
 use crate::gateway::{
-    Collected, Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
+    Collected, Continuation, Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt,
+    tag_generation,
 };
 use crate::sampling::{self, SamplingFields};
 use axum::Json;
@@ -76,6 +77,8 @@ pub(crate) struct ChatRequest {
     n_probs: Option<i64>,
     reasoning_effort: Option<String>,
     chat_template_kwargs: Option<Map<String, Value>>,
+    continue_final_message: Option<Value>,
+    add_generation_prompt: Option<bool>,
     #[serde(flatten)]
     sampling: SamplingFields,
 }
@@ -295,20 +298,26 @@ fn tool_choice(v: Option<Value>, has_tools: bool) -> std::result::Result<ToolCho
 
 fn response_format(v: Option<Value>) -> std::result::Result<Option<OutputFormat>, GatewayError> {
     let Some(v) = v else { return Ok(None) };
-    match v.get("type").and_then(Value::as_str) {
-        None | Some("text") => Ok(None),
-        Some("json_object") => Ok(Some(OutputFormat::JsonObject)),
-        Some("json_schema") => {
-            let schema = v
-                .pointer("/json_schema/schema")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
-            Ok(Some(OutputFormat::JsonSchema(schema)))
+    // where llama-server's `oaicompat_chat_params_parse` reads the schema from
+    let schema = match v.get("type").and_then(Value::as_str) {
+        None | Some("") | Some("text") => return Ok(None),
+        Some("json_object") => v.get("schema"),
+        Some("json_schema") => match v.get("json_schema") {
+            Some(w) => w.get("schema"),
+            None => v.get("schema"),
+        },
+        Some(t) => {
+            return Err(GatewayError::InvalidRequest(format!(
+                "response_format type must be one of \"text\", \"json_object\" or \"json_schema\", but got: {t}"
+            )));
         }
-        Some(t) => Err(GatewayError::InvalidRequest(format!(
-            "unsupported response_format type '{t}'"
-        ))),
-    }
+    };
+    Ok(Some(match schema {
+        // an absent or empty schema means any object
+        None => OutputFormat::JsonObject,
+        Some(s) if s.as_object().is_some_and(Map::is_empty) => OutputFormat::JsonObject,
+        Some(s) => OutputFormat::JsonSchema(s.clone()),
+    }))
 }
 
 /// What a stream or a response calls this server, as llama-server's `system_fingerprint` does
@@ -438,6 +447,70 @@ pub(crate) struct ChatPlan {
     pub include_usage: bool,
 }
 
+/// `continue_final_message` and `add_generation_prompt` with llama-server's checks
+/// (`oaicompat_chat_params_parse`). Its `prefill_assistant` is on by default and has no switch
+/// here: a trailing assistant message is continued unless the request says otherwise.
+fn continuation(
+    messages: &[ChatMessage],
+    cont: Option<&Value>,
+    add_generation_prompt: Option<bool>,
+) -> std::result::Result<(Option<Continuation>, bool), GatewayError> {
+    let invalid = |m: &str| GatewayError::InvalidRequest(m.into());
+    // None: no continuation; Some(None): auto, resolved from the message below
+    let mut want = match cont {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(None),
+        Some(Value::String(s)) if s == "content" => Some(Some(Continuation::Content)),
+        Some(Value::String(s)) if s == "reasoning_content" => Some(Some(Continuation::Reasoning)),
+        Some(_) => {
+            return Err(invalid(
+                "Invalid continue_final_message: expected a boolean, \"content\" or \"reasoning_content\"",
+            ));
+        }
+    };
+    let mut add = add_generation_prompt.unwrap_or(true);
+    let is_assistant = |m: Option<&ChatMessage>| m.is_some_and(|m| m.role == "assistant");
+    let n = messages.len();
+    if want.is_none() && is_assistant(messages.last()) {
+        if n >= 2 && is_assistant(messages.get(n - 2)) {
+            return Err(invalid(
+                "Cannot have 2 or more assistant messages at the end of the list.",
+            ));
+        }
+        want = Some(None);
+        add = false;
+    }
+    let Some(want) = want else {
+        return Ok((None, add));
+    };
+    if add {
+        return Err(invalid(
+            "Cannot set both add_generation_prompt and continue_final_message to true.",
+        ));
+    }
+    let Some(last) = messages.last() else {
+        return Ok((None, false));
+    };
+    if last.role == "assistant" && !last.tool_calls.is_empty() {
+        return Err(invalid(
+            "Cannot continue an assistant message that contains tool calls.",
+        ));
+    }
+    let resolved = want.unwrap_or(
+        if last.content.is_empty()
+            && last
+                .reasoning_content
+                .as_deref()
+                .is_some_and(|r| !r.is_empty())
+        {
+            Continuation::Reasoning
+        } else {
+            Continuation::Content
+        },
+    );
+    Ok((Some(resolved), false))
+}
+
 /// Validates a chat body and maps it onto a [`GenerateSpec`]; the chat route, `/apply-template`
 /// and `/v1/responses` share it.
 pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPlan, GatewayError> {
@@ -459,11 +532,19 @@ pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPl
     let choice = tool_choice(req.tool_choice, !tools.is_empty())?;
     let mut kwargs = req.chat_template_kwargs.unwrap_or_default();
     reasoning_effort(&mut kwargs, req.reasoning_effort.as_deref());
+    let messages = messages(&req.messages)?;
+    let (continuation, add_generation_prompt) = continuation(
+        &messages,
+        req.continue_final_message.as_ref(),
+        req.add_generation_prompt,
+    )?;
     let mut spec = GenerateSpec::new(
         req.model,
         Prompt::Chat {
-            messages: messages(&req.messages)?,
+            messages,
             prefill: None,
+            continuation,
+            add_generation_prompt,
             tools,
             tool_choice: choice,
             parallel_tool_calls: req.parallel_tool_calls.unwrap_or(true),
@@ -488,6 +569,16 @@ pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPl
     })
 }
 
+/// `POST /v1/chat/completions/input_tokens`: the prompt tokens of a chat body, as llama-server's
+/// `handle_count_tokens` answers them (its `object` is `response.input_tokens` here too).
+pub async fn chat_input_tokens(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Json<Value>> {
+    let ChatPlan { spec, .. } = chat_plan(parse_body(&body)?, gw.parallel_slots())?;
+    let n = gw.count_tokens(&spec)?;
+    Ok(Json(
+        json!({"input_tokens": n, "object": "response.input_tokens"}),
+    ))
+}
+
 pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let ChatPlan {
         spec,
@@ -495,6 +586,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         stream,
         include_usage,
     } = chat_plan(parse_body(&body)?, gw.parallel_slots())?;
+    let prefix = ContinuedPrefix::of(&spec);
     let generations = gw
         .generate_many(choice_specs(spec, n), Operation::Chat)
         .await?;
@@ -515,7 +607,10 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     let choices: Vec<Value> = all
         .into_iter()
         .enumerate()
-        .map(|(i, c)| chat_choice(&gw, &model, i, c))
+        .map(|(i, mut c)| {
+            prefix.apply(&mut c);
+            chat_choice(&gw, &model, i, c)
+        })
         .collect();
     let mut body = json!({
         "id": id,
@@ -530,6 +625,47 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         body["timings"] = t.to_json();
     }
     Ok(tag_generation(Json(body).into_response(), &gid))
+}
+
+/// The text a continued message already has. llama-server parses the reply from the prefill
+/// on, so a whole (not streamed) reply starts with it; streamed deltas do not repeat it.
+#[derive(Default)]
+pub(crate) struct ContinuedPrefix {
+    content: String,
+    reasoning: String,
+}
+
+impl ContinuedPrefix {
+    pub(crate) fn of(spec: &GenerateSpec) -> Self {
+        let Prompt::Chat {
+            continuation: Some(c),
+            messages,
+            ..
+        } = &spec.prompt
+        else {
+            return Self::default();
+        };
+        let Some(last) = messages.last() else {
+            return Self::default();
+        };
+        Self {
+            content: match c {
+                Continuation::Content => last.content.clone(),
+                Continuation::Reasoning => String::new(),
+            },
+            reasoning: last.reasoning_content.clone().unwrap_or_default(),
+        }
+    }
+
+    pub(crate) fn apply(&self, c: &mut Collected) {
+        if !self.content.is_empty() {
+            c.text.insert_str(0, &self.content);
+        }
+        if !self.reasoning.is_empty() {
+            let r = c.reasoning.get_or_insert_with(String::new);
+            r.insert_str(0, &self.reasoning);
+        }
+    }
 }
 
 fn chat_choice(gw: &Gateway, model: &str, index: usize, c: Collected) -> Value {
@@ -815,6 +951,28 @@ pub(crate) fn total_usage(all: &[Collected]) -> Usage {
     t.total()
 }
 
+/// The prompts of a completion body, as llama-server's `tokenize_input_prompts` reads them: an
+/// array with no number in it is a batch, anything else one prompt. A string stays text; token
+/// ids and mixed arrays are tokenized as on `/completion`.
+fn completion_prompts(gw: &Gateway, prompt: Value) -> Result<Vec<Prompt>> {
+    let items = match prompt {
+        Value::Array(a) if !a.iter().any(Value::is_number) => a,
+        one => vec![one],
+    };
+    if items.is_empty() {
+        return Err(bad("\"prompt\" must not be empty"));
+    }
+    items
+        .into_iter()
+        .map(|p| match p {
+            Value::String(s) => Ok(Prompt::Text(s)),
+            p => crate::native::prompt_tokens(gw, &p)
+                .map(Prompt::Tokens)
+                .map_err(|e| bad(e.message)),
+        })
+        .collect()
+}
+
 pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let req: CompletionRequest = parse_body(&body)?;
     let n = choice_count(req.n, gw.parallel_slots())?;
@@ -822,19 +980,8 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     if req.suffix.as_deref().is_some_and(|s| !s.is_empty()) {
         return Err(bad("suffix is not supported"));
     }
-    let prompt = match req.prompt {
-        Value::String(s) => s,
-        Value::Array(a) if a.len() == 1 && a[0].is_string() => {
-            a[0].as_str().unwrap_or_default().to_owned()
-        }
-        Value::Array(_) => {
-            return Err(bad(
-                "prompt must be one string; batches and token arrays are not supported",
-            ));
-        }
-        _ => return Err(bad("prompt must be a string")),
-    };
-    let mut spec = GenerateSpec::new(req.model, Prompt::Text(prompt));
+    let prompts = completion_prompts(&gw, req.prompt)?;
+    let mut spec = GenerateSpec::new(req.model, Prompt::Text(String::new()));
     // llama-server's `n_predict` default is -1, as for chat: no limit but the context.
     spec.max_tokens = req.max_tokens;
     spec.temperature = req.temperature;
@@ -845,22 +992,53 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     spec.extra.logprobs = n_probs;
     spec.stop = stop_list(req.stop)?;
     spec.caller = req.user;
-    let generations = gw
-        .generate_many(choice_specs(spec, n), Operation::TextCompletion)
-        .await?;
-    let gid = generations[0].id.clone();
-    if req.stream {
-        return Ok(tag_generation(
-            sse(oai_stream(generations, false, false)),
-            &gid,
-        ));
+    // Prompt-major, as llama-server numbers its tasks: the choices of prompt 0, then of prompt 1.
+    let specs: Vec<Vec<GenerateSpec>> = prompts
+        .into_iter()
+        .map(|p| {
+            let mut s = spec.clone();
+            s.prompt = p;
+            choice_specs(s, n)
+        })
+        .collect();
+    let total = specs.len() * n;
+    let batched = specs.len() > 1 && total > gw.parallel_slots();
+    if batched && req.stream {
+        return Err(bad(format!(
+            "a streamed batch must fit the {} parallel slots ({total} choices asked)",
+            gw.parallel_slots()
+        )));
     }
-    let (id, model, created) = (
-        format!("cmpl-{gid}"),
-        generations[0].model.clone(),
-        generations[0].created,
-    );
-    let all = try_join_all(generations.into_iter().map(Generation::collect)).await?;
+    let (gid, model, created, all) = if batched {
+        // More choices than slots: one prompt after the other, each finished before the next is
+        // admitted, so no running choice holds a slot while nobody reads its output.
+        let mut all = Vec::with_capacity(total);
+        let mut first = None;
+        for s in specs {
+            let gens = gw.generate_many(s, Operation::TextCompletion).await?;
+            first.get_or_insert_with(|| {
+                (gens[0].id.clone(), gens[0].model.clone(), gens[0].created)
+            });
+            all.extend(try_join_all(gens.into_iter().map(Generation::collect)).await?);
+        }
+        let (gid, model, created) = first.expect("at least one prompt");
+        (gid, model, created, all)
+    } else {
+        let generations = gw
+            .generate_many(specs.concat(), Operation::TextCompletion)
+            .await?;
+        let gid = generations[0].id.clone();
+        if req.stream {
+            return Ok(tag_generation(
+                sse(oai_stream(generations, false, false)),
+                &gid,
+            ));
+        }
+        let (model, created) = (generations[0].model.clone(), generations[0].created);
+        let all = try_join_all(generations.into_iter().map(Generation::collect)).await?;
+        (gid, model, created, all)
+    };
+    let id = format!("cmpl-{gid}");
     let usage = total_usage(&all);
     let choices: Vec<Value> = all
         .into_iter()

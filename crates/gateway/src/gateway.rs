@@ -87,12 +87,26 @@ impl Operation {
     }
 }
 
+/// What a continued message continues (llama-server's `common_chat_continuation`, resolved).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Continuation {
+    /// The reply continues the message's content (its reasoning, if any, is closed).
+    Content,
+    /// The reply continues the message's reasoning, inside the think block.
+    Reasoning,
+}
+
 #[derive(Clone)]
 pub enum Prompt {
     Chat {
         messages: Vec<ChatMessage>,
         /// Text of a final assistant message the reply continues (Anthropic prefill).
         prefill: Option<String>,
+        /// The reply continues the last message (`continue_final_message`, or a trailing
+        /// assistant message on the OpenAI routes), built as llama-server builds it.
+        continuation: Option<Continuation>,
+        /// `add_generation_prompt` (OpenAI routes; true elsewhere).
+        add_generation_prompt: bool,
         tools: Vec<ToolDef>,
         tool_choice: ToolChoice,
         parallel_tool_calls: bool,
@@ -560,6 +574,8 @@ impl Gateway {
             Prompt::Chat {
                 messages,
                 prefill,
+                continuation,
+                add_generation_prompt,
                 tools,
                 tool_choice,
                 kwargs,
@@ -586,19 +602,44 @@ impl Gateway {
                     tpl.render(msgs, tools, gen_prompt, kwargs)
                         .map_err(|e| GatewayError::InvalidRequest(e.to_string()))
                 };
-                let text = match prefill {
+                let text = match (continuation, prefill, messages.split_last()) {
+                    // llama-server's continuation (`peg_generator::generate_parser`): the
+                    // conversation before the message, the template's generation prompt (cut
+                    // before its think block, which is reopened with the message's reasoning),
+                    // then the message's content.
+                    (Some(c), _, Some((last, rest))) => {
+                        let base = render(rest, false)?;
+                        let full = render(rest, true)?;
+                        let mut gen_prompt = full.strip_prefix(&base).unwrap_or(&full).to_owned();
+                        if st.think {
+                            if let Some(i) = gen_prompt.find("<think>") {
+                                gen_prompt.truncate(i);
+                            }
+                            gen_prompt.push_str("<think>");
+                            gen_prompt.push_str(last.reasoning_content.as_deref().unwrap_or(""));
+                            if *c == Continuation::Content {
+                                gen_prompt.push_str("</think>");
+                            }
+                        }
+                        if *c == Continuation::Content {
+                            gen_prompt.push_str(&last.content);
+                        }
+                        base + &gen_prompt
+                    }
                     // Render the final assistant message and cut after its text; if the
                     // template altered the text, fall back to the conversation without it.
-                    Some(p) => {
+                    (None, Some(p), _) => {
                         let full = render(messages, false)?;
                         match full.rfind(p.as_str()) {
                             Some(i) => full[..i + p.len()].to_owned(),
                             None => render(&messages[..messages.len() - 1], true)?,
                         }
                     }
-                    None => render(messages, true)?,
+                    _ => render(messages, *add_generation_prompt)?,
                 };
-                let open = st.think && text.trim_end().ends_with("<think>");
+                let open = st.think
+                    && (*continuation == Some(Continuation::Reasoning)
+                        || text.trim_end().ends_with("<think>"));
                 Ok((text, open))
             }
         }
@@ -766,21 +807,45 @@ impl Gateway {
             None => ctx - n_prompt,
         };
 
-        let (parser, constraint) =
-            self.output_setup(&st, &spec.prompt, &spec.format, in_reasoning)?;
-
         let mut extra = spec.extra.clone();
+        let schema_grammar = |s: &str| {
+            self.engine
+                .json_schema_to_grammar(&model, s)
+                .map_err(|e| match self.engine_err(e) {
+                    GatewayError::InvalidRequest(m) => {
+                        GatewayError::InvalidRequest(format!("json_schema: {m}"))
+                    }
+                    e => e,
+                })
+        };
+        // A chat response_format becomes llama-server's grammar when nothing else shapes the
+        // output: no tools, no think block, no grammar of the request. Otherwise the token mask
+        // keeps the think block and tool calls apart.
+        let mut format = spec.format.clone();
+        let mut unfence = None;
+        if let (
+            Some(f),
+            Prompt::Chat {
+                tools, tool_choice, ..
+            },
+        ) = (&format, &spec.prompt)
+            && !st.think
+            && (tools.is_empty() || *tool_choice == ToolChoice::None)
+            && extra.grammar.is_none()
+        {
+            let schema = match f {
+                OutputFormat::JsonObject => serde_json::json!({"type": "object"}),
+                OutputFormat::JsonSchema(s) => s.clone(),
+            };
+            let g = response_format_grammar(&schema_grammar(&schema.to_string())?);
+            extra.grammar = Some(GrammarSource::Gbnf(g));
+            format = None;
+            unfence = Some(pump::Unfence::default());
+        }
+        let (parser, constraint) = self.output_setup(&st, &spec.prompt, &format, in_reasoning)?;
+
         extra.grammar = match extra.grammar.take() {
-            Some(GrammarSource::JsonSchema(s)) => Some(GrammarSource::Gbnf(
-                self.engine
-                    .json_schema_to_grammar(&model, &s)
-                    .map_err(|e| match self.engine_err(e) {
-                        GatewayError::InvalidRequest(m) => {
-                            GatewayError::InvalidRequest(format!("json_schema: {m}"))
-                        }
-                        e => e,
-                    })?,
-            )),
+            Some(GrammarSource::JsonSchema(s)) => Some(GrammarSource::Gbnf(schema_grammar(&s)?)),
             Some(GrammarSource::Gbnf(g)) => {
                 self.engine
                     .check_grammar(&model, &g)
@@ -825,6 +890,7 @@ impl Gateway {
             prompt_tokens: n_prompt,
             vocab: Arc::clone(&st.vocab),
             parser,
+            unfence,
             single_call: matches!(
                 &spec.prompt,
                 Prompt::Chat { parallel_tool_calls: false, tools, tool_choice, .. }
@@ -1003,6 +1069,12 @@ impl Gateway {
         }
     }
 
+    /// Slots held by running requests (generation, embedding, rerank).
+    pub fn busy_slots(&self) -> usize {
+        self.parallel_slots()
+            .saturating_sub(self.admission.slots.available_permits())
+    }
+
     /// Requests waiting for a slot.
     pub fn queue_depth(&self) -> usize {
         self.admission.waiting.load(Ordering::SeqCst)
@@ -1011,6 +1083,30 @@ impl Gateway {
 
 /// The output parser (chat only) and the sampling constraint of one request.
 type OutputSetup = (Option<OutputParser>, Option<Box<dyn TokenConstraint>>);
+
+/// llama-server's grammar for a chat `response_format` on a template without reasoning
+/// (`analyze_*::build_parser` at the pin, `chat-auto-parser-generator.cpp:119-133`, rendered
+/// by `common_peg_arena::build_grammar`): the schema, bare or in a ```` ```json ```` fence, with
+/// the converter's `space` around it. Its grammar starts with the generation prompt, which its
+/// sampler is fed before the first token; here the grammar starts after it. `schema` is the
+/// converter's output for the schema (`root` is renamed; a schema that refers to itself with
+/// `"$ref": "#"` is not supported).
+fn response_format_grammar(schema: &str) -> String {
+    let mut out = String::from(
+        "root ::= space space (\"```json\" space response-format space \"```\" | space response-format space)\n\
+         response-format ::= response-format-schema\n",
+    );
+    for line in schema.lines() {
+        match line.strip_prefix("root ::= ") {
+            Some(body) => out.push_str(&format!("response-format-schema ::= {body}\n")),
+            None => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
 
 /// Sets `error.type`; server failures also mark the span as an error, so tail sampling keeps it.
 fn record_error(span: &tracing::Span, error_type: &'static str) {

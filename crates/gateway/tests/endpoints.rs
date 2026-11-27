@@ -383,8 +383,26 @@ async fn props_report_what_the_server_knows() {
     assert_eq!(v["bos_token"], "");
     assert_eq!(v["endpoint_metrics"], false);
     assert_eq!(v["endpoint_props"], false);
+    assert_eq!(v["endpoint_slots"], true);
     assert_eq!(v["is_sleeping"], false);
     assert!(v["build_info"].as_str().unwrap().starts_with("tetraeder-"));
+}
+
+// ---- slots ----
+
+#[tokio::test]
+async fn get_slots_lists_every_slot() {
+    let cfg = GatewayConfig {
+        max_concurrent: 2,
+        ..GatewayConfig::default()
+    };
+    let (app, _) = app_with(FakeEngine::fixed("x"), cfg);
+    let (s, _, v) = get(&app, "/slots", false).await;
+    assert_eq!(s, 200, "{v}");
+    let want = |id| json!({"id": id, "n_ctx": 4096, "speculative": false, "is_processing": false});
+    assert_eq!(v, json!([want(0), want(1)]));
+    let (s, _, v) = get(&app, "/slots?fail_on_no_slot=1", false).await;
+    assert_eq!(s, 200, "{v}");
 }
 
 #[tokio::test]

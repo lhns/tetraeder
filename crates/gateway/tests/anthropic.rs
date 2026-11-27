@@ -280,17 +280,25 @@ async fn stop_sequence_and_max_tokens() {
     assert_eq!(v["stop_reason"], "max_tokens");
 }
 
+/// `output_config.format` takes the `response_format` path (ADR 0093): without tools or a
+/// thinking template the engine gets llama-server's grammar (the fake does not enforce it).
 #[tokio::test]
-async fn output_config_format_is_enforced() {
-    let (app, _) = app(FakeEngine::fixed("Result: {\"ok\": true}"));
+async fn output_config_format_becomes_a_grammar() {
+    let engine = FakeEngine::fixed("Result: {\"ok\": true}");
+    let params = engine.params.clone();
+    let (app, _) = app(engine);
     let mut body = req("json");
     body["output_config"] = json!({"format": {"type": "json_schema", "schema": {
         "type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"],
         "additionalProperties": false}}});
     let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
     assert_eq!(s, 200, "{v}");
-    let out: Value = serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(out, json!({"ok": true}));
+    let p = params.lock().unwrap().pop().unwrap();
+    assert!(
+        matches!(&p.extra.grammar, Some(tetraeder_gateway::engine::GrammarSource::Gbnf(g)) if g.contains("response-format-schema ::=")),
+        "{:?}",
+        p.extra.grammar
+    );
 }
 
 #[tokio::test]

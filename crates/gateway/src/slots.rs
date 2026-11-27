@@ -122,6 +122,27 @@ pub async fn slot_action(
     }))
 }
 
+/// `GET /slots`: one entry per slot with llama-server's always-present fields (`id`, `n_ctx`,
+/// `speculative`, `is_processing`). The gateway admits by count, not by slot id, so the first
+/// slots are the busy ones. `?fail_on_no_slot` answers 503 when none is idle, as there.
+pub async fn get_slots(
+    State(gw): State<Arc<Gateway>>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<Json<Value>> {
+    let n_ctx = gw.model("")?.context_length;
+    let (slots, busy) = (gw.parallel_slots(), gw.busy_slots());
+    if query.get("fail_on_no_slot").is_some_and(|v| !v.is_empty()) && busy >= slots {
+        return Err(LlamaError::unavailable("no slot available"));
+    }
+    Ok(Json(Value::Array(
+        (0..slots)
+            .map(|id| {
+                json!({"id": id, "n_ctx": n_ctx, "speculative": false, "is_processing": id < busy})
+            })
+            .collect(),
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

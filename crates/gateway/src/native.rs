@@ -78,7 +78,7 @@ pub async fn props(State(gw): State<Arc<Gateway>>) -> Result<Json<Value>> {
         "model_alias": m.id,
         "model_path": m.path.unwrap_or_default(),
         "modalities": {"vision": false, "video": false, "audio": false},
-        "endpoint_slots": false,
+        "endpoint_slots": true,
         "endpoint_props": false,
         "endpoint_metrics": cfg.metrics,
         "ui": false,
@@ -230,7 +230,7 @@ struct NativeRequest {
 
 /// llama-server's `tokenize_input_prompts` for one prompt: a string or mixed array is tokenized
 /// with the BOS and special tokens parsed, an array of numbers is taken as it is.
-fn prompt_tokens(gw: &Gateway, prompt: &Value) -> Result<Vec<TokenId>> {
+pub(crate) fn prompt_tokens(gw: &Gateway, prompt: &Value) -> Result<Vec<TokenId>> {
     let sub = |v: &Value| -> Result<Vec<TokenId>> {
         match v {
             Value::String(_) => tokenize_mixed(gw, v, true, true),

@@ -1,6 +1,6 @@
 # 0089. Endpoints of llama-server (parity group C)
 
-Status: Accepted (2026-11-23, under ADR 0083). After M2. Matrix: [docs/notes/llamacpp-parity.md](../notes/llamacpp-parity.md). Tree node `serving-parity-endpoints`.
+Status: Accepted (2026-11-23, under ADR 0083); item 5 in part superseded by ADR 0093 (`endpoint_slots` true). After M2. Matrix: [docs/notes/llamacpp-parity.md](../notes/llamacpp-parity.md). Tree node `serving-parity-endpoints`.
 
 ## Context
 

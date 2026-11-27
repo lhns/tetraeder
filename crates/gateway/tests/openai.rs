@@ -68,6 +68,87 @@ async fn chat_prompt_uses_the_template() {
     );
 }
 
+/// llama-server's continuation: a trailing assistant message is continued (its default
+/// `prefill_assistant`), `continue_final_message` needs `add_generation_prompt: false`.
+#[tokio::test]
+async fn chat_continues_the_final_message() {
+    let engine = FakeEngine::fixed("ok");
+    let prompts = engine.prompts.clone();
+    let (app, _) = app(engine);
+    let convo =
+        json!([{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]);
+    let want = "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi";
+    for extra in [
+        json!({}),
+        json!({"continue_final_message": true, "add_generation_prompt": false}),
+        json!({"continue_final_message": "content", "add_generation_prompt": false}),
+    ] {
+        let mut body = json!({"model": "fake", "messages": convo});
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200, "{extra}: {v}");
+        assert_eq!(prompts.lock().unwrap().pop().unwrap(), want, "{extra}");
+        // a whole reply starts with the continued text, as llama-server parses it from there
+        assert_eq!(v["choices"][0]["message"]["content"], "Hiok");
+    }
+    // no generation prompt at all
+    let body = json!({"model": "fake", "messages": user("Hello"), "add_generation_prompt": false});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(
+        prompts.lock().unwrap().pop().unwrap(),
+        "<|im_start|>user\nHello<|im_end|>\n"
+    );
+    for (body, msg) in [
+        (
+            json!({"messages": convo, "continue_final_message": true}),
+            "Cannot set both add_generation_prompt and continue_final_message to true.",
+        ),
+        (
+            json!({"messages": convo, "continue_final_message": 3, "add_generation_prompt": false}),
+            "Invalid continue_final_message",
+        ),
+        (
+            json!({"messages": [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}, {"role": "assistant", "content": "c"}]}),
+            "Cannot have 2 or more assistant messages at the end of the list.",
+        ),
+    ] {
+        let mut body = body;
+        body["model"] = json!("fake");
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 400, "{v}");
+        assert!(v["error"]["message"].as_str().unwrap().contains(msg), "{v}");
+    }
+}
+
+/// On a thinking template the continued message's think block is reopened (reasoning) or
+/// closed (content) after the generation prompt. Pins the construction; not compared with
+/// llama-server, whose markers come from its template analysis (ADR 0093, open).
+#[tokio::test]
+async fn continuation_on_a_thinking_template() {
+    let engine = FakeEngine::with_template(Some(QWEN3.into()), |_| "ok".into());
+    let prompts = engine.prompts.clone();
+    let (app, _) = app(engine);
+    let convo = json!([{"role": "user", "content": "q"}, {"role": "assistant", "content": "Hi"}]);
+    let body = json!({"model": "fake", "messages": convo});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let p = prompts.lock().unwrap().pop().unwrap();
+    assert!(
+        p.ends_with("<|im_start|>assistant\n<think></think>Hi"),
+        "{p:?}"
+    );
+    let convo = json!([{"role": "user", "content": "q"},
+                       {"role": "assistant", "content": "", "reasoning_content": "hmm"}]);
+    let body = json!({"model": "fake", "messages": convo});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let p = prompts.lock().unwrap().pop().unwrap();
+    assert!(p.ends_with("<|im_start|>assistant\n<think>hmm"), "{p:?}");
+}
+
 #[tokio::test]
 async fn chat_stream_sequence() {
     let (app, _) = app(FakeEngine::fixed("Hi you"));
@@ -245,24 +326,52 @@ async fn reasoning_content_is_split() {
     assert_eq!(m["content"].as_str().unwrap().trim(), "Answer");
 }
 
+/// Without tools or a think block, response_format reaches the engine as llama-server's grammar:
+/// the schema's (the fake converts any schema to `root ::= "{}"`), bare or fenced, and no mask.
 #[tokio::test]
-async fn json_schema_response_format_is_enforced() {
-    let (app, _) = app(FakeEngine::fixed("Sure! {\"a\": 1}"));
-    let body = json!({"model": "fake", "messages": user("json please"), "response_format": {
-        "type": "json_schema", "json_schema": {"name": "x", "strict": true, "schema": {
-            "type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"],
-            "additionalProperties": false}}}});
+async fn response_format_becomes_llama_servers_grammar() {
+    use tetraeder_gateway::engine::GrammarSource;
+    let engine = FakeEngine::fixed("Sure!");
+    let params = engine.params.clone();
+    let (app, _) = app(engine);
+    let schema =
+        json!({"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]});
+    let want = concat!(
+        "root ::= space space (\"```json\" space response-format space \"```\" | space response-format space)\n",
+        "response-format ::= response-format-schema\n",
+        "response-format-schema ::= \"{}\"\n",
+    );
+    for format in [
+        json!({"type": "json_schema", "json_schema": {"name": "x", "schema": schema}}),
+        json!({"type": "json_schema", "schema": schema}),
+        json!({"type": "json_object"}),
+        json!({"type": "json_object", "schema": schema}),
+    ] {
+        let body = json!({"model": "fake", "messages": user("json"), "response_format": format});
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200, "{format}: {v}");
+        let p = params.lock().unwrap().pop().unwrap();
+        assert_eq!(
+            p.extra.grammar,
+            Some(GrammarSource::Gbnf(want.into())),
+            "{format}"
+        );
+        // the fake honours masks only: unconstrained output means no mask was set
+        assert_eq!(v["choices"][0]["message"]["content"], "Sure!", "{format}");
+    }
+    let body =
+        json!({"model": "fake", "messages": user("json"), "response_format": {"type": "xml"}});
     let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
-    assert_eq!(s, 200, "{v}");
-    let out: Value =
-        serde_json::from_str(v["choices"][0]["message"]["content"].as_str().unwrap()).unwrap();
-    assert_eq!(out, json!({"a": 1}));
+    assert_eq!(s, 400, "{v}");
 }
 
+/// With tools offered, response_format keeps the token mask (the grammar would also bind the
+/// tool calls).
 #[tokio::test]
-async fn json_object_response_format() {
+async fn response_format_with_tools_keeps_the_mask() {
     let (app, _) = app(FakeEngine::fixed("Here: {\"k\": \"v\"}"));
-    let body = json!({"model": "fake", "messages": user("json"), "response_format": {"type": "json_object"}});
+    let body = json!({"model": "fake", "messages": user("json"), "response_format": {"type": "json_object"},
+                      "tools": [weather_tool_openai()]});
     let (_, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
     let out: Value =
         serde_json::from_str(v["choices"][0]["message"]["content"].as_str().unwrap()).unwrap();
@@ -519,5 +628,90 @@ async fn single_tool_call_cancels_the_engine() {
             cancelled_count.load(std::sync::atomic::Ordering::SeqCst),
             cancelled
         );
+    }
+}
+
+#[tokio::test]
+async fn completion_prompt_batches_answer_prompt_major() {
+    let engine = FakeEngine::fixed("ok");
+    let prompts = engine.prompts.clone();
+    let cfg = tetraeder_gateway::gateway::GatewayConfig {
+        max_concurrent: 2,
+        ..Default::default()
+    };
+    let (app, _) = app_with(engine, cfg);
+    let body = json!({"model": "fake", "prompt": ["one", "two"], "n": 2});
+    let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    let idx: Vec<u64> = v["choices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["index"].as_u64().unwrap())
+        .collect();
+    assert_eq!(idx, [0, 1, 2, 3]);
+    assert_eq!(prompts.lock().unwrap().len(), 4);
+    // token ids are one prompt, not a batch
+    let body = json!({"model": "fake", "prompt": [1, 2, 3]});
+    let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["choices"].as_array().unwrap().len(), 1);
+    let (s, _, v) = post(
+        &app,
+        "/v1/completions",
+        &json!({"model": "fake", "prompt": []}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 400, "{v}");
+}
+
+/// More prompts than slots: the batch queues on the one slot instead of holding it while its
+/// unread output fills the stream buffer.
+#[tokio::test]
+async fn completion_prompt_batch_longer_than_the_slots_finishes() {
+    let cfg = tetraeder_gateway::gateway::GatewayConfig {
+        max_concurrent: 1,
+        stream_buffer: 1,
+        ..Default::default()
+    };
+    let (app, _) = app_with(FakeEngine::fixed("a longer answer than the buffer"), cfg);
+    let body = json!({"model": "fake", "prompt": ["one", "two", "three"]});
+    let res = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        post(&app, "/v1/completions", &body, false),
+    )
+    .await
+    .expect("a batch longer than the slots must not hang");
+    let (s, _, v) = res;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["choices"].as_array().unwrap().len(), 3);
+    assert_eq!(v["choices"][2]["index"], 2);
+    assert_eq!(v["choices"][2]["text"], "a longer answer than the buffer");
+    // streamed, the batch must fit the slots
+    let body = json!({"model": "fake", "prompt": ["one", "two"], "stream": true});
+    let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+    assert_eq!(s, 400, "{v}");
+}
+
+#[tokio::test]
+async fn input_tokens_count_the_chat_prompt() {
+    let (app, _) = app(FakeEngine::fixed("ok"));
+    let want =
+        json!({"input_tokens": chatml_user_tokens("count me"), "object": "response.input_tokens"});
+    for path in [
+        "/v1/chat/completions/input_tokens",
+        "/chat/completions/input_tokens",
+    ] {
+        let body = json!({"model": "fake", "messages": user("count me")});
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+        assert_eq!(v, want, "{path}");
+    }
+    for path in ["/v1/responses/input_tokens", "/responses/input_tokens"] {
+        let body = json!({"model": "fake", "input": "count me"});
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+        assert_eq!(v, want, "{path}");
     }
 }
