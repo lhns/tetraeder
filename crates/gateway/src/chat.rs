@@ -68,9 +68,11 @@ impl Serialize for ToolDef {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let mut f = serde_json::Map::new();
         f.insert("name".into(), Value::String(self.name.clone()));
-        if let Some(d) = &self.description {
-            f.insert("description".into(), Value::String(d.clone()));
-        }
+        // llama-server's template input always has a description, empty when the request gave none
+        f.insert(
+            "description".into(),
+            Value::String(self.description.clone().unwrap_or_default()),
+        );
         f.insert("parameters".into(), self.parameters.clone());
         serde_json::json!({"type": "function", "function": f}).serialize(s)
     }

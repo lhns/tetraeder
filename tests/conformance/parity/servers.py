@@ -17,6 +17,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "tests" / "fixtures"
 # The tiny GGUFs carry no chat template; both servers get this one, so the prompts are the same.
 TEMPLATE = FIXTURES / "chatml.jinja"
+# A case may name another template with `--chat-template-file {fixtures}/<file>` in llama_args and tetraeder_args:
+# qwen3-tools.jinja renders tool calls and <think> (the tiny GGUFs carry no template of their own).
+TOOLS_TEMPLATE = FIXTURES / "qwen3-tools.jinja"
 # tetraeder engine -> model family; llama-server is keyed by family (auto and dense share the qwen3 fixture)
 FAMILY = {"auto": "qwen3", "dense": "qwen3", "moe": "qwen3moe", "llama-moe": "qwen3moe"}
 # the `--engine` value of a case engine: `llama-moe` is libllama on the MoE fixture (`auto` would pick the own MoE builder)
@@ -35,6 +38,11 @@ def sampling_for(extra) -> list:
         if flag not in extra:
             out += [flag, value]
     return out
+
+
+def template_for(extra) -> list:
+    """The default template unless the case gives its own (both servers refuse the flag twice)."""
+    return [] if "--chat-template-file" in extra else ["--chat-template-file", str(TEMPLATE)]
 
 
 EXE = ".exe" if sys.platform == "win32" else ""
@@ -129,7 +137,7 @@ def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX, pin=Fals
     argv = [
         str(binary), "-m", str(FIXTURES / MODEL_FILE[model]), "--host", "127.0.0.1", "--port", str(port),
         "-c", str(ctx), "-np", str(SLOTS), "-kvu", "-t", str(THREADS), *sampling_for(extra),
-        "--chat-template-file", str(TEMPLATE), "--metrics", "--no-warmup", *extra,
+        *template_for(extra), "--metrics", "--no-warmup", *extra,
     ]  # fmt: skip
     return launch(f"llama-server-{model}{tag}", argv, "/health", port, log_dir)
 
@@ -140,7 +148,7 @@ def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX, pin
     argv = [
         str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", ENGINE_FLAG.get(engine, engine),
         "--host", "127.0.0.1", "--port", str(port), "--ctx", str(ctx), "--parallel", str(SLOTS), "-t", str(THREADS),
-        *sampling_for(extra), "--chat-template-file", str(TEMPLATE), "--accept-any-model", "--metrics", *extra,
+        *sampling_for(extra), *template_for(extra), "--accept-any-model", "--metrics", *extra,
     ]  # fmt: skip
     # /health is public, so the instance that has an API key is ready too
     return launch(f"tetraeder-{engine}{tag}", argv, "/health", port, log_dir)

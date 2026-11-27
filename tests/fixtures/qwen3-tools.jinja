@@ -1,0 +1,39 @@
+{#- Qwen3-style template for the parity fixture: tools, tool calls, tool results and <think>. Written for this repo (not copied); same markers as Qwen3, a short tool preamble because the tiny models have 512 context and one token per byte. -#}
+{%- if tools %}
+{{- '<|im_start|>system\n' }}
+{%- if messages[0].role == 'system' %}{{- messages[0].content + '\n' }}{%- endif %}
+{{- '# Tools\n<tools>' }}
+{%- for tool in tools %}{{- '\n' }}{{- tool | tojson }}{%- endfor %}
+{{- '\n</tools>\nCall: <tool_call>\n{"name": NAME, "arguments": ARGS}\n</tool_call><|im_end|>\n' }}
+{%- elif messages[0].role == 'system' %}
+{{- '<|im_start|>system\n' + messages[0].content + '<|im_end|>\n' }}
+{%- endif %}
+{%- set ns = namespace(last_user=0) %}
+{%- for m in messages %}{%- if m.role == 'user' %}{%- set ns.last_user = loop.index0 %}{%- endif %}{%- endfor %}
+{%- for m in messages %}
+{%- if m.role == 'system' and loop.index0 == 0 %}
+{%- elif m.role == 'user' %}
+{{- '<|im_start|>user\n' + m.content + '<|im_end|>\n' }}
+{%- elif m.role == 'assistant' %}
+{%- set content = m.content or '' %}
+{%- set reasoning = m.reasoning_content or '' %}
+{%- if loop.index0 > ns.last_user and reasoning %}
+{{- '<|im_start|>assistant\n<think>\n' + reasoning + '\n</think>\n\n' + content }}
+{%- else %}
+{{- '<|im_start|>assistant\n' + content }}
+{%- endif %}
+{%- for tc in m.tool_calls or [] %}
+{%- set f = tc.function if tc.function else tc %}
+{{- '\n<tool_call>\n{"name": "' + f.name + '", "arguments": ' + (f.arguments if f.arguments is string else f.arguments | tojson) + '}\n</tool_call>' }}
+{%- endfor %}
+{%- if not loop.last %}{{- '<|im_end|>\n' }}{%- endif %}
+{%- elif m.role == 'tool' %}
+{%- if loop.first or messages[loop.index0 - 1].role != 'tool' %}{{- '<|im_start|>user' }}{%- endif %}
+{{- '\n<tool_response>\n' + m.content + '\n</tool_response>' }}
+{%- if loop.last or messages[loop.index0 + 1].role != 'tool' %}{{- '<|im_end|>\n' }}{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+{{- '<|im_start|>assistant\n' }}
+{%- if enable_thinking is defined and enable_thinking is false %}{{- '<think>\n\n</think>\n\n' }}{%- endif %}
+{%- endif %}

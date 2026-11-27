@@ -22,7 +22,7 @@ import httpx
 import pytest
 import yaml
 from parity_lib import compare, generated_text, get_path, norm_text, parse_sse
-from servers import CTX, FAMILY, ServerStartError, find_llama_server, find_tetraeder, start_llama, start_tetraeder
+from servers import CTX, FAMILY, FIXTURES, ServerStartError, find_llama_server, find_tetraeder, start_llama, start_tetraeder
 
 HERE = pathlib.Path(__file__).resolve().parent
 CASES = yaml.safe_load((HERE / "cases.yaml").read_text(encoding="utf-8"))["cases"]
@@ -95,7 +95,7 @@ class Pool:
             tag = f"-{len(self.running)}"
             tmp = self.log_dir / f"tmp{tag}"
             tmp.mkdir(exist_ok=True)
-            args = [a.replace("{tmp}", str(tmp)) for a in extra]
+            args = [a.replace("{tmp}", str(tmp)).replace("{fixtures}", str(FIXTURES)) for a in extra]
             if kind == "llama":
                 self.running[k] = start_llama(self.llama_bin, key, self.log_dir, args, tag, ctx, pin)
             else:
