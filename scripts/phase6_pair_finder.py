@@ -86,6 +86,12 @@ SKIP_HOSTS = {
     "399360": "GPUs power capped", "203531": "never opened SSH", "611393": "GPUs below default power",
     "706255": "GPUs below default power", "397236": "stalled, then power capped",
 }  # fmt: skip
+# Hosts that passed every on-box gate of a Case S pair (power, idle, co-tenant, one NUMA node, cuda): a ranking preference only
+# (advisor, delegated by the owner 2026-11-27), no rule changes; the gates still run on the box.
+GATED_HOSTS = {
+    "79466": "passed the gates on 20261126 pair 1 and 20261127",
+    "45726": "passed the gates on 20261126c",
+}
 RULES = ("gpu_class", "skip_host", "unknown", "cores", "ram", "disk", "inet", "price")
 
 
@@ -150,10 +156,10 @@ def bulk_mbps(x, y):
 
 
 def pair_key(p):
-    """Rank: plannable pairs first, then bulk rate (500 Mbit/s buckets, capped at 4000: beyond it the path, not the access link, limits), then datacenter
+    """Rank: plannable pairs first, then the number of hosts that passed the on-box gates before (GATED_HOSTS), then bulk rate (500 Mbit/s buckets, capped at 4000: beyond it the path, not the access link, limits), then datacenter
     hosts (hosting_type 1), then price. RTT is not ranked: the covering pick is the same on every link of the committed fixtures."""
     bucket = int(min(p["bulk_mbps"], 4000) // 500)
-    return (not p["plannable"], -bucket, -p["datacenter"], p["price_per_h"])
+    return (not p["plannable"], -p.get("gated", 0), -bucket, -p["datacenter"], p["price_per_h"])
 
 
 def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS, plan_aclass=True):
@@ -166,6 +172,7 @@ def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS, plan_aclass=True):
             "a": x["id"], "b": y["id"], "hosts": [str(x["host_id"]), str(y["host_id"])],
             "gpus": [x["gpu_name"], y["gpu_name"]], "locations": [x.get("location"), y.get("location")],
             "bulk_mbps": bulk_mbps(x, y), "datacenter": dc,
+            "gated": sum(str(b["host_id"]) in GATED_HOSTS for b in (x, y)),
             "price_per_h": round(all_in(x, dl, hrs) + all_in(y, dl, hrs), 3),
             "plannable": plan_aclass or not any(b["gpu_name"] in CLASSES_A for b in (x, y)),
             "boxes": [x, y],
