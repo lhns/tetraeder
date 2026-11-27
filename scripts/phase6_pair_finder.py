@@ -100,6 +100,11 @@ PASS_MACHINES = {
     ("45726", "7543"): "gates: Ryzen 9 5950X, passed on 20261126c",
     ("543999", "155645"): "scout: Core i9-14900KS, 1 socket, 1 NUMA node, 420 of 420 W, memory.max 64.4 GB, cuda ok (20261127j)",
 }
+# memory.max measured on a pass-list machine and the offer's RAM then, (bytes, GB). The offer under-reads memory.max by about 0.65%
+# (79466: 128.491 against 129.3 GB; 543999: 63.977 against 64.40), so for a measured machine the measurement decides the 64 GB rule,
+# which is memory.max in the balloon's unit (advisor, delegated by the owner 2026-11-27); sc_balloon.sh start still refuses a box
+# whose memory.max is not above 64 GB, before any download
+MEASURED_MEMORY = {("543999", "155645"): (64_400_392_192, 63.977)}
 RULES = ("gpu_class", "skip_host", "unknown", "cores", "ram", "disk", "inet", "price")
 
 
@@ -154,8 +159,19 @@ def screen(offers, a):
     return keep, counts
 
 
+def pass_key(o):
+    return (str(o.get("host_id")), None if o.get("machine_id") is None else str(o["machine_id"]))
+
+
 def on_pass_list(o):
-    return (str(o.get("host_id")), None if o.get("machine_id") is None else str(o["machine_id"])) in PASS_MACHINES
+    return pass_key(o) in PASS_MACHINES
+
+
+def measured_memory_ok(o):
+    """A pass-list machine whose measured memory.max is at least 64 GB, offered with no less RAM than when it was measured."""
+    m = MEASURED_MEMORY.get(pass_key(o))
+    ram = num(o.get("ram_gb"))
+    return on_pass_list(o) and m is not None and m[0] >= BALLOON_GB * 1e9 and ram is not None and ram >= m[1]
 
 
 def two_socket_hint(o):
@@ -220,7 +236,10 @@ def flags(o):
     """What the offer does not say and the gates on the box must (power limit, NUMA nodes, sockets)."""
     f = ["power limit unknown (gate on box)", "NUMA/sockets unknown (lscpu gate on box)"]
     if (num(o.get("ram_gb")) or 0) < BALLOON_GB:
-        f.append("RAM under 64 GB: no balloon, measured headroom")
+        if measured_memory_ok(o):
+            f.append(f"offer RAM {num(o['ram_gb']):.3f} GB, memory.max measured {MEASURED_MEMORY[pass_key(o)][0] / 1e9:.2f} GB at the scout")
+        else:
+            f.append("RAM under 64 GB: no balloon, measured headroom")
     if o.get("gpu_name") in CLASSES_A:
         f.append("A-class: the finder prices it with the 3090 prior; on the boxes cluster profile and merge cap it at 24 GiB and use its class prior")
     return f

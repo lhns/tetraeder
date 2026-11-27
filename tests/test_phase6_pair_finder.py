@@ -230,6 +230,16 @@ def test_scouts_skip_pass_list_machines_and_rank_two_socket_hints_last(monkeypat
     assert "scout candidate(s)" in capsys.readouterr().out
 
 
+def test_measured_memory_max_decides_the_ram_flag_of_a_scouted_machine_only(monkeypatch):
+    monkeypatch.setattr(pf, "PASS_MACHINES", {("543999", "155645"): "scout"})
+    monkeypatch.setattr(pf, "MEASURED_MEMORY", {("543999", "155645"): (64_400_392_192, 63.977)})
+    box = {"host_id": "543999", "machine_id": "155645", "ram_gb": 63.977, "gpu_name": "RTX 3090"}
+    ram = lambda o: [f for f in pf.flags(o) if "RAM" in f]  # noqa: E731
+    assert ram(box) and not any("RAM under 64 GB" in f for f in ram(box))  # pair_create matches that substring
+    assert any("RAM under 64 GB" in f for f in ram({**box, "ram_gb": 63.5}))  # offered with less RAM than measured
+    assert any("RAM under 64 GB" in f for f in ram({**box, "machine_id": "1"}))  # not measured
+
+
 def test_pass_list_machines_are_in_the_box_driver_doc():
     doc = (ROOT / "docs" / "box-driver.md").read_text(encoding="utf-8")
     missing = [f"{h}/{m}" for h, m in pf.PASS_MACHINES if not re.search(rf"\b{h}\b", doc) or not re.search(rf"\b{m}\b", doc)]
