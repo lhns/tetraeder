@@ -23,6 +23,7 @@ flowchart TB
     engine_gpu_tolerance["✔ GPU parity anchored<br/>on libllama"]
     engine_pin_b12426["✔ Move to llama.cpp<br/>b12426"]
     engine_exit_segment_harness["✔ Exit segment harness"]
+    engine_avx_drift_skip>"✔ AVX drift skip in<br/>spec tests"]
     engine_backend_parity["⏸ Builders on HIP,<br/>Vulkan and Metal"]
     engine_glm_builder["⏸ Own GLM graph<br/>builder"]
     engine_deepseek_builder["⏸ Own DeepSeek graph<br/>builder"]
@@ -41,13 +42,16 @@ flowchart TB
     engine_decode_dispatch ~~~ engine_gpu_tolerance
     engine_cpu_poll ~~~ engine_pin_b12426
     engine_dense_builder ~~~ engine_exit_segment_harness
-    engine_gpu_tolerance ~~~ engine_backend_parity
-    engine_pin_b12426 ~~~ engine_glm_builder
-    engine_exit_segment_harness ~~~ engine_deepseek_builder
+    engine_gpu_tolerance ~~~ engine_avx_drift_skip
+    engine_pin_b12426 ~~~ engine_backend_parity
+    engine_exit_segment_harness ~~~ engine_glm_builder
+    engine_avx_drift_skip ~~~ engine_deepseek_builder
     engine_backend_parity ~~~ engine_bitnet_builder
     engine_glm_builder ~~~ engine_qwen35moe_builder
     engine_deepseek_builder ~~~ engine_one_graph_per_token
     engine_bitnet_builder ~~~ engine_dense_amx
+    engine_qwen35moe_builder ~~~ engine_dense_amx
+    engine_one_graph_per_token ~~~ engine_dense_amx
     engine_moe_builder --> engine_cpu_threadpool
     engine_moe_builder --> engine_cuda_graphs
     engine_kt_gap --> engine_isa_dispatch
@@ -75,7 +79,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class engine_libllama succ
+    class engine_libllama,engine_avx_drift_skip succ
     class engine_moe_builder,engine_cpu_threadpool,engine_cuda_graphs,engine_kt_gap,engine_isa_dispatch,engine_iqk_kernels,engine_decode_dispatch,engine_dense_builder,engine_gpu_tolerance,engine_pin_b12426,engine_exit_segment_harness unrated
     class engine_overflow_passes dead
     class engine_cpu_poll vsucc
@@ -102,6 +106,7 @@ flowchart TB
 | `engine-dense-builder` | Own Qwen3 dense builder | feature | none | done | unrated | 2026-11-14 | 2026-11-16 | engine-moe-builder |  |  |  | docs/adr/0066-own-qwen3-dense-builder.md; docs/adr/0072-dense-builder-cpu-weights-in-extra-buffer-types.md |
 | `engine-gpu-tolerance` | GPU parity anchored on libllama | feature | none | done | unrated | 2026-11-15 | 2026-11-17 |  |  |  |  | docs/adr/0071-gpu-logit-tolerance-relative-anchored-to-libllama.md |
 | `engine-pin-b12426` | Move to llama.cpp b12426 | feature | none | done | unrated | 2026-11-16 | 2026-11-18 | bench-pin-ab |  |  |  | docs/adr/0073-engine-pin-b12426.md; vendor/PIN |
+| `engine-avx-drift-skip` | AVX drift skip in spec tests | defect | ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  | K-quant drift skipped on every 256-bit AVX tier | docs/adr/0073-engine-pin-b12426.md; crates/scheduler/tests/spec_builder.rs |
 | `engine-backend-parity` | Builders on HIP, Vulkan and Metal | feature | none | parked | unrated |  |  | engine-dense-builder, engine-moe-builder |  |  |  |  |
 | `engine-glm-builder` | Own GLM graph builder | feature | none | parked | unrated |  |  | engine-moe-builder |  |  |  |  |
 | `engine-deepseek-builder` | Own DeepSeek graph builder | feature | none | parked | unrated |  |  | engine-moe-builder |  |  |  |  |
@@ -128,6 +133,7 @@ flowchart TB
 | `engine-dense-builder` | Own Qwen3 dense builder | parity tests against libllama (bitwise on CPU) |  | Phase 4: Tetraeder's own graph builder for dense Qwen3 models (the judged path of the Phase 4 test), sharing one attention module with the MoE builder and matching libllama's logits. |  |  |  |  |  |
 | `engine-gpu-tolerance` | GPU parity anchored on libllama | gpu-smoke2's failures are F16 kernel noise at the fixtures' logit scale (11 to 15) |  | GPU logits never match the CPU bit for bit; the parity tests now allow the gap libllama itself shows between CUDA and CPU, relative to the logit scale. |  |  |  |  |  |
 | `engine-pin-b12426` | Move to llama.cpp b12426 |  |  | The engine is built on a pinned llama.cpp release; moving the pin from b11976 to b12426 picked up upstream speedups the baseline already had. |  |  |  |  |  |
+| `engine-avx-drift-skip` | AVX drift skip in spec tests | CI run 45895321742 success; DL sse42 5 strict passes, DL ivybridge 5 skipped, native avx 5 skipped | K-quant drift skipped on every 256-bit AVX tier | The five spec_builder CPU failures on the AVX-only docker host were the ADR 0073 K-quant batch drift, not a regression; the tests now skip on any AVX tier without AVX-512 and assert bit equality only without AVX. |  |  |  |  |  |
 | `engine-backend-parity` | Builders on HIP, Vulkan and Metal |  |  | The own graph builders run on AMD (HIP), Vulkan and Apple (Metal) GPUs, with parity tests per backend; this is also when mixed GPU vendors in one setup arrive (plan features 14 and Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Needs AMD and Apple hardware, which Vast does not rent here. Done when: parity per backend and split point. |  |  |  |  |
 | `engine-glm-builder` | Own GLM graph builder |  |  | An own graph builder for the GLM model family, with parity against libllama (plan.md, Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: logit parity against libllama on CUDA and CPU. |  |  |  |  |
 | `engine-deepseek-builder` | Own DeepSeek graph builder |  |  | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: logit parity against libllama on CUDA and CPU. |  |  |  |  |

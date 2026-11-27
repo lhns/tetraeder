@@ -2432,7 +2432,7 @@ nodes:
   overview: false
   plain: ADR 0093 closed five of the six audit gaps in the gateway, the input_tokens routes, GET /slots, prompt arrays on /v1/completions (a batch with more prompts than slots used to hang), continue_final_message with add_generation_prompt and prefill_assistant, and response_format on llama-server's own grammar with only the JSON as content; forced tool_choice stays a strict gap because the fixture template renders no tools, and the reasoning controls stay open for lack of a thinking template (CI run 45910480502).
   notes: 'Behaviour change - a trailing assistant message on the OpenAI routes is continued without a flag, as llama-server does. GET /slots marks the first busy slots, not the real ones. A pin move must recheck the rebuilt response_format grammar.'
-- id: plan-validator-per-layer-sizes
+- id: planner-validator-per-layer-sizes
   title: Validator sizes units per layer
   track: planner
   kind: defect
@@ -2451,12 +2451,12 @@ nodes:
   overview: false
   plain: The validator counts every unit of a kind at the model's mean size, so a segment of heavy layers (the 235B's Q6_K ends) passes with fewer bytes than it holds; the planner's footprint guards planned segments, but a hand-written plan could pass and run out of memory. Also drop the GPU doubling in cluster_hardening n_nodes, which looks like a workaround.
   notes: 'From the planner-footprint-validator-gap worker, 2026-11-26. ModelDesc sizing feeds the executor arenas, so the change needs care.'
-- id: scheduler-avx-drift-skip
+- id: engine-avx-drift-skip
   title: AVX drift skip in spec tests
   track: engine
   kind: defect
   state: done
-  outcome: successful
+  outcome: unrated
   evidence:
   - docs/adr/0073-engine-pin-b12426.md
   - crates/scheduler/tests/spec_builder.rs

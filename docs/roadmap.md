@@ -291,6 +291,7 @@ flowchart TB
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
 | Price decode at measured clocks | ✔ done · successful | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
 | Cost model 5 second host | ○ next | Cost model 5 (clock-aware decode) is fitted and confirmed only on host 20210; check its predictions on a second 4-GPU host when one is usable. |
+| Validator sizes units per layer | ⚠ open | The validator counts every unit of a kind at the model's mean size, so a segment of heavy layers (the 235B's Q6_K ends) passes with fewer bytes than it holds; the planner's footprint guards planned segments, but a hand-written plan could pass and run out of memory. Also drop the GPU doubling in cluster_hardening n_nodes, which looks like a workaround. |
 | Planner footprint against the validator | ⚠ open | A 7-node plan on 24 GB cards passes the planner's footprint but fails the validator with MemoryExceeded; find which accounting differs and make them agree, with a property test over the cluster fixtures (found by planner-costmodel-v6-rest; does not affect the two-node exit). |
 | Replan without draining | ⛔ blocked | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). |
 | Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
@@ -374,6 +375,7 @@ flowchart TB
 
 **ci**
 
+- `planner-validator-per-layer-sizes`: Validator sizes units per layer
 - `planner-footprint-validator-gap`: Planner footprint against the validator
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
@@ -426,7 +428,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 161 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 162 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -874,6 +876,7 @@ Generated on 2026-11-27.
 - `cluster-remote-kv`: KV cache on another machine (✔ done · unrated). Through the real head, a prefix another replica holds is fetched when the priced rule says the move beats recomputing and recomputed otherwise; every decision is logged with its priced inputs and counted on /metrics, and a fetched prefix decodes like a computed one.
 - `cluster-short-prefix-dropped`: Short idle prefix taken unsaved (✔ fixed). A short idle prefix is no longer given up to a request that shares only a token or two with it while a slot is free, and the head forgets a prefix once its holder answers that it is gone (not measured).
 - `memory-replay-expected-uses`: Replay expected-uses expert ranking (✔ done · dead-end). Magnitude's expected-uses ranking (decayed routing counts plus router lookahead), tried as a policy in the offline replay on the saved 235B trace, reads about the same synchronous miss bytes as gfreq:1 at 26 slots (1% more, 3% fewer at the best horizon), so it is not ported to the engine.
+- `engine-avx-drift-skip`: AVX drift skip in spec tests (✔ fixed). The five spec_builder CPU failures on the AVX-only docker host were the ADR 0073 K-quant batch drift, not a regression; the tests now skip on any AVX tier without AVX-512 and assert bit equality only without AVX.
 - `serving-parity-remaining`: Close the known parity gaps (✔ done · successful). ADR 0093 closed five of the six audit gaps in the gateway, the input_tokens routes, GET /slots, prompt arrays on /v1/completions (a batch with more prompts than slots used to hang), continue_final_message with add_generation_prompt and prefill_assistant, and response_format on llama-server's own grammar with only the JSON as content; forced tool_choice stays a strict gap because the fixture template renders no tools, and the reasoning controls stay open for lack of a thinking template (CI run 45910480502).
 
 </details>
@@ -908,9 +911,9 @@ Generated on 2026-11-27.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (13 done, 1 next, 6 parked, 1 abandoned)
+- [engine - engine and builders](roadmap/tracks/engine.md): 22 nodes (14 done, 1 next, 6 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 19 nodes (13 done, 1 next, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 30 nodes (19 done, 4 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 32 nodes (22 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 57 nodes (43 done, 3 next, 4 blocked, 6 parked, 1 abandoned)
