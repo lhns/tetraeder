@@ -7,3 +7,5 @@
   - b: box 62870950, host 79466 (Quebec, CA), RTX 3090, 0.443 USD/h all-in; ready 15:44:39, `provision --models ,` with `cuda: ok` at 15:47:46; no gate run; destroyed 15:54:45.
 - Cost: about 0.12 USD (both boxes about 10.5 min, rent only); the Vast credit read 15.11 USD at 15:43 and 15.00 USD at 15:54, it may lag.
 - Consequence: no host list changes; one SSH stall is not a host property (docs/box-driver.md "On surprises").
+- Search after attempt i (foreground `scripts/phase6_pair_create.sh` every 3 to 4 min until 16:38, the end of the 2 h window that began at 14:39): tries 9, 10, 12, 13, 16, 17 and 18 listed no pair; in tries 11, 14 and 15 the partner's offer (hosts 623333, 22965 and an L40S on 710540) was gone at create, and the lone box on host 79466 (62873341, 62875351, 62876140) was destroyed within a minute (about 0.03 USD together). No create after 16:38.
+- Spend of the whole search, attempts f to i and the lone boxes: the Vast credit read 15.52 USD at 14:33 and 14.86 USD at 16:38, about 0.66 USD; 0 of 2 download attempts used.
