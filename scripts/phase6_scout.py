@@ -182,17 +182,27 @@ def probe(a):
             "two_socket_hint": row.get("two_socket_hint")}  # fmt: skip
     offer = current_offer(row.get("machine_id"), row["id"], row["gpu_name"], outd) if row.get("machine_id") else row["id"]
     say(f"scout: offer {offer} host {meta['host']} machine {meta['machine']} ({meta['gpu']}, {meta['cpu_name']}); create")
+    for stale in (outd / f"scout-{meta['host']}-{meta['machine']}.json",):
+        stale.unlink(missing_ok=True)
     t0 = time.time()
-    try:
-        r = subprocess.run(["bash", "scripts/sc_offers.sh", "create", "--offer", str(offer), "--gpu", row["gpu_name"]],
-                           cwd=ROOT, capture_output=True, text=True, timeout=a.create_timeout)  # fmt: skip
-        out, create_rc = (r.stdout or "") + (r.stderr or ""), r.returncode
-    except subprocess.TimeoutExpired as e:
-        create_rc = 124
-        out = f"{e.stdout or ''}{e.stderr or ''}"
-        out = out if isinstance(out, str) else out.decode(errors="replace")
-        out += f"\ncreate timeout after {a.create_timeout} s"
-    (outd / f"create-{meta['host']}.log").write_text(out, encoding="utf-8")
+    # the create waits for SSH longer than the 10 min stall rule (docs/box-driver.md): bound it, the log file keeps the box id
+    clog = outd / f"create-{meta['host']}.log"
+    with open(clog, "w", encoding="utf-8") as f:
+        pr = subprocess.Popen(["bash", "scripts/sc_offers.sh", "create", "--offer", str(offer), "--gpu", row["gpu_name"]],
+                              cwd=ROOT, stdout=f, stderr=subprocess.STDOUT, text=True)  # fmt: skip
+        try:
+            create_rc = pr.wait(timeout=a.create_timeout)
+        except subprocess.TimeoutExpired:
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pr.pid)], capture_output=True)
+            else:
+                pr.kill()
+            pr.wait()
+            create_rc = 124
+    out = clog.read_text(encoding="utf-8", errors="replace")
+    if create_rc == 124:
+        with open(clog, "a", encoding="utf-8") as f:
+            f.write(f"\ncreate stopped after {a.create_timeout} s (stall rule)\n")
     box = created_id(out)
     if not box:
         say("create rented no box: " + (out.strip().splitlines() or ["?"])[-1])
@@ -226,7 +236,7 @@ def main(argv=None):
     pr.add_argument("--machine")
     pr.add_argument("--host")
     pr.add_argument("--no-cuda", action="store_true")
-    pr.add_argument("--create-timeout", type=int, default=900)
+    pr.add_argument("--create-timeout", type=int, default=600, help="seconds; the stall rule is 10 min after create")
     pr.add_argument("finder_args", nargs="*", help="after --: extra finder flags (e.g. --skip-hosts H)")
     ck = sub.add_parser("check")
     ck.add_argument("--id", required=True)
