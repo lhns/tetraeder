@@ -18,6 +18,7 @@
 | 17:57 | 440607 / 139376 | 3090, EPYC 7742 (128 threads) | 62886511 | 0.5 min | power 270 W against 420 W default | skip |
 | 18:04 | 88516 / 104634 | 3090, Core i9-13900KF | 62887406 | 5.7 min | power 220 W against 350 W default; memory.max 63.45 GB | skip |
 | 18:12 | 79466 / 54637 | 3090, Ryzen 9 3900X | 62888226 | 10.2 min | stall: no SSH within the 10 min rule (one stall; host 79466's machine 41880 passed every gate) | |
+| 18:33 | 22965 / 43388 | 3090, 48 threads (two-socket hint) | 62890751 | 10.0 min | stall: no SSH within 10 min, its second (attempt i) | skip |
 | 18:29 | 710540 / 155008 | L40S, Xeon SapphireRapids (48 threads, two-socket hint) | 62890242 | 0.8 min | 2 sockets, 2 NUMA nodes (power 350 of 350 W) | skip |
 
 Result files: `scout-<host>-<machine>.json` in this directory.
