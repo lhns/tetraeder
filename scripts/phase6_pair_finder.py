@@ -88,11 +88,15 @@ SKIP_HOSTS = {
     "399360": "GPUs power capped", "203531": "never opened SSH", "611393": "GPUs below default power",
     "706255": "GPUs below default power", "397236": "stalled, then power capped",
 }  # fmt: skip
-# Hosts that passed every on-box gate of a Case S pair (power, idle, co-tenant, one NUMA node, cuda): a ranking preference only
-# (advisor, delegated by the owner 2026-11-27), no rule changes; the gates still run on the box.
-GATED_HOSTS = {
-    "79466": "passed the gates on 20261126 pair 1 and 20261127",
-    "45726": "passed the gates on 20261126c",
+# The pass list: machines (host id, machine id) that passed the on-box gates. A host id is not a machine: host 79466 offers a
+# Xeon W-2133 machine (41880, passed) and a Ryzen 9 3900X machine (54637, never gated), and power limit, sockets and NUMA nodes
+# belong to the machine. A ranking preference, and with --pass-only the only pairs listed; the gates still run on every box
+# (advisor, delegated by the owner 2026-11-27). Each entry says which kind of pass it is: "gates" (every gate of a Case S
+# pair: power, idle, co-tenant, one NUMA node, cuda) or "scout" (static properties only, scripts/phase6_scout.py: one socket,
+# one NUMA node, power at default, memory.max at least 64 GB, cuda ok; idle and co-tenant vary and are not host properties).
+PASS_MACHINES = {
+    ("79466", "41880"): "gates: Xeon W-2133, passed on 20261126 pair 1, 20261127, f and h",
+    ("45726", "7543"): "gates: Ryzen 9 5950X, passed on 20261126c",
 }
 RULES = ("gpu_class", "skip_host", "unknown", "cores", "ram", "disk", "inet", "price")
 
@@ -148,6 +152,33 @@ def screen(offers, a):
     return keep, counts
 
 
+def on_pass_list(o):
+    return (str(o.get("host_id")), None if o.get("machine_id") is None else str(o["machine_id"])) in PASS_MACHINES
+
+
+def two_socket_hint(o):
+    """True when the host's raw thread count suggests two sockets (a ranking hint for scouts, never a rule): more threads than
+    twice the cores the CPU name gives, or over 32 threads when the name gives no core count (Xeon E5-2690 v4: 56 on 560104)."""
+    threads = num(o.get("host_threads"))
+    if threads is None:
+        return False
+    m = re.search(r"(\d+)-Core", o.get("cpu_name") or "")
+    return threads > 2 * int(m.group(1)) if m else threads > 32
+
+
+def scouts(survivors):
+    """Scout candidates: static-passing offers whose machine is not on the pass list, one per machine, ranked with the
+    two-socket hint last, then by all-in price."""
+    seen, out = set(), []
+    for o in sorted(survivors, key=lambda o: (two_socket_hint(o), all_in(o))):
+        k = (str(o["host_id"]), o.get("machine_id"))
+        if on_pass_list(o) or k in seen:
+            continue
+        seen.add(k)
+        out.append({**o, "two_socket_hint": two_socket_hint(o), "all_in": round(all_in(o), 3)})
+    return out
+
+
 def bulk_mbps(x, y):
     """Expected bulk rate between two boxes: the slower of the two directions, each limited by the sender's upload and the
     receiver's download (Mbit/s)."""
@@ -158,7 +189,7 @@ def bulk_mbps(x, y):
 
 
 def pair_key(p):
-    """Rank: plannable pairs first, then the number of hosts that passed the on-box gates before (GATED_HOSTS), then bulk rate (500 Mbit/s buckets, capped at 4000: beyond it the path, not the access link, limits), then datacenter
+    """Rank: plannable pairs first, then the number of machines on the pass list (PASS_MACHINES), then bulk rate (500 Mbit/s buckets, capped at 4000: beyond it the path, not the access link, limits), then datacenter
     hosts (hosting_type 1), then price. RTT is not ranked: the covering pick is the same on every link of the committed fixtures."""
     bucket = int(min(p["bulk_mbps"], 4000) // 500)
     return (not p["plannable"], -p.get("gated", 0), -bucket, -p["datacenter"], p["price_per_h"])
@@ -174,7 +205,7 @@ def make_pairs(survivors, dl=DOWNLOAD_GB, hrs=SESSION_HOURS, plan_aclass=True):
             "a": x["id"], "b": y["id"], "hosts": [str(x["host_id"]), str(y["host_id"])],
             "gpus": [x["gpu_name"], y["gpu_name"]], "locations": [x.get("location"), y.get("location")],
             "bulk_mbps": bulk_mbps(x, y), "datacenter": dc,
-            "gated": sum(str(b["host_id"]) in GATED_HOSTS for b in (x, y)),
+            "gated": sum(on_pass_list(b) for b in (x, y)),
             "price_per_h": round(all_in(x, dl, hrs) + all_in(y, dl, hrs), 3),
             "plannable": plan_aclass or not any(b["gpu_name"] in CLASSES_A for b in (x, y)),
             "boxes": [x, y],
@@ -241,7 +272,7 @@ def row_from_provider(off):
         "inet_down_cost": off.inet_down_cost, "ram_gb": None if ram is None else ram / 1000,
         "disk_gb": num(raw.get("disk_space")), "inet_down_mbps": num(raw.get("inet_down")),
         "inet_up_mbps": num(raw.get("inet_up")), "hosting_type": raw.get("hosting_type"), "cpu_name": raw.get("cpu_name"),
-        "gpu_max_power_w": num(raw.get("gpu_max_power")),
+        "gpu_max_power_w": num(raw.get("gpu_max_power")), "host_threads": num(raw.get("cpu_cores")),
     }  # fmt: skip
 
 
@@ -283,6 +314,10 @@ def find(a, plan_cmd=None, provider=None):
     survivors, counts = screen(offers, a)
     pairs = make_pairs(survivors, a.download_gb, a.session_hours, a.plan_aclass)
     counts["pairs_same_host_dropped"] = len(survivors) * (len(survivors) - 1) // 2 - len(pairs)
+    counts["pairs_not_both_on_pass_list"] = 0
+    if a.pass_only:
+        counts["pairs_not_both_on_pass_list"] = sum(p["gated"] < 2 for p in pairs)
+        pairs = [p for p in pairs if p["gated"] == 2]
     counts["pairs_no_covering_plan"] = 0
     listed = []
     for p in pairs:
@@ -302,8 +337,9 @@ def find(a, plan_cmd=None, provider=None):
         listed.append(p)
     return {"rules": {"ram_floor_gb": a.ram_floor_gb, "min_cores": a.min_cores, "min_disk_gb": a.min_disk,
                       "min_inet_mbps": a.min_inet, "max_price_per_h": a.max_price, "download_gb": a.download_gb,
-                      "session_hours": a.session_hours, "plan_aclass": a.plan_aclass, "reads": a.reads},
-            "counts": counts, "pairs": listed}  # fmt: skip
+                      "session_hours": a.session_hours, "plan_aclass": a.plan_aclass, "reads": a.reads,
+                      "pass_only": a.pass_only},
+            "counts": counts, "pairs": listed, "scouts": scouts(survivors)}  # fmt: skip
 
 
 def table(res, top):
@@ -311,12 +347,13 @@ def table(res, top):
     out = [f"offers per class: {c['per_class']} (a class at 0 may be a wrong name)"]
     out.append(f"{c['offers']} offers, {c['survivors']} pass the static rules; excluded first by rule / failing the rule on its own:")
     out += [f"  {r:<10} {c['excluded'][r]:>4} / {c['fails'][r]:>4}" for r in RULES]
-    out.append(f"  pairs dropped for the same host: {c['pairs_same_host_dropped']}; for no covering plan: {c['pairs_no_covering_plan']}")
+    out.append(f"  pairs dropped for the same host: {c['pairs_same_host_dropped']}; for no covering plan: {c['pairs_no_covering_plan']}; "
+               f"not both on the pass list (--pass-only): {c['pairs_not_both_on_pass_list']}")
     if not any(p["plannable"] for p in res["pairs"]):
         out.append(f"NO PLANNABLE PAIR ({len(res['pairs'])} listed with an A-class card): do not create any box (never hold one "
                    "for a partner); retry later, never loosen a rule.")
     if res["pairs"]:
-        out.append(f"{len(res['pairs'])} pair(s); top {min(top, len(res['pairs']))} by plannable, gated hosts, bulk rate, datacenter, price:")
+        out.append(f"{len(res['pairs'])} pair(s); top {min(top, len(res['pairs']))} by plannable, pass list, bulk rate, datacenter, price:")
         out.append("  #  offers (a, b)        hosts           gpus                  bulk Mbit/s  dc  USD/h  plannable  plan")
     for i, p in enumerate(res["pairs"][:top], 1):
         plan = "not run" if p["plan"] is None else f"{p['plan']['n']} covering"
@@ -335,6 +372,8 @@ def parse_args(argv=None):
     p.add_argument("--reads", type=int, default=3, help="searches per GPU class, merged")
     p.add_argument("--no-plan-aclass", dest="plan_aclass", action="store_false",
                    help="list pairs with an A-class card as not plannable (they are plannable since cluster-profile-gpu-cap)")
+    p.add_argument("--pass-only", action="store_true", help="list only pairs whose two machines are both on the pass list (PASS_MACHINES)")
+    p.add_argument("--scout", action="store_true", help="print the scout candidates (scripts/phase6_scout.py), not the pairs; exit 0 if any")
     p.add_argument("--min-cores", type=float, default=MIN_CORES)
     p.add_argument("--min-disk", type=float, default=MIN_DISK_GB)
     p.add_argument("--min-inet", type=float, default=MIN_INET_MBPS)
@@ -354,10 +393,16 @@ def main(argv=None):
     a = parse_args(argv)
     binp = os.environ.get("TETRAEDER_PLAN_BIN")
     plan_cmd = shlex.split(binp, posix=os.name != "nt") if binp else None
-    res = find(a, plan_cmd)
-    print(table(res, a.top))
+    res = find(a, None if a.scout else plan_cmd)
     if a.out:
         pathlib.Path(a.out).write_text(json.dumps(res, indent=1), encoding="utf-8")
+    if a.scout:
+        print(f"{len(res['scouts'])} scout candidate(s) (static pass, machine not on the pass list; two-socket hint last):")
+        for o in res["scouts"][: a.top]:
+            print(f"  {o['id']:>9} host {o['host_id']:<7} machine {o.get('machine_id')!s:<7} {o['gpu_name']:<9} {o.get('cpu_name')!s:<40} "
+                  f"threads {o.get('host_threads')!s:<6} hint {o['two_socket_hint']!s:<5} {o['all_in']:.3f} USD/h")  # fmt: skip
+        return 0 if res["scouts"] else 1
+    print(table(res, a.top))
     return 0 if any(p["plannable"] for p in res["pairs"]) else 1
 
 

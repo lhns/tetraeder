@@ -77,7 +77,7 @@ def test_pairs_need_different_hosts_and_rank_by_bulk_then_price():
 def test_hosts_that_passed_the_gates_rank_first(monkeypatch):
     keep, _ = pf.screen(pf.load_offers([FIXTURE]), args())
     host4 = next(str(o["host_id"]) for o in keep if o["id"] == "4")
-    monkeypatch.setattr(pf, "GATED_HOSTS", {host4: "test"})
+    monkeypatch.setattr(pf, "PASS_MACHINES", {(host4, None): "test"})
     plain = [p for p in pf.make_pairs(keep, plan_aclass=False) if p["plannable"]]
     # every pair with offer 4's host comes before the faster pairs without it; bulk rate still orders within the group
     assert [(p["a"], p["b"]) for p in plain][:3] == [("1", "4"), ("2", "4"), ("3", "4")]
@@ -187,3 +187,50 @@ def test_real_planner_places_a_covering_plan_at_the_budget(tmp_path, ram_gb):
     box = {"ram_gb": ram_gb, "cpu_cores": 12}
     res = pf.run_plan([planner_bin()], pf.pair_graph(box, box), ROOT / pf.LAYOUT, tmp_path)
     assert res["covering"], res
+
+
+def test_pass_only_lists_pairs_of_two_pass_list_machines(monkeypatch, tmp_path):
+    keep, _ = pf.screen(pf.load_offers([FIXTURE]), args())
+    host = {o["id"]: str(o["host_id"]) for o in keep}
+    monkeypatch.setattr(pf, "PASS_MACHINES", {(host["3"], None): "test", (host["4"], None): "test"})
+    res = pf.find(args("--pass-only", "--no-plan-aclass"))
+    assert [(p["a"], p["b"]) for p in res["pairs"]] == [("3", "4")]
+    assert res["counts"]["pairs_not_both_on_pass_list"] == 8
+    # pair_create reads the --out JSON, not the exit code: the filter must reach the file
+    out = tmp_path / "p.json"
+    assert pf.main(["--offers-json", str(FIXTURE), "--pass-only", "--out", str(out)]) == 0
+    assert [(p["a"], p["b"]) for p in json.loads(out.read_text())["pairs"]] == [("3", "4")]
+    monkeypatch.setattr(pf, "PASS_MACHINES", {(host["3"], None): "test"})
+    assert pf.main(["--offers-json", str(FIXTURE), "--pass-only", "--out", str(out)]) == 1
+    assert json.loads(out.read_text())["pairs"] == []
+
+
+def test_pass_list_is_per_machine(monkeypatch):
+    monkeypatch.setattr(pf, "PASS_MACHINES", {("79466", "41880"): "test"})
+    assert pf.on_pass_list({"host_id": 79466, "machine_id": 41880})
+    assert not pf.on_pass_list({"host_id": "79466", "machine_id": "54637"})  # the same host's other, ungated machine
+
+
+def test_scouts_skip_pass_list_machines_and_rank_two_socket_hints_last(monkeypatch, capsys):
+    keep, _ = pf.screen(pf.load_offers([FIXTURE]), args())
+    host = {o["id"]: str(o["host_id"]) for o in keep}
+    monkeypatch.setattr(pf, "PASS_MACHINES", {(host["4"], None): "test"})
+    rows = [dict(o) for o in keep]
+    for o in rows:
+        o["host_threads"], o["cpu_name"] = 32, "AMD Ryzen 9 5950X 16-Core Processor"
+    rows[2]["host_threads"] = 64  # offer 3: 64 threads on a 16-core name suggests two sockets
+    picked = pf.scouts(rows)
+    assert host["4"] not in [str(o["host_id"]) for o in picked]
+    assert picked[-1]["id"] == "3" and picked[-1]["two_socket_hint"]
+    assert [o["id"] for o in picked].count("1") + [o["id"] for o in picked].count("2") == 1  # one entry per (host, machine)
+    assert pf.two_socket_hint({"host_threads": 56, "cpu_name": "Xeon E5-2690 v4"})
+    assert not pf.two_socket_hint({"host_threads": 12, "cpu_name": "Xeon W-2133"})
+    assert not pf.two_socket_hint({"host_threads": 32, "cpu_name": "AMD Ryzen 9 5950X 16-Core Processor"})
+    assert pf.main(["--offers-json", str(FIXTURE), "--scout"]) == 0
+    assert "scout candidate(s)" in capsys.readouterr().out
+
+
+def test_pass_list_machines_are_in_the_box_driver_doc():
+    doc = (ROOT / "docs" / "box-driver.md").read_text(encoding="utf-8")
+    missing = [f"{h}/{m}" for h, m in pf.PASS_MACHINES if not re.search(rf"\b{h}\b", doc) or not re.search(rf"\b{m}\b", doc)]
+    assert missing == []
