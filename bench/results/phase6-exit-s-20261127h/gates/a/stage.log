@@ -1,0 +1,3 @@
+GATE FAILED numa: the host has 2 NUMA nodes, a judged session needs exactly one
+gate cotenant ok
+P6_GATES_DONE rc=1

@@ -14,7 +14,8 @@ py="${PYTHON:-.venv/Scripts/python.exe}"
 [ -x "$py" ] || py=python3
 export TETRAEDER_PLAN_BIN="${TETRAEDER_PLAN_BIN:-C:/tt/debug/tetraeder-plan.exe}"
 echo "[$(date +%T)] pair finder"
-"$py" scripts/phase6_pair_finder.py --out "$outd/pairs.json" | tail -n 4
+# shellcheck disable=SC2086 # PAIR_FINDER_ARGS: extra finder flags, word split (e.g. --skip-hosts H for an offer taxameter cannot find this session)
+"$py" scripts/phase6_pair_finder.py --out "$outd/pairs.json" ${PAIR_FINDER_ARGS:-} | tail -n 4
 pick=$("$py" -I -c '
 import json, sys
 d = json.load(open(sys.argv[1]))

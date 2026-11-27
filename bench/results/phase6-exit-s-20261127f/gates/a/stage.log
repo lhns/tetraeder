@@ -1,0 +1,4 @@
+gate numa ok
+gate cotenant ok
+GATE FAILED power: a GPU is not at its default power limit
+P6_GATES_DONE rc=1

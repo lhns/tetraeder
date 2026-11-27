@@ -74,6 +74,16 @@ def test_pairs_need_different_hosts_and_rank_by_bulk_then_price():
     assert pairs[3]["datacenter"] == 1 and pairs[4]["datacenter"] == 0
 
 
+def test_hosts_that_passed_the_gates_rank_first(monkeypatch):
+    keep, _ = pf.screen(pf.load_offers([FIXTURE]), args())
+    host4 = next(str(o["host_id"]) for o in keep if o["id"] == "4")
+    monkeypatch.setattr(pf, "GATED_HOSTS", {host4: "test"})
+    plain = [p for p in pf.make_pairs(keep, plan_aclass=False) if p["plannable"]]
+    # every pair with offer 4's host comes before the faster pairs without it; bulk rate still orders within the group
+    assert [(p["a"], p["b"]) for p in plain][:3] == [("1", "4"), ("2", "4"), ("3", "4")]
+    assert all(p["gated"] == 1 for p in plain[:3]) and all(p["gated"] == 0 for p in plain[3:])
+
+
 def test_no_plan_binary_reports_the_static_pass(capsys):
     res = pf.find(args("--no-plan-aclass"))
     assert len(res["pairs"]) == 9 and res["counts"]["pairs_same_host_dropped"] == 1
