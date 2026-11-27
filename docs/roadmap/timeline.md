@@ -4,7 +4,7 @@
 
 [Back to the page](../roadmap.md)
 
-Generated on 2026-11-26. Open bars end on that date.
+Generated on 2026-11-27. Open bars end on that date.
 
 <!-- BEGIN GENERATED: timeline -->
 ```mermaid

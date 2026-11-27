@@ -420,7 +420,7 @@ _The queue is empty._
 <!-- BEGIN GENERATED: timeline -->
 [The timeline](roadmap/timeline.md) shows every dated node as a bar from its start to its end.
 
-Generated on 2026-11-26.
+Generated on 2026-11-27.
 <!-- END GENERATED: timeline -->
 
 ## Done, by month
