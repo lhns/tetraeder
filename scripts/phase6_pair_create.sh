@@ -33,15 +33,24 @@ ga=${ga//_/ } gb=${gb//_/ }
 # each current id's machine in .vast/offers.json (taxameter ADR 0013), the creates take the id the finder's machine has now, and
 # `create --offer` follows that machine if it rotates again. Same machine, same filters and caps: no rule changes
 bash scripts/sc_offers.sh offers --gpu "$ga,$gb" --top 500 > "$outd/offers.log" 2>&1
-cur() { # cur MACHINE FALLBACK_ID: the listed offer id of that machine now, else the finder's
+cur() { # cur MACHINE FALLBACK_ID GPU: the listed offer id of that machine now, else the finder's, recorded under its machine
+  # one Vast search returns a varying subset of the market, so the listing may miss a machine the finder's merged reads saw; recorded
+  # in taxameter's map (ADR 0013 format), `create --offer` follows it with a search on that machine id (same filters and caps)
   "$py" -I -c '
 import json, sys
-m, fb = sys.argv[2:4]
-d = json.load(open(sys.argv[1])) if m else {}
-print(next((k for k, v in d.items() if str(v.get("machine_id")) == m), fb))
-' "${VAST_STATE_DIR:-.vast}/offers.json" "$1" "$2" 2> /dev/null || echo "$2"
+p, m, fb, g = sys.argv[1:5]
+try:
+    d = json.load(open(p))
+except (OSError, ValueError):
+    d = {}
+hit = next((k for k, v in d.items() if str(v.get("machine_id")) == m), None) if m else fb
+if hit is None:
+    d[fb] = {"machine_id": m, "num_gpus": 1, "gpu_name": g}
+    json.dump(d, open(p, "w"))
+print(hit or fb)
+' "${VAST_STATE_DIR:-.vast}/offers.json" "$1" "$2" "$3" 2> /dev/null || echo "$2"
 }
-oa=$(cur "$ma" "$oa") ob=$(cur "$mb" "$ob")
+oa=$(cur "$ma" "$oa" "$ga") ob=$(cur "$mb" "$ob" "$gb")
 echo "[$(date +%T)] pair: a $oa ($ga), b $ob ($gb); both creates now"
 ta=$(date +%s)
 bash scripts/sc_offers.sh create --offer "$oa" --gpu "$ga" --ports 7000 > "$outd/create-a.log" 2>&1 &
