@@ -2,7 +2,7 @@
 """Case S pair finder (ADR 0091 answers 9 and 10; docs/notes/phase6-rule-changes.md, 2026-11-26 "Case S host rules").
 
 Reads the market (never creates or destroys a box), applies the static host rules to every offer, pairs the survivors on
-different hosts and ranks the pairs by expected bulk link rate, then price. Create both boxes together, and only when this
+different hosts and ranks the pairs by hosts that passed the gates before, expected bulk link rate, then price. Create both boxes together, and only when this
 lists a plannable pair (exit 0); never hold one box for a partner.
 
   uv run python scripts/phase6_pair_finder.py                       live: --reads (3) searches per GPU class, merged
@@ -314,7 +314,7 @@ def table(res, top):
         out.append(f"NO PLANNABLE PAIR ({len(res['pairs'])} listed with an A-class card): do not create any box (never hold one "
                    "for a partner); retry later, never loosen a rule.")
     if res["pairs"]:
-        out.append(f"{len(res['pairs'])} pair(s); top {min(top, len(res['pairs']))} by plannable, bulk rate, datacenter, price:")
+        out.append(f"{len(res['pairs'])} pair(s); top {min(top, len(res['pairs']))} by plannable, gated hosts, bulk rate, datacenter, price:")
         out.append("  #  offers (a, b)        hosts           gpus                  bulk Mbit/s  dc  USD/h  plannable  plan")
     for i, p in enumerate(res["pairs"][:top], 1):
         plan = "not run" if p["plan"] is None else f"{p['plan']['n']} covering"
