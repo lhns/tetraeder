@@ -1,0 +1,14 @@
+{
+ "host": "623333",
+ "machine": "151579",
+ "gpu": "RTX 3090",
+ "cpu_name": null,
+ "host_threads": null,
+ "all_in": null,
+ "two_socket_hint": null,
+ "box": null,
+ "pass": false,
+ "list": null,
+ "note": "no box rented",
+ "t": 1795815088.7438111
+}

@@ -1,0 +1,50 @@
+{
+ "rules": {
+  "ram_floor_gb": 61.7,
+  "min_cores": 12,
+  "min_disk_gb": 230,
+  "min_inet_mbps": 1000,
+  "max_price_per_h": 0.9,
+  "download_gb": 150,
+  "session_hours": 3.0,
+  "plan_aclass": true,
+  "reads": 3,
+  "pass_only": false
+ },
+ "counts": {
+  "offers": 34,
+  "excluded": {
+   "gpu_class": 0,
+   "skip_host": 10,
+   "unknown": 0,
+   "cores": 5,
+   "ram": 6,
+   "disk": 0,
+   "inet": 8,
+   "price": 4
+  },
+  "fails": {
+   "gpu_class": 0,
+   "skip_host": 10,
+   "unknown": 0,
+   "cores": 7,
+   "ram": 13,
+   "disk": 0,
+   "inet": 21,
+   "price": 14
+  },
+  "survivors": 1,
+  "per_class": {
+   "RTX 3090": 24,
+   "A40": 4,
+   "RTX A6000": 0,
+   "L40": 2,
+   "L40S": 4
+  },
+  "pairs_same_host_dropped": 0,
+  "pairs_not_both_on_pass_list": 0,
+  "pairs_no_covering_plan": 0
+ },
+ "pairs": [],
+ "scouts": []
+}

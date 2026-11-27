@@ -1,0 +1,4 @@
+disk_gb 230 in .vast/config.json
+[22:31:36] offer 62494413 not in search 1 of 3; searching again in 10 s
+[22:31:47] offer 62494413 not in search 2 of 3; searching again in 10 s
+[22:31:58] ERROR: offer 62494413 is not among the filtered offers (gone, blocklisted or over price, or has a GPU count other than 1?) and no offer on its machine matches; try `create --auto` with the same filters after 3 searches
