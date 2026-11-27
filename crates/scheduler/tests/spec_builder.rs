@@ -3,7 +3,7 @@
 //! experts (`MissPolicy::Cpu`). Prompt and generated tokens stay below 512 KV entries: from 512
 //! the CPU flash attention takes a split-KV path for single rows that a verify step does not.
 //!
-//! Bit equality is asserted where ggml's kernels are batch-invariant (no AVX2). With AVX2 the
+//! Bit equality is asserted where ggml's kernels are batch-invariant (no AVX). With AVX the
 //! multi-row step takes other kernels for some ops (llamafile sgemm for F32 from 2 rows, ADR
 //! 0043) and its logits differ in the last bits (seen on the CI runners, 2026-11-03), so there
 //! the logits must agree to a relative 1e-4 and speculative output may leave plain greedy only
@@ -71,13 +71,14 @@ fn near_tie() -> f32 {
     }
 }
 
-/// ggml's CPU kernels give the same bits for one row and for a few rows. Decided by the loaded
-/// CPU backend (ADR 0052), not the host: a forced low variant is batch-invariant on an AVX2 host.
+/// ggml's CPU kernels give the same bits for one row and for a few rows: only without AVX, where
+/// llamafile's tinyBLAS (two or more rows) is not built (ADR 0073). Decided by the loaded CPU
+/// backend (ADR 0052), not the host: a forced SSE variant is batch-invariant on an AVX host.
 fn batch_invariant_kernels() -> bool {
     #[cfg(target_arch = "x86_64")]
     {
         let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
-        !info.isa.iter().any(|f| f == "AVX2")
+        !info.isa.iter().any(|f| f == "AVX")
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -85,17 +86,18 @@ fn batch_invariant_kernels() -> bool {
     }
 }
 
-/// ADR 0073 open item: at llama.cpp b12426 the K-quant fixture loses batch invariance on the AVX2
-/// CPU kernels (b11976 and the AVX-512 variants pass). Decided by the loaded backend, so a forced
-/// variant counts. Prints a skip line and returns true; remove with the upstream bisect.
+/// ADR 0073 open item: at llama.cpp b12426 the K-quant fixture loses batch invariance on the
+/// 256-bit AVX CPU kernels, AVX2 and AVX-only tiers alike (b11976, the AVX-512 and the SSE
+/// variants pass). Decided by the loaded backend, so a forced variant counts. Prints a skip line
+/// and returns true; remove when the cause is resolved.
 fn skip_avx2_drift() -> bool {
     #[cfg(target_arch = "x86_64")]
     {
         let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
         let has = |f: &str| info.isa.iter().any(|x| x == f);
-        if has("AVX2") && !has("AVX512") {
+        if has("AVX") && !has("AVX512") {
             println!(
-                "skipped: ADR 0073 open item: AVX2 K-quant batch drift at b12426 (variant tier {})",
+                "skipped: ADR 0073 open item: AVX K-quant batch drift at b12426 (variant tier {})",
                 info.tier
             );
             return true;
