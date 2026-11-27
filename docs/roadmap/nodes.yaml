@@ -2414,23 +2414,43 @@ nodes:
   title: Close the known parity gaps
   track: serving
   kind: feature
-  state: next
-  outcome: unrated
+  state: done
+  outcome: successful
   evidence:
   - tests/conformance/parity/cases.yaml
   - docs/notes/llamacpp-parity.md
+  - docs/adr/0093-parity-remaining-gaps.md
+  verdict_quote: 'Since ADR 0093 (node `serving-parity-remaining`, 2026-11-26) five of the six gap cases pass under new ids and the suite has 123 cases (163 runs), one of them a strict gap case (`gap-tool-choice-required`).'
+  headline: 'five of six gaps closed; forced tool_choice open'
+  depends_on:
+  - serving-parity-libllama
+  replaced_by: []
+  lane: local
+  start: 2026-11-26
+  end: 2026-11-27
+  folded: []
+  overview: false
+  plain: ADR 0093 closed five of the six audit gaps in the gateway, the input_tokens routes, GET /slots, prompt arrays on /v1/completions (a batch with more prompts than slots used to hang), continue_final_message with add_generation_prompt and prefill_assistant, and response_format on llama-server's own grammar with only the JSON as content; forced tool_choice stays a strict gap because the fixture template renders no tools, and the reasoning controls stay open for lack of a thinking template (CI run 45910480502).
+  notes: 'Behaviour change - a trailing assistant message on the OpenAI routes is continued without a flag, as llama-server does. GET /slots marks the first busy slots, not the real ones. A pin move must recheck the rebuilt response_format grammar.'
+- id: serving-parity-tool-template
+  title: Parity fixture with tools, thinking
+  track: serving
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
-  - serving-parity-libllama
+  - serving-parity-remaining
   replaced_by: []
   lane: local
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: The audit of ADR 0083 decision 6 found requests that work on llama-server and differ here, each now a strict gap case; json_object and json_schema response_format with llama-server's own grammar, forced tool_choice, continue_final_message with add_generation_prompt and prefill_assistant on the chat routes, the input_tokens routes, GET /slots and prompt arrays on /v1/completions; reasoning_budget_tokens, reasoning_format and the reasoning control route are open too, but the tiny fixture has no thinking template to show them.
-  notes: 'Each gap case flips to pass in the change that closes it (strict xfail). The cases were written without a local llama-server, so CI is the first run.'
+  plain: A tiny fixture whose chat template renders tool calls and thinking, so the suite can compare forced tool_choice, response_format with tools or thinking, the thinking continuation and the reasoning controls against llama-server.
+  notes: ''
 - id: cluster-transport-wan
   title: Transport latency between two boxes
   track: cluster

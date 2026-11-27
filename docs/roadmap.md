@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 53 rated nodes are confirmed by the owner.
+0 of 54 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `bench-235b-segment-confirm-2`, `planner-ep-prefill-recheck`, `bench-phase6-exit-f`, `bench-phase6-exit-s`, `memory-replay-expected-uses`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `serving-parity-remaining`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `bench-235b-segment-confirm`, `bench-235b-segment-confirm-2`, `planner-ep-prefill-recheck`, `bench-phase6-exit-f`, `bench-phase6-exit-s`, `memory-replay-expected-uses`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -309,7 +309,7 @@ flowchart TB
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
 | Sampler parity with llama-server | ✔ done · successful | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
-| Close the known parity gaps | ○ next | The audit of ADR 0083 decision 6 found requests that work on llama-server and differ here, each now a strict gap case; json_object and json_schema response_format with llama-server's own grammar, forced tool_choice, continue_final_message with add_generation_prompt and prefill_assistant on the chat routes, the input_tokens routes, GET /slots and prompt arrays on /v1/completions; reasoning_budget_tokens, reasoning_format and the reasoning control route are open too, but the tiny fixture has no thinking template to show them. |
+| Parity fixture with tools, thinking | ○ next | A tiny fixture whose chat template renders tool calls and thinking, so the suite can compare forced tool_choice, response_format with tools or thinking, the thinking continuation and the reasoning controls against llama-server. |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
 | Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
 | Priorities, quotas and auth | ⏸ parked | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). |
@@ -367,7 +367,7 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **local**
 
-- `serving-parity-remaining`: Close the known parity gaps
+- `serving-parity-tool-template`: Parity fixture with tools, thinking
 - `memory-kv-host`: KV cache partly in RAM
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `serving-mtp-libllama`: MTP drafts through libllama
@@ -426,7 +426,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 160 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 161 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -874,6 +874,7 @@ Generated on 2026-11-27.
 - `cluster-remote-kv`: KV cache on another machine (✔ done · unrated). Through the real head, a prefix another replica holds is fetched when the priced rule says the move beats recomputing and recomputed otherwise; every decision is logged with its priced inputs and counted on /metrics, and a fetched prefix decodes like a computed one.
 - `cluster-short-prefix-dropped`: Short idle prefix taken unsaved (✔ fixed). A short idle prefix is no longer given up to a request that shares only a token or two with it while a slot is free, and the head forgets a prefix once its holder answers that it is gone (not measured).
 - `memory-replay-expected-uses`: Replay expected-uses expert ranking (✔ done · dead-end). Magnitude's expected-uses ranking (decayed routing counts plus router lookahead), tried as a policy in the offline replay on the saved 235B trace, reads about the same synchronous miss bytes as gfreq:1 at 26 slots (1% more, 3% fewer at the best horizon), so it is not ported to the engine.
+- `serving-parity-remaining`: Close the known parity gaps (✔ done · successful). ADR 0093 closed five of the six audit gaps in the gateway, the input_tokens routes, GET /slots, prompt arrays on /v1/completions (a batch with more prompts than slots used to hang), continue_final_message with add_generation_prompt and prefill_assistant, and response_format on llama-server's own grammar with only the JSON as content; forced tool_choice stays a strict gap because the fixture template renders no tools, and the reasoning controls stay open for lack of a thinking template (CI run 45910480502).
 
 </details>
 
@@ -911,7 +912,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 19 nodes (13 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 29 nodes (19 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 32 nodes (22 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 57 nodes (43 done, 3 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 16 nodes (14 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 42 nodes (35 done, 1 next, 1 blocked, 5 parked)
