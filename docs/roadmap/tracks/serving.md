@@ -29,7 +29,8 @@ flowchart TB
     serving_recurrent_reuse>"✔ Recurrent models<br/>break slot reuse"]
     serving_cuda_parity>"✔ libllama path<br/>differs on CUDA"]
     serving_parity_remaining["✔ Close the known<br/>parity gaps"]
-    serving_parity_tool_template["○ Parity fixture with<br/>tools, thinking"]
+    serving_parity_tool_template["✔ Parity fixture with<br/>tools, thinking"]
+    serving_parity_grammar["○ Match llama-server's<br/>parser grammar"]
     serving_multi_model["⏸ Several models at<br/>once"]
     serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
     serving_auth_quotas["⏸ Priorities, quotas<br/>and auth"]
@@ -64,9 +65,10 @@ flowchart TB
     serving_recurrent_reuse ~~~ serving_parity_remaining
     serving_cuda_parity ~~~ serving_parity_remaining
     serving_parity_remaining ~~~ serving_parity_tool_template
-    serving_parity_remaining ~~~ serving_multi_model
-    serving_parity_remaining ~~~ serving_multi_lora
-    serving_parity_tool_template ~~~ serving_auth_quotas
+    serving_parity_tool_template ~~~ serving_parity_grammar
+    serving_parity_tool_template ~~~ serving_multi_model
+    serving_parity_tool_template ~~~ serving_multi_lora
+    serving_parity_grammar ~~~ serving_auth_quotas
     serving_multi_model ~~~ serving_multimodal
     serving_multi_lora ~~~ serving_self_spec
     serving_auth_quotas ~~~ serving_mtp_drafts
@@ -89,6 +91,7 @@ flowchart TB
     serving_parity_endpoints --> serving_parity_libllama
     serving_parity_libllama --> serving_parity_remaining
     serving_parity_remaining --> serving_parity_tool_template
+    serving_parity_tool_template --> serving_parity_grammar
     serving_gateway --> serving_multi_model
     serving_batching --> serving_multi_lora
     serving_gateway --> serving_auth_quotas
@@ -109,8 +112,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
-    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama,serving_recurrent_reuse,serving_cuda_parity,serving_parity_remaining succ
-    class serving_parity_tool_template,serving_mtp_libllama next
+    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama,serving_recurrent_reuse,serving_cuda_parity,serving_parity_remaining,serving_parity_tool_template succ
+    class serving_parity_grammar,serving_mtp_libllama next
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
 ```
 <!-- END GENERATED: track-serving -->
@@ -139,7 +142,8 @@ flowchart TB
 | `serving-parity-libllama` | Expose libllama capabilities | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-endpoints |  |  | Group D: 7 of 8 rows done, model download refused | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0090-libllama-capabilities.md; crates/gateway/tests/libllama_routes.rs; crates/scheduler/tests/libllama_caps.rs; crates/engine/tests/embed.rs |
 | `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 | serving-parity-libllama |  |  | parked until M3 | docs/notes/llamacpp-parity.md |
 | `serving-parity-remaining` | Close the known parity gaps | feature | local | done | successful | 2026-11-26 | 2026-11-27 | serving-parity-libllama |  |  | five of six gaps closed; forced tool_choice open | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0093-parity-remaining-gaps.md |
-| `serving-parity-tool-template` | Parity fixture with tools, thinking | feature | local | next | unrated |  |  | serving-parity-remaining |  |  |  |  |
+| `serving-parity-tool-template` | Parity fixture with tools, thinking | feature | local | done | successful | 2026-11-27 | 2026-11-27 | serving-parity-remaining |  |  | tools and thinking fixture; 2 gateway fixes; 7 gaps recorded | tests/conformance/parity/cases.yaml; tests/fixtures/qwen3-tools.jinja; docs/adr/0094-parity-tools-thinking-fixture.md; docs/notes/llamacpp-parity.md |
+| `serving-parity-grammar` | Match llama-server's parser grammar | feature | local | next | unrated |  |  | serving-parity-tool-template |  |  |  |  |
 | `serving-multi-model` | Several models at once | feature | none | parked | unrated |  |  | serving-gateway, planner-core |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters | feature | none | parked | unrated |  |  | serving-batching |  |  |  |  |
 | `serving-auth-quotas` | Priorities, quotas and auth | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
@@ -176,7 +180,8 @@ flowchart TB
 | `serving-parity-libllama` | Expose libllama capabilities | 722 passed, 2 skipped in 95.36s (pytest, test ubuntu-24.04, CI run 45145783401); the group D cases pass against llama-server, none xfail | Group D: 7 of 8 rows done, model download refused | Embeddings, rerank, KV cache types and offload, CPU-MoE, context shift and slot save and restore work on the libllama engine as in llama-server and the own builders refuse them with a pointer (ADR 0083 group D, ADR 0090); model download by name is refused, GET /slots and GPU runs are open. |  |  |  |  |  |
 | `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | Park until M3 (owner 2026-11-23) | parked until M3 | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). | The matrix is docs/notes/llamacpp-parity.md. |  |  |  |  |
 | `serving-parity-remaining` | Close the known parity gaps | Since ADR 0093 (node `serving-parity-remaining`, 2026-11-26) five of the six gap cases pass under new ids and the suite has 123 cases (163 runs), one of them a strict gap case (`gap-tool-choice-required`). | five of six gaps closed; forced tool_choice open | ADR 0093 closed five of the six audit gaps in the gateway, the input_tokens routes, GET /slots, prompt arrays on /v1/completions (a batch with more prompts than slots used to hang), continue_final_message with add_generation_prompt and prefill_assistant, and response_format on llama-server's own grammar with only the JSON as content; forced tool_choice stays a strict gap because the fixture template renders no tools, and the reasoning controls stay open for lack of a thinking template (CI run 45910480502). | Behaviour change - a trailing assistant message on the OpenAI routes is continued without a flag, as llama-server does. GET /slots marks the first busy slots, not the real ones. A pin move must recheck the rebuilt response_format grammar. |  |  |  |  |
-| `serving-parity-tool-template` | Parity fixture with tools, thinking |  |  | A tiny fixture whose chat template renders tool calls and thinking, so the suite can compare forced tool_choice, response_format with tools or thinking, the thinking continuation and the reasoning controls against llama-server. |  |  |  |  |  |
+| `serving-parity-tool-template` | Parity fixture with tools, thinking | CI run 46038711182 green on ubuntu and windows; of 13 new cases on qwen3-tools.jinja 6 pass against llama-server and 7 are strict gap cases | tools and thinking fixture; 2 gateway fixes; 7 gaps recorded | The parity suite now has a tool-and-thinking chat template and matches llama-server on the tools prompt, tool history, auto tool_choice and three thinking continuations; it found two gateway differences (tool descriptions, thinking markers), both fixed, and recorded seven strict gaps (forced and named tool_choice, response_format with tools or thinking, reasoning_format, reasoning_budget_tokens, the control route without an id). | Continuing a reasoning-only message is compared by token counts, not text (byte-noise reasoning differs in U+FFFD runs). |  |  |  |  |
+| `serving-parity-grammar` | Match llama-server's parser grammar |  |  | Close the seven strict gap cases on the qwen3-tools fixture; forced and named tool_choice on a thinking template (llama-server allows reasoning and text before the call, our mask starts the call at once), response_format with tools or thinking, reasoning_format none, reasoning_budget_tokens and the control route's 400 without an id. | Design call first - keeping the forcing mask is deliberate (it forces calls on real templates); copying llama-server means its parser grammar. |  |  |  |  |
 | `serving-multi-model` | Several models at once |  |  | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a feature test loads a second model on request and serves both. |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters |  |  | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a batch mixing adapters matches each adapter run alone. |  |  |  |  |
 | `serving-auth-quotas` | Priorities, quotas and auth |  |  | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: feature tests for each. |  |  |  |  |

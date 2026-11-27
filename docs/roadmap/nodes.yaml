@@ -2475,21 +2475,44 @@ nodes:
   title: Parity fixture with tools, thinking
   track: serving
   kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - tests/conformance/parity/cases.yaml
+  - tests/fixtures/qwen3-tools.jinja
+  - docs/adr/0094-parity-tools-thinking-fixture.md
+  - docs/notes/llamacpp-parity.md
+  verdict_quote: 'CI run 46038711182 green on ubuntu and windows; of 13 new cases on qwen3-tools.jinja 6 pass against llama-server and 7 are strict gap cases'
+  headline: 'tools and thinking fixture; 2 gateway fixes; 7 gaps recorded'
+  depends_on:
+  - serving-parity-remaining
+  replaced_by: []
+  lane: local
+  start: 2026-11-27
+  end: 2026-11-27
+  folded: []
+  overview: false
+  plain: The parity suite now has a tool-and-thinking chat template and matches llama-server on the tools prompt, tool history, auto tool_choice and three thinking continuations; it found two gateway differences (tool descriptions, thinking markers), both fixed, and recorded seven strict gaps (forced and named tool_choice, response_format with tools or thinking, reasoning_format, reasoning_budget_tokens, the control route without an id).
+  notes: 'Continuing a reasoning-only message is compared by token counts, not text (byte-noise reasoning differs in U+FFFD runs).'
+- id: serving-parity-grammar
+  title: Match llama-server's parser grammar
+  track: serving
+  kind: feature
   state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
-  - serving-parity-remaining
+  - serving-parity-tool-template
   replaced_by: []
   lane: local
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: A tiny fixture whose chat template renders tool calls and thinking, so the suite can compare forced tool_choice, response_format with tools or thinking, the thinking continuation and the reasoning controls against llama-server.
-  notes: ''
+  plain: Close the seven strict gap cases on the qwen3-tools fixture; forced and named tool_choice on a thinking template (llama-server allows reasoning and text before the call, our mask starts the call at once), response_format with tools or thinking, reasoning_format none, reasoning_budget_tokens and the control route's 400 without an id.
+  notes: 'Design call first - keeping the forcing mask is deliberate (it forces calls on real templates); copying llama-server means its parser grammar.'
 - id: cluster-transport-wan
   title: Transport latency between two boxes
   track: cluster

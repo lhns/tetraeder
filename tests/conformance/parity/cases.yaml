@@ -1369,7 +1369,7 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
   # same difference for a named choice
   - id: tool-choice-named-qwen3
     group: B
@@ -1381,7 +1381,7 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
   # llama-server builds the grammar of ADR 0093 item 5 with the think block and (tools) the tool call in front, its first token is the code fence; the token mask here ends the reply at once (4 tokens, llama-server 14 and 38)
   - id: response-format-with-tools-qwen3
     group: B
@@ -1393,7 +1393,7 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
   # a thinking template without tools: same difference
   - id: response-format-thinking-qwen3
     group: B
@@ -1405,7 +1405,7 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
   - id: prefill-assistant-thinking-qwen3
     group: B
     row: "continue_final_message / add_generation_prompt / prefill_assistant"
@@ -1453,7 +1453,7 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
   # llama-server forces the end of the think block after the budget (stopped at 11 tokens); the budget is ignored here
   - id: reasoning-budget-qwen3
     group: B
@@ -1465,7 +1465,7 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
   # llama-server answers 400 "missing completion id" (the route steers a running reasoning budget); no route here (404)
   - id: reasoning-control-no-id
     group: B
@@ -1477,4 +1477,4 @@ cases:
     engines: [auto]
     llama_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
     tetraeder_args: ["--chat-template-file", "{fixtures}/qwen3-tools.jinja"]
-    expect: gap serving-parity-tool-template
+    expect: gap serving-parity-grammar
