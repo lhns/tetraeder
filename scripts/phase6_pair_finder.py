@@ -79,6 +79,7 @@ SKIP_HOSTS = {
     "195919": "GPU power capped, 300 of 420 W (phase6-exit-s-20261127f)",
     "560104": "two sockets and two NUMA nodes (phase6-exit-s-20261127h)",
     "440607": "GPU power capped, 270 of 420 W (scout 20261127j)",
+    "88516": "GPU power capped, 220 of 350 W (scout 20261127j)",
     "87485": "busy co-tenant", "213498": "SSH rejected the key", "109790": "stayed loading twice",
     "39788": "stayed loading", "151822": "stalled twice", "130210": "never finished the pull", "51345": "never finished the pull",
     "551866": "never finished the pull", "87657": "never finished the pull", "70221": "never finished the pull",
