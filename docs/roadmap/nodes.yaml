@@ -2432,6 +2432,45 @@ nodes:
   overview: false
   plain: ADR 0093 closed five of the six audit gaps in the gateway, the input_tokens routes, GET /slots, prompt arrays on /v1/completions (a batch with more prompts than slots used to hang), continue_final_message with add_generation_prompt and prefill_assistant, and response_format on llama-server's own grammar with only the JSON as content; forced tool_choice stays a strict gap because the fixture template renders no tools, and the reasoning controls stay open for lack of a thinking template (CI run 45910480502).
   notes: 'Behaviour change - a trailing assistant message on the OpenAI routes is continued without a flag, as llama-server does. GET /slots marks the first busy slots, not the real ones. A pin move must recheck the rebuilt response_format grammar.'
+- id: plan-validator-per-layer-sizes
+  title: Validator sizes units per layer
+  track: planner
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-footprint-validator-gap
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The validator counts every unit of a kind at the model's mean size, so a segment of heavy layers (the 235B's Q6_K ends) passes with fewer bytes than it holds; the planner's footprint guards planned segments, but a hand-written plan could pass and run out of memory. Also drop the GPU doubling in cluster_hardening n_nodes, which looks like a workaround.
+  notes: 'From the planner-footprint-validator-gap worker, 2026-11-26. ModelDesc sizing feeds the executor arenas, so the change needs care.'
+- id: scheduler-avx-drift-skip
+  title: AVX drift skip in spec tests
+  track: engine
+  kind: defect
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0073-engine-pin-b12426.md
+  - crates/scheduler/tests/spec_builder.rs
+  verdict_quote: 'CI run 45895321742 success; DL sse42 5 strict passes, DL ivybridge 5 skipped, native avx 5 skipped'
+  headline: 'K-quant drift skipped on every 256-bit AVX tier'
+  depends_on: []
+  replaced_by: []
+  lane: ci
+  start: 2026-11-26
+  end: 2026-11-27
+  folded: []
+  overview: false
+  plain: The five spec_builder CPU failures on the AVX-only docker host were the ADR 0073 K-quant batch drift, not a regression; the tests now skip on any AVX tier without AVX-512 and assert bit equality only without AVX.
+  notes: ''
 - id: serving-parity-tool-template
   title: Parity fixture with tools, thinking
   track: serving
@@ -4921,7 +4960,7 @@ nodes:
   folded: []
   overview: false
   plain: 'The judged Case S on a pair the finder lists (3090 plus A40 or two 3090s), under ADR 0091 and the rule log: at most two attempts that reach the download, boxes up to 4 h each (user one-off, 2026-11-26).'
-  notes: 'Attempt e 2026-11-27 night (bench/results/phase6-exit-s-20261127e): no verdict. Two 3090s on hosts 306949 and 79466; b was ready with cuda ok, a stayed loading with its ssh proxy refusing for 15 min, so both were destroyed at the driver deadline before the gates, build and download, about 0.22 USD, 0 of 2 download attempts used; no host skipped (one stall); the 4 h one-off carries to the next pair. Attempt 2026-11-27 night (bench/results/phase6-exit-s-20261127): no verdict. The only listed pair, two 3090s on hosts 392144 and 79466, passed NUMA, RAM, cuda, idle and co-tenant, but host 392144 caps its card at 360 of 370 W, so the power gate failed at the gates stage; both destroyed before bulk, build and download, about 0.25 USD, 0 of 2 download attempts used; 392144 is now skipped. Attempt 2026-11-26 evening (bench/results/phase6-exit-s-20261126c): no verdict. Pairs vanished within minutes, so scripts/phase6_pair_create.sh now finds and creates both boxes in one step; the pair 3090 host 45726 plus A40 host 682584 came up, and 682584 failed the one-NUMA gate at first SSH (2 sockets, 2 NUMA nodes); both destroyed before build and download, about 0.21 USD for three boxes, 0 of 2 download attempts used. 682584 is now skipped. The 4 h one-off is used; a retry runs under 3 h (170 min padded fits only without the report-only runs) unless the owner grants a new one.'
+  notes: 'Attempt e 2026-11-27 night (bench/results/phase6-exit-s-20261127e): no verdict. Two 3090s on hosts 306949 and 79466; b was ready with cuda ok, a stayed loading with its ssh proxy refusing for 15 min, so both were destroyed at the driver deadline before the gates, build and download, about 0.22 USD, 0 of 2 download attempts used; no host skipped (one stall); the 4 h one-off carries to the next pair. Attempt 2026-11-27 night (bench/results/phase6-exit-s-20261127): no verdict. The only listed pair, two 3090s on hosts 392144 and 79466, passed NUMA, RAM, cuda, idle and co-tenant, but host 392144 caps its card at 360 of 370 W, so the power gate failed at the gates stage; both destroyed before bulk, build and download, about 0.25 USD, 0 of 2 download attempts used; 392144 is now skipped. Attempt 2026-11-26 evening (bench/results/phase6-exit-s-20261126c): no verdict. Pairs vanished within minutes, so scripts/phase6_pair_create.sh now finds and creates both boxes in one step; the pair 3090 host 45726 plus A40 host 682584 came up, and 682584 failed the one-NUMA gate at first SSH (2 sockets, 2 NUMA nodes); both destroyed before build and download, about 0.21 USD for three boxes, 0 of 2 download attempts used. 682584 is now skipped. A new 4 h one-off (owner, 2026-11-27, "4h again") covers the next judged session. Tooling gaps from attempt e - a local pair_create run can be reaped mid-run (the driver now rents in the foreground and adopts at once), and a fresh worktree lacks .vast/config.json disk_gb 230.'
 - id: cluster-short-prefix-dropped
   title: Short idle prefix taken unsaved
   track: cluster
