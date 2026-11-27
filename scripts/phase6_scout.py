@@ -159,11 +159,20 @@ def pick(outd, finder_args):
 def current_offer(machine, fallback, gpu, outd):
     """The listed offer id of the machine now (offer ids rotate; .vast/offers.json, taxameter ADR 0013), else the finder's."""
     subprocess.run(["bash", "scripts/sc_offers.sh", "offers", "--gpu", gpu, "--top", "500"], cwd=ROOT, capture_output=True, timeout=300)
+    path = ROOT / ".vast" / "offers.json"
     try:
-        d = json.loads((ROOT / ".vast" / "offers.json").read_text(encoding="utf-8"))
-        return next((k for k, v in d.items() if str(v.get("machine_id")) == str(machine)), fallback)
+        d = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return fallback
+        d = {}
+    hit = next((k for k, v in d.items() if str(v.get("machine_id")) == str(machine)), None)
+    if hit:
+        return hit
+    # one Vast search returns a varying subset of the market (2026-11-27: two searches a second apart shared 17 of 24 machines),
+    # so the listing may miss the machine the finder's merged reads saw. Record the finder's id under its machine in taxameter's
+    # map (ADR 0013 format): `create --offer` then follows it with a search on that machine id, same filters and caps
+    d[str(fallback)] = {"machine_id": str(machine), "num_gpus": 1, "gpu_name": gpu}
+    path.write_text(json.dumps(d), encoding="utf-8")
+    return fallback
 
 
 def probe(a):

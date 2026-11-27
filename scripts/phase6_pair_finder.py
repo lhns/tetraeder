@@ -97,6 +97,7 @@ SKIP_HOSTS = {
 PASS_MACHINES = {
     ("79466", "41880"): "gates: Xeon W-2133, passed on 20261126 pair 1, 20261127, f and h",
     ("45726", "7543"): "gates: Ryzen 9 5950X, passed on 20261126c",
+    ("543999", "155645"): "scout: Core i9-14900KS, 1 socket, 1 NUMA node, 420 of 420 W, memory.max 64.4 GB, cuda ok (20261127j)",
 }
 RULES = ("gpu_class", "skip_host", "unknown", "cores", "ram", "disk", "inet", "price")
 
